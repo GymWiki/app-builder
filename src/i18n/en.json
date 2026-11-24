@@ -1,0 +1,366 @@
+{
+  "common": {
+    "appName": "Studio",
+    "back": "Back",
+    "cancel": "Cancel",
+    "continue": "Continue",
+    "close": "Close",
+    "create": "Create",
+    "save": "Save",
+    "retry": "Try again",
+    "checkAgain": "Check again",
+    "skipForNow": "Skip for now",
+    "showDetails": "Show technical details",
+    "hideDetails": "Hide technical details",
+    "copy": "Copy",
+    "copied": "Copied",
+    "loading": "Loading…",
+    "openSetup": "Open setup",
+    "somethingWrong": "Something went wrong"
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "language": { "label": "Language", "en": "English", "nl": "Nederlands" },
+  "home": {
+    "title": "Your apps",
+    "subtitle": "Build mobile apps by chatting. You keep all the code.",
+    "searchPlaceholder": "Search projects",
+    "searchLabel": "Search projects",
+    "newProject": "New project",
+    "clearSearch": "Clear search",
+    "loadError": "Your projects could not be loaded",
+    "empty": {
+      "title": "Build your first app",
+      "body": "Describe what you want, pick a starting point and Studio sets up a real Flutter project on your computer."
+    },
+    "noResults": {
+      "title": "No projects match “{{query}}”",
+      "body": "Try a different word, or clear the search."
+    },
+    "setupBanner": {
+      "title": "Finish setting up first",
+      "body": "Studio needs a few tools (Git, Flutter and Claude) before it can build apps.",
+      "action": "Open setup"
+    }
+  },
+  "status": {
+    "draft": "Draft",
+    "testing": "Testing",
+    "ready": "Ready to publish",
+    "published": "Published"
+  },
+  "project": {
+    "version": "Version {{version}}",
+    "modified": "Edited {{when}}",
+    "open": "Open",
+    "showInFolder": "Show in folder",
+    "actions": "Project actions for {{name}}",
+    "remove": "Remove…"
+  },
+  "newProject": {
+    "title": "New project",
+    "description": "Give your app a name and choose a starting point. You can change everything later by chatting.",
+    "nameLabel": "App name",
+    "namePlaceholder": "My first app",
+    "descLabel": "What should it do? (optional)",
+    "descPlaceholder": "A scoreboard for our Friday board game night",
+    "templateLabel": "Starting point",
+    "create": "Create project",
+    "creating": "Creating your project…",
+    "slowHint": "The first project can take a minute or two while Flutter downloads what it needs.",
+    "steps": {
+      "prepare": "Preparing folder",
+      "flutter_create": "Creating the Flutter project",
+      "template": "Adding your starting point",
+      "memory": "Writing the project memory",
+      "git": "Setting up version history",
+      "save": "Saving"
+    },
+    "templates": {
+      "blank": { "name": "Blank", "desc": "An empty screen. Tell Studio what to build." },
+      "scoreboard": { "name": "Scoreboard", "desc": "Two players, plus and minus buttons, reset." },
+      "checklist": { "name": "Checklist", "desc": "Add, tick off and swipe away items." },
+      "tracker": { "name": "Tracker", "desc": "Log things during the day and see your history." }
+    }
+  },
+  "removeProject": {
+    "title": "Remove “{{name}}”?",
+    "body": "Choose what should happen. Removing it from Studio keeps all your files; deleting the project cannot be undone.",
+    "keep": "Remove from Studio, keep files",
+    "keepHint": "The folder stays on your computer. You can’t re-open it in Studio yet.",
+    "delete": "Delete project and files",
+    "deleteHint": "Permanently deletes {{path}}",
+    "confirmDelete": "Yes, delete everything",
+    "removed": "“{{name}}” was removed",
+    "deleted": "“{{name}}” and its files were deleted"
+  },
+  "workspace": {
+    "menuLabel": "Project menu",
+    "previewLabel": "Live preview",
+    "propertiesLabel": "Properties and chat",
+    "sections": {
+      "screens": { "name": "Screens", "desc": "See every screen of your app and how people move between them." },
+      "data": { "name": "Data & login", "desc": "Connect your own Firebase or Supabase, or keep data on the phone." },
+      "theme": { "name": "Theme", "desc": "Colors, fonts and the overall look, shown live in the preview." },
+      "assets": { "name": "Assets", "desc": "App icon, splash screen and images in every size." },
+      "settings": { "name": "App settings", "desc": "Name, bundle ID, version, permissions and minimum OS." },
+      "versions": { "name": "Versions", "desc": "Automatic snapshots, go back in time and write a changelog." },
+      "publish": { "name": "Publish", "desc": "A guided checklist to Google Play and the App Store." }
+    },
+    "comingSoon": "Coming in a later step",
+    "comingSoonBody": "This section is part of the roadmap. The panel is already here so the layout stays the same.",
+    "preview": {
+      "title": "Live preview comes next",
+      "body": "Your app will run here, in a phone frame, and refresh after every change."
+    },
+    "device": {
+      "label": "Preview device",
+      "small": "Small phone",
+      "medium": "Phone",
+      "large": "Large phone",
+      "tablet": "Tablet"
+    },
+    "previewTheme": "Preview theme",
+    "chat": {
+      "title": "Chat with Claude",
+      "placeholder": "Chat opens in the next step",
+      "disabled": "Chatting with Claude is coming in the next step."
+    },
+    "panels": {
+      "showMenu": "Show menu",
+      "hideMenu": "Hide menu",
+      "showRight": "Show side panel",
+      "hideRight": "Hide side panel"
+    },
+    "publish": "Publish",
+    "publishProgress": "{{done}}/{{total}}",
+    "publishHint": "Finish the checklist first ({{done}} of {{total}} done)",
+    "notFound": {
+      "title": "We can’t find this project",
+      "body": "It may have been removed. Go back to your projects and pick another one."
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "appearance": "Appearance",
+    "projectsFolder": "Projects folder",
+    "projectsFolderHelp": "New projects are created here as ordinary Flutter folders.",
+    "change": "Change…",
+    "pickFolder": "Choose a projects folder",
+    "org": "Organisation ID",
+    "orgHelp": "The first part of every new app’s bundle ID, like com.yourname. Existing apps keep theirs.",
+    "orgInvalid": "Use lowercase letters, digits and dots, like com.yourname",
+    "saved": "Saved",
+    "tools": "Tools",
+    "toolsHelp": "Re-run the check for Git, Flutter, Android and Claude.",
+    "runSetup": "Open setup",
+    "about": "About",
+    "version": "Studio {{version}} on {{os}}",
+    "logs": "Log folder",
+    "showInFolder": "Show in folder",
+    "designSystem": "Design system"
+  },
+  "setup": {
+    "title": "Let’s get your computer ready",
+    "subtitle": "Studio needs a few free tools. We check each one and show you what to do if something is missing.",
+    "progress": "{{done}} of {{total}} ready",
+    "checking": "Checking…",
+    "ready": "Ready",
+    "readyVersion": "Ready · {{version}}",
+    "missing": "Not installed",
+    "outdated": "Too old (found {{version}}, need {{min}} or newer)",
+    "warning": "Needs attention",
+    "install": "Install for me",
+    "download": "Open download page",
+    "showSteps": "Show steps",
+    "hideSteps": "Hide steps",
+    "finish": "Start building",
+    "finishHint": "Everything is ready.",
+    "skipHint": "You can finish setup later from Settings, but you can’t build until everything is ready.",
+    "confirmInstall": {
+      "title": "Install {{tool}}?",
+      "body": "Studio will run this command in a terminal you can watch:",
+      "run": "Run command",
+      "note": "Windows may ask for permission. Studio never installs anything without asking first."
+    },
+    "terminal": {
+      "title": "Terminal",
+      "running": "Running…",
+      "done": "Finished",
+      "close": "Close terminal"
+    },
+    "login": {
+      "signIn": "Sign in",
+      "connected": "Connected ✓",
+      "hint": "A browser window opens so you can sign in to Claude yourself. If it asks for a code, paste it in the terminal below. Studio never sees your password or token.",
+      "needsClaude": "Install Claude Code first, then you can sign in.",
+      "waiting": "Waiting for you to sign in…"
+    }
+  },
+  "tools": {
+    "unknown": "A required tool",
+    "git": {
+      "name": "Git",
+      "why": "Keeps a history of every change so you can always go back.",
+      "download": "https://git-scm.com/downloads",
+      "steps": {
+        "windows": [
+          "Choose “Install for me”, or download Git for Windows from the page we open.",
+          "Run the installer and keep the suggested options.",
+          "Come back here and choose “Check again”."
+        ],
+        "macos": [
+          "Open Terminal and type: xcode-select --install",
+          "Follow the pop-up to install the developer tools.",
+          "Come back here and choose “Check again”."
+        ],
+        "linux": [
+          "Install Git with your package manager, for example: sudo apt install git",
+          "Come back here and choose “Check again”."
+        ]
+      }
+    },
+    "flutter": {
+      "name": "Flutter SDK",
+      "why": "The toolkit that turns your app into real iOS and Android apps.",
+      "download": "https://docs.flutter.dev/get-started/install",
+      "steps": {
+        "windows": [
+          "Open the install guide and pick Windows, then Android.",
+          "Download the Flutter SDK zip and unzip it somewhere simple, like C:\\src\\flutter (no spaces).",
+          "Add the folder flutter\\bin to your PATH (the guide shows how).",
+          "Restart Studio, then choose “Check again”."
+        ],
+        "macos": [
+          "Open the install guide and pick macOS.",
+          "Download the Flutter SDK and unzip it in your home folder.",
+          "Add flutter/bin to your PATH (the guide shows how).",
+          "Restart Studio, then choose “Check again”."
+        ],
+        "linux": [
+          "Open the install guide and pick Linux.",
+          "Download the Flutter SDK and extract it in your home folder.",
+          "Add flutter/bin to your PATH (the guide shows how).",
+          "Restart Studio, then choose “Check again”."
+        ]
+      }
+    },
+    "android": {
+      "name": "Android toolchain",
+      "why": "Lets Studio build and test Android apps. Needed before you can publish to Google Play.",
+      "download": "https://developer.android.com/studio",
+      "issues": {
+        "no_sdk": "Android Studio (which includes the Android SDK) isn’t installed yet.",
+        "licenses": "The Android licenses still need to be accepted. This is a one-time step.",
+        "cmdline_tools": "One Android component (command-line tools) is missing.",
+        "needs_flutter": "Install the Flutter SDK first. Then we can check Android.",
+        "other": "Flutter found a problem with the Android setup. Open the details to see what."
+      },
+      "steps": {
+        "no_sdk": [
+          "Download Android Studio from the page we open and install it with the default options.",
+          "Start Android Studio once and let it finish downloading the Android SDK.",
+          "Come back here and choose “Check again”."
+        ],
+        "licenses": [
+          "Choose “Accept licenses” and answer y to each question in the terminal.",
+          "Choose “Check again”."
+        ],
+        "cmdline_tools": [
+          "Open Android Studio, then Settings, then Android SDK, then the SDK Tools tab.",
+          "Tick “Android SDK Command-line Tools”, press Apply and wait for it to finish.",
+          "Come back here and choose “Check again”."
+        ],
+        "other": [
+          "Open the technical details below and look at the lines marked with ✗ or !.",
+          "Fix them (Android Studio’s SDK Manager fixes most), then choose “Check again”."
+        ],
+        "needs_flutter": ["Finish the Flutter SDK step above first."]
+      },
+      "acceptLicenses": "Accept licenses"
+    },
+    "claude": {
+      "name": "Claude Code",
+      "why": "The AI that writes your app. It runs on your own Claude account.",
+      "download": "https://code.claude.com/docs/en/setup",
+      "steps": {
+        "windows": [
+          "Choose “Install for me”, or follow the install guide on the page we open.",
+          "Restart Studio so it can find Claude.",
+          "Choose “Check again”."
+        ],
+        "macos": [
+          "Open the install guide and follow the macOS steps.",
+          "Restart Studio so it can find Claude.",
+          "Choose “Check again”."
+        ],
+        "linux": [
+          "Open the install guide and follow the Linux steps.",
+          "Restart Studio so it can find Claude.",
+          "Choose “Check again”."
+        ]
+      },
+      "updateSteps": ["In a terminal, run: claude update", "Choose “Check again”."]
+    },
+    "claudeLogin": {
+      "name": "Claude account",
+      "why": "You sign in yourself through the official Claude Code. Studio only checks whether you are signed in."
+    }
+  },
+  "errors": {
+    "unknown": {
+      "title": "Something unexpected happened",
+      "fix": "Try again. If it keeps happening, restart Studio and check the log file in Settings."
+    },
+    "db": {
+      "title": "Studio couldn’t read its own data",
+      "fix": "Restart Studio. If this keeps happening, your projects are still safe in their folders; check the log file in Settings."
+    },
+    "io": {
+      "title": "Studio couldn’t access a file or folder",
+      "fix": "Check that the folder exists and isn’t read-only or open in another program, then try again."
+    },
+    "not_found": {
+      "title": "We couldn’t find that",
+      "fix": "It may have been removed. Go back to your projects and try again."
+    },
+    "invalid": { "title": "That doesn’t look right", "fix": "Check what you entered and try again." },
+    "tool_missing": {
+      "title": "{{tool}} isn’t available yet",
+      "fix": "Open setup to install it. Studio walks you through it."
+    },
+    "command_failed": {
+      "title": "A tool reported a problem",
+      "fix": "Open setup to check your tools, then try again. The technical details are in the log file (Settings)."
+    },
+    "timeout": { "title": "This is taking too long", "fix": "Check your internet connection and try again." },
+    "path_exists": {
+      "title": "That folder already exists",
+      "fix": "Pick another name or another projects folder in Settings."
+    },
+    "unsafe": {
+      "title": "Studio stopped to protect your files",
+      "fix": "That folder isn’t a Studio project inside your projects folder. Nothing was deleted."
+    },
+    "pty": {
+      "title": "The terminal couldn’t start",
+      "fix": "Close the terminal and try again. If it still fails, restart Studio."
+    }
+  },
+  "design": {
+    "title": "Design system",
+    "buttons": "Buttons",
+    "badges": "Badges",
+    "cards": "Cards and panels",
+    "toasts": "Toasts",
+    "states": "Empty and loading states",
+    "showToast": "Show toast",
+    "toastMessage": "This is a friendly message",
+    "emptyTitle": "Nothing here yet",
+    "emptyBody": "A short explanation and one clear next step."
+  }
+}

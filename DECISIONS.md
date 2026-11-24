@@ -1,0 +1,38 @@
+# Beslissingen
+
+Verstandige standaarden die zijn gekozen zonder te vragen. Zeg het als je iets anders wilt.
+
+## Fase 0 en 1
+
+| Onderwerp | Keuze | Reden |
+| --- | --- | --- |
+| SQLite | `rusqlite` (bundled) in Rust, niet `tauri-plugin-sql` | Migraties en queries zijn zo in Rust te testen; de frontend krijgt alleen getypeerde commands. |
+| Migraties | `PRAGMA user_version` + vaste lijst SQL | Geen extra dependency; een nieuwere database wordt geweigerd i.p.v. beschadigd. |
+| UI-voorkeuren | Thema, taal en paneelindeling in `localStorage`; alleen backend-relevante instellingen (`projects_dir`, `org`, `setup_completed`) in SQLite | Thema moet vóór de eerste render bekend zijn (geen flits). |
+| shadcn/ui | `components.json` zelf geschreven en componenten met `shadcn add` toegevoegd (niet `shadcn init`) | `init` is interactief en overschrijft `index.css`; het designsysteem staat in eigen tokens. Eén kleine fix: de CLI schreef `from "cn"` i.p.v. `@/lib/utils`. |
+| Accent | Indigo (`oklch(0.511 0.262 277)`); donker iets donkerder voor knoptekst-contrast, lichter (`--primary-text`) voor tekst op donker | Wit op indigo-600 ≈ 6:1 (AA). Donker: knop `0.54`, tekst `0.76`. |
+| Lettertype | Inter Variable via `@fontsource-variable/inter` (lokaal gebundeld, geen CDN) | Snelle start, werkt offline, CSP blijft strak. |
+| Routing | `createHashRouter` | Werkt zonder serverconfig in de Tauri-protocol-origin. |
+| Panelen | `react-resizable-panels` v4; indeling in `localStorage`; ingeklapte panelen zijn `inert` | Ingeklapte inhoud mag niet focusbaar blijven (toetsenbordgebruikers). |
+| Logging | `tauri-plugin-log` (stdout + logbestand, 3×2 MB roteren); frontend-fouten via eigen `log_event` | Alles gaat door `redact()` (API-sleutels, bearer-tokens, `token=`-paren) vóór het wordt geschreven. |
+| Fouten | Rust geeft `{code, message}`; de UI vertaalt `code` naar titel + oplossing (`errors.*`). Alleen bekende tool-id's komen in een melding | "Foutmeldingen altijd met een oplossing"; een test bewaakt dat er nooit ruwe technische tekst in een melding belandt. |
+| Projectenmap | `Documenten/Studio`, aanpasbaar in Instellingen | Gewone, zichtbare map; de gebruiker "behoudt alle code". |
+| Platformen | `flutter create --platforms=android,ios,web` | Web is nodig voor de preview (fase 3); desktop-platform wordt in fase 3 toegevoegd indien gewenst. De flags worden eerst tegen `flutter create --help` gecontroleerd (regel 3). |
+| Organisatie-ID | Standaard `com.example`, aanpasbaar in Instellingen; bundle-ID = `org.<slug>` | Fase 4 (Instellingen) schrijft het definitieve ID naar de platformbestanden. |
+| Git | Hoofdtak `main` via `symbolic-ref` (werkt ook op oudere git); als `user.name`/`user.email` ontbreken, zet Studio een lokale identiteit "Studio" | Anders faalt de eerste commit bij gebruikers zonder git-configuratie. |
+| `CLAUDE.md` | Naast `STUDIO.md` maakt Studio een `CLAUDE.md` met `@STUDIO.md` | Claude Code leest `CLAUDE.md` automatisch, `STUDIO.md` niet. |
+| Minimumversies | Git 2.20, Flutter 3.24, Claude Code 2.1.0 | Claude: geverifieerd tegen 2.1.331 (`--help`, `claude auth status --json`). Git/Flutter zijn conservatieve schattingen. |
+| Loginstatus | `claude auth status --json`, alleen het veld `loggedIn` | Raakt nooit tokens. Inloggen = `claude auth login` in de ingebouwde terminal. |
+| Wizard | Doorgaan kan pas als alle 5 onderdelen groen zijn; "Nu overslaan" kan altijd en toont daarna een banner op Home | Niet-technische gebruikers mogen niet vastlopen; bouwen blijft wel geblokkeerd. |
+| Installeren | Alleen een vaste lijst commando's (winget: Git en Claude; `flutter doctor --android-licenses`), na bevestiging met het exacte commando, in een zichtbare terminal | De UI kan nooit een willekeurig commando laten draaien. |
+| Dependencies | `notify` en `keyring` zijn nog niet toegevoegd | Regel 6: pas toevoegen in de fase die ze gebruikt (file watching in fase 3, keychain in fase 4). |
+| Verwijderen | Project uit Studio halen laat bestanden staan; bestanden verwijderen vraagt een tweede bevestiging en Rust weigert paden buiten de projectenmap of zonder `STUDIO.md` | Regel 5. |
+
+## Nog niet geverifieerd (eerlijk)
+
+- **`flutter create`, `flutter doctor` en de Android-detectie zijn niet tegen een echte Flutter-installatie getest** (die staat niet in deze Linux-sandbox). Het aanmaakproces is getest met een nep-`flutter`-script plus echte git; de doctor-parser met voorbeelduitvoer (incl. Windows-tekens `√`/`X`). Eerste echte test: een Windows-machine met Flutter.
+- De **Dart-sjablonen** zijn niet gecompileerd (geen Flutter hier). Ze gebruiken alleen kern-widgets en een rooktest (`test/widget_test.dart`).
+- **Winget-ID's** (`Git.Git`, `Anthropic.ClaudeCode`) en de installatieflow zijn niet op Windows geprobeerd.
+- **Windows- en macOS-builds en installers** (`tauri build`) zijn niet gemaakt; alleen Linux dev-build is gedraaid. Op macOS erven GUI-apps niet je shell-`PATH`; dat vraagt een aanpassing voordat macOS-ondersteuning wordt beloofd.
+- De **productie-CSP** is alleen in dev gezien.
+- De volledige **`claude auth login`-flow** is niet doorlopen (browser-login kan in de sandbox niet); de terminal (pty) is wél end-to-end getest met een echt proces.

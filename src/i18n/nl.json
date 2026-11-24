@@ -1,0 +1,372 @@
+{
+  "common": {
+    "appName": "Studio",
+    "back": "Terug",
+    "cancel": "Annuleren",
+    "continue": "Doorgaan",
+    "close": "Sluiten",
+    "create": "Maken",
+    "save": "Opslaan",
+    "retry": "Probeer opnieuw",
+    "checkAgain": "Opnieuw controleren",
+    "skipForNow": "Nu overslaan",
+    "showDetails": "Technische details tonen",
+    "hideDetails": "Technische details verbergen",
+    "copy": "Kopiëren",
+    "copied": "Gekopieerd",
+    "loading": "Laden…",
+    "openSetup": "Installatie openen",
+    "somethingWrong": "Er ging iets mis"
+  },
+  "theme": {
+    "label": "Thema",
+    "light": "Licht",
+    "dark": "Donker",
+    "system": "Systeem"
+  },
+  "language": { "label": "Taal", "en": "English", "nl": "Nederlands" },
+  "home": {
+    "title": "Jouw apps",
+    "subtitle": "Bouw mobiele apps door te chatten. Alle code blijft van jou.",
+    "searchPlaceholder": "Zoek projecten",
+    "searchLabel": "Zoek projecten",
+    "newProject": "Nieuw project",
+    "clearSearch": "Zoekopdracht wissen",
+    "loadError": "Je projecten konden niet worden geladen",
+    "empty": {
+      "title": "Bouw je eerste app",
+      "body": "Beschrijf wat je wilt, kies een startpunt en Studio zet een echt Flutter-project voor je klaar op je computer."
+    },
+    "noResults": {
+      "title": "Geen projecten gevonden voor “{{query}}”",
+      "body": "Probeer een ander woord, of wis de zoekopdracht."
+    },
+    "setupBanner": {
+      "title": "Rond eerst de installatie af",
+      "body": "Studio heeft een paar hulpmiddelen nodig (Git, Flutter en Claude) voordat het apps kan bouwen.",
+      "action": "Installatie openen"
+    }
+  },
+  "status": {
+    "draft": "Concept",
+    "testing": "In test",
+    "ready": "Klaar om te publiceren",
+    "published": "Gepubliceerd"
+  },
+  "project": {
+    "version": "Versie {{version}}",
+    "modified": "Gewijzigd {{when}}",
+    "open": "Openen",
+    "showInFolder": "Tonen in map",
+    "actions": "Acties voor project {{name}}",
+    "remove": "Verwijderen…"
+  },
+  "newProject": {
+    "title": "Nieuw project",
+    "description": "Geef je app een naam en kies een startpunt. Alles kun je later aanpassen door te chatten.",
+    "nameLabel": "Naam van de app",
+    "namePlaceholder": "Mijn eerste app",
+    "descLabel": "Wat moet de app doen? (optioneel)",
+    "descPlaceholder": "Een scorebord voor onze bordspelavond op vrijdag",
+    "templateLabel": "Startpunt",
+    "create": "Project maken",
+    "creating": "Je project wordt gemaakt…",
+    "slowHint": "Het eerste project kan een minuut of twee duren terwijl Flutter downloadt wat het nodig heeft.",
+    "steps": {
+      "prepare": "Map voorbereiden",
+      "flutter_create": "Flutter-project maken",
+      "template": "Startpunt toevoegen",
+      "memory": "Projectgeheugen schrijven",
+      "git": "Versiegeschiedenis instellen",
+      "save": "Opslaan"
+    },
+    "templates": {
+      "blank": { "name": "Leeg", "desc": "Een leeg scherm. Vertel Studio wat het moet bouwen." },
+      "scoreboard": { "name": "Scorebord", "desc": "Twee spelers, plus- en minknoppen en een reset." },
+      "checklist": { "name": "Checklist", "desc": "Items toevoegen, afvinken en wegvegen." },
+      "tracker": { "name": "Tracker", "desc": "Leg dingen vast gedurende de dag en bekijk je geschiedenis." }
+    }
+  },
+  "removeProject": {
+    "title": "“{{name}}” verwijderen?",
+    "body": "Kies wat er moet gebeuren. Uit Studio halen laat al je bestanden staan; het project verwijderen kan niet ongedaan worden gemaakt.",
+    "keep": "Uit Studio halen, bestanden bewaren",
+    "keepHint": "De map blijft op je computer staan. Je kunt hem nog niet opnieuw in Studio openen.",
+    "delete": "Project en bestanden verwijderen",
+    "deleteHint": "Verwijdert {{path}} definitief",
+    "confirmDelete": "Ja, alles verwijderen",
+    "removed": "“{{name}}” is verwijderd uit Studio",
+    "deleted": "“{{name}}” en alle bestanden zijn verwijderd"
+  },
+  "workspace": {
+    "menuLabel": "Projectmenu",
+    "previewLabel": "Live preview",
+    "propertiesLabel": "Eigenschappen en chat",
+    "sections": {
+      "screens": { "name": "Schermen", "desc": "Bekijk alle schermen van je app en hoe mensen ertussen navigeren." },
+      "data": {
+        "name": "Data & inloggen",
+        "desc": "Koppel je eigen Firebase of Supabase, of bewaar data op de telefoon."
+      },
+      "theme": { "name": "Thema", "desc": "Kleuren, lettertypen en de algemene look, live te zien in de preview." },
+      "assets": { "name": "Bestanden", "desc": "App-icoon, startscherm en afbeeldingen in alle formaten." },
+      "settings": { "name": "App-instellingen", "desc": "Naam, bundle-ID, versie, rechten en minimale OS-versie." },
+      "versions": {
+        "name": "Versies",
+        "desc": "Automatische momentopnamen, terug in de tijd en een changelog schrijven."
+      },
+      "publish": { "name": "Publiceren", "desc": "Een begeleide checklist naar Google Play en de App Store." }
+    },
+    "comingSoon": "Komt in een volgende stap",
+    "comingSoonBody": "Dit onderdeel staat op de planning. Het paneel is er al, zodat de indeling hetzelfde blijft.",
+    "preview": {
+      "title": "De live preview komt hierna",
+      "body": "Je app draait straks hier, in een telefoonframe, en ververst na elke wijziging."
+    },
+    "device": {
+      "label": "Preview-apparaat",
+      "small": "Kleine telefoon",
+      "medium": "Telefoon",
+      "large": "Grote telefoon",
+      "tablet": "Tablet"
+    },
+    "previewTheme": "Preview-thema",
+    "chat": {
+      "title": "Chat met Claude",
+      "placeholder": "Chatten komt in de volgende stap",
+      "disabled": "Chatten met Claude komt in de volgende stap."
+    },
+    "panels": {
+      "showMenu": "Menu tonen",
+      "hideMenu": "Menu verbergen",
+      "showRight": "Zijpaneel tonen",
+      "hideRight": "Zijpaneel verbergen"
+    },
+    "publish": "Publiceren",
+    "publishProgress": "{{done}}/{{total}}",
+    "publishHint": "Rond eerst de checklist af ({{done}} van {{total}} klaar)",
+    "notFound": {
+      "title": "We kunnen dit project niet vinden",
+      "body": "Het is misschien verwijderd. Ga terug naar je projecten en kies een ander project."
+    }
+  },
+  "settings": {
+    "title": "Instellingen",
+    "appearance": "Weergave",
+    "projectsFolder": "Projectenmap",
+    "projectsFolderHelp": "Nieuwe projecten worden hier gemaakt als gewone Flutter-mappen.",
+    "change": "Wijzigen…",
+    "pickFolder": "Kies een projectenmap",
+    "org": "Organisatie-ID",
+    "orgHelp": "Het eerste deel van het bundle-ID van elke nieuwe app, zoals nl.jouwnaam. Bestaande apps houden hun eigen ID.",
+    "orgInvalid": "Gebruik kleine letters, cijfers en punten, zoals nl.jouwnaam",
+    "saved": "Opgeslagen",
+    "tools": "Hulpmiddelen",
+    "toolsHelp": "Controleer Git, Flutter, Android en Claude opnieuw.",
+    "runSetup": "Installatie openen",
+    "about": "Over",
+    "version": "Studio {{version}} op {{os}}",
+    "logs": "Logmap",
+    "showInFolder": "Tonen in map",
+    "designSystem": "Designsysteem"
+  },
+  "setup": {
+    "title": "We maken je computer klaar",
+    "subtitle": "Studio heeft een paar gratis hulpmiddelen nodig. We controleren ze stuk voor stuk en laten zien wat je moet doen als er iets ontbreekt.",
+    "progress": "{{done}} van {{total}} klaar",
+    "checking": "Bezig met controleren…",
+    "ready": "Klaar",
+    "readyVersion": "Klaar · {{version}}",
+    "missing": "Niet geïnstalleerd",
+    "outdated": "Te oud (gevonden {{version}}, minimaal {{min}} nodig)",
+    "warning": "Heeft aandacht nodig",
+    "install": "Voor mij installeren",
+    "download": "Downloadpagina openen",
+    "showSteps": "Stappen tonen",
+    "hideSteps": "Stappen verbergen",
+    "finish": "Aan de slag",
+    "finishHint": "Alles is klaar.",
+    "skipHint": "Je kunt de installatie later afronden via Instellingen, maar bouwen kan pas als alles klaar is.",
+    "confirmInstall": {
+      "title": "{{tool}} installeren?",
+      "body": "Studio voert dit commando uit in een terminal waar je live in meekijkt:",
+      "run": "Commando uitvoeren",
+      "note": "Windows vraagt mogelijk om toestemming. Studio installeert nooit iets zonder het eerst te vragen."
+    },
+    "terminal": {
+      "title": "Terminal",
+      "running": "Bezig…",
+      "done": "Klaar",
+      "close": "Terminal sluiten"
+    },
+    "login": {
+      "signIn": "Inloggen",
+      "connected": "Verbonden ✓",
+      "hint": "Er opent een browservenster waarin je zelf inlogt bij Claude. Vraagt het om een code, plak die dan in de terminal hieronder. Studio ziet je wachtwoord of token nooit.",
+      "needsClaude": "Installeer eerst Claude Code, daarna kun je inloggen.",
+      "waiting": "Wachten tot je bent ingelogd…"
+    }
+  },
+  "tools": {
+    "unknown": "Een benodigd hulpmiddel",
+    "git": {
+      "name": "Git",
+      "why": "Bewaart een geschiedenis van elke wijziging, zodat je altijd terug kunt.",
+      "download": "https://git-scm.com/downloads",
+      "steps": {
+        "windows": [
+          "Kies “Voor mij installeren”, of download Git voor Windows via de pagina die we openen.",
+          "Start het installatieprogramma en laat de voorgestelde opties staan.",
+          "Kom terug en kies “Opnieuw controleren”."
+        ],
+        "macos": [
+          "Open Terminal en typ: xcode-select --install",
+          "Volg het venster dat verschijnt om de ontwikkeltools te installeren.",
+          "Kom terug en kies “Opnieuw controleren”."
+        ],
+        "linux": [
+          "Installeer Git met je pakketbeheerder, bijvoorbeeld: sudo apt install git",
+          "Kom terug en kies “Opnieuw controleren”."
+        ]
+      }
+    },
+    "flutter": {
+      "name": "Flutter SDK",
+      "why": "Het gereedschap dat van je app echte iOS- en Android-apps maakt.",
+      "download": "https://docs.flutter.dev/get-started/install",
+      "steps": {
+        "windows": [
+          "Open de installatiegids en kies Windows, daarna Android.",
+          "Download de zip van de Flutter SDK en pak hem uit op een eenvoudige plek, zoals C:\\src\\flutter (zonder spaties).",
+          "Voeg de map flutter\\bin toe aan je PATH (de gids laat zien hoe).",
+          "Start Studio opnieuw en kies “Opnieuw controleren”."
+        ],
+        "macos": [
+          "Open de installatiegids en kies macOS.",
+          "Download de Flutter SDK en pak hem uit in je persoonlijke map.",
+          "Voeg flutter/bin toe aan je PATH (de gids laat zien hoe).",
+          "Start Studio opnieuw en kies “Opnieuw controleren”."
+        ],
+        "linux": [
+          "Open de installatiegids en kies Linux.",
+          "Download de Flutter SDK en pak hem uit in je persoonlijke map.",
+          "Voeg flutter/bin toe aan je PATH (de gids laat zien hoe).",
+          "Start Studio opnieuw en kies “Opnieuw controleren”."
+        ]
+      }
+    },
+    "android": {
+      "name": "Android-toolchain",
+      "why": "Laat Studio Android-apps bouwen en testen. Nodig voordat je kunt publiceren in Google Play.",
+      "download": "https://developer.android.com/studio",
+      "issues": {
+        "no_sdk": "Android Studio (met de Android SDK) is nog niet geïnstalleerd.",
+        "licenses": "De Android-licenties moeten nog worden geaccepteerd. Dit hoeft maar één keer.",
+        "cmdline_tools": "Eén Android-onderdeel (command-line tools) ontbreekt.",
+        "needs_flutter": "Installeer eerst de Flutter SDK. Daarna kunnen we Android controleren.",
+        "other": "Flutter vond een probleem in de Android-installatie. Open de details om te zien welk."
+      },
+      "steps": {
+        "no_sdk": [
+          "Download Android Studio via de pagina die we openen en installeer het met de standaardopties.",
+          "Start Android Studio één keer en laat het de Android SDK downloaden.",
+          "Kom terug en kies “Opnieuw controleren”."
+        ],
+        "licenses": [
+          "Kies “Licenties accepteren” en antwoord y op elke vraag in de terminal.",
+          "Kies “Opnieuw controleren”."
+        ],
+        "cmdline_tools": [
+          "Open Android Studio, daarna Settings, Android SDK en het tabblad SDK Tools.",
+          "Vink “Android SDK Command-line Tools” aan, klik op Apply en wacht tot het klaar is.",
+          "Kom terug en kies “Opnieuw controleren”."
+        ],
+        "other": [
+          "Open hieronder de technische details en bekijk de regels met ✗ of !.",
+          "Los ze op (de SDK Manager van Android Studio lost de meeste op) en kies “Opnieuw controleren”."
+        ],
+        "needs_flutter": ["Rond eerst de Flutter SDK-stap hierboven af."]
+      },
+      "acceptLicenses": "Licenties accepteren"
+    },
+    "claude": {
+      "name": "Claude Code",
+      "why": "De AI die je app schrijft. Het draait op je eigen Claude-account.",
+      "download": "https://code.claude.com/docs/en/setup",
+      "steps": {
+        "windows": [
+          "Kies “Voor mij installeren”, of volg de installatiegids op de pagina die we openen.",
+          "Start Studio opnieuw zodat het Claude kan vinden.",
+          "Kies “Opnieuw controleren”."
+        ],
+        "macos": [
+          "Open de installatiegids en volg de stappen voor macOS.",
+          "Start Studio opnieuw zodat het Claude kan vinden.",
+          "Kies “Opnieuw controleren”."
+        ],
+        "linux": [
+          "Open de installatiegids en volg de stappen voor Linux.",
+          "Start Studio opnieuw zodat het Claude kan vinden.",
+          "Kies “Opnieuw controleren”."
+        ]
+      },
+      "updateSteps": ["Voer in een terminal uit: claude update", "Kies “Opnieuw controleren”."]
+    },
+    "claudeLogin": {
+      "name": "Claude-account",
+      "why": "Je logt zelf in via de officiële Claude Code. Studio controleert alleen of je bent ingelogd."
+    }
+  },
+  "errors": {
+    "unknown": {
+      "title": "Er gebeurde iets onverwachts",
+      "fix": "Probeer het opnieuw. Blijft het gebeuren, start Studio dan opnieuw en bekijk het logbestand via Instellingen."
+    },
+    "db": {
+      "title": "Studio kon zijn eigen gegevens niet lezen",
+      "fix": "Start Studio opnieuw. Je projecten staan veilig in hun mappen; bekijk bij aanhoudende problemen het logbestand via Instellingen."
+    },
+    "io": {
+      "title": "Studio kon een bestand of map niet openen",
+      "fix": "Controleer of de map bestaat en niet alleen-lezen of in een ander programma geopend is, en probeer het opnieuw."
+    },
+    "not_found": {
+      "title": "We konden dat niet vinden",
+      "fix": "Het is misschien verwijderd. Ga terug naar je projecten en probeer het opnieuw."
+    },
+    "invalid": { "title": "Dat klopt niet helemaal", "fix": "Controleer wat je hebt ingevuld en probeer het opnieuw." },
+    "tool_missing": {
+      "title": "{{tool}} is nog niet beschikbaar",
+      "fix": "Open de installatie om het te installeren. Studio begeleidt je stap voor stap."
+    },
+    "command_failed": {
+      "title": "Een hulpmiddel meldde een probleem",
+      "fix": "Open de installatie om je hulpmiddelen te controleren en probeer het opnieuw. De technische details staan in het logbestand (Instellingen)."
+    },
+    "timeout": { "title": "Dit duurt te lang", "fix": "Controleer je internetverbinding en probeer het opnieuw." },
+    "path_exists": {
+      "title": "Die map bestaat al",
+      "fix": "Kies een andere naam of een andere projectenmap in Instellingen."
+    },
+    "unsafe": {
+      "title": "Studio stopte om je bestanden te beschermen",
+      "fix": "Die map is geen Studio-project binnen je projectenmap. Er is niets verwijderd."
+    },
+    "pty": {
+      "title": "De terminal kon niet starten",
+      "fix": "Sluit de terminal en probeer het opnieuw. Lukt het nog niet, start Studio dan opnieuw."
+    }
+  },
+  "design": {
+    "title": "Designsysteem",
+    "buttons": "Knoppen",
+    "badges": "Badges",
+    "cards": "Kaarten en panelen",
+    "toasts": "Meldingen",
+    "states": "Lege en laadtoestanden",
+    "showToast": "Melding tonen",
+    "toastMessage": "Dit is een vriendelijke melding",
+    "emptyTitle": "Hier is nog niets",
+    "emptyBody": "Een korte uitleg en één duidelijke volgende stap."
+  }
+}
