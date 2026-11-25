@@ -1,6 +1,9 @@
 //! Tauri-commands: dunne laag tussen de UI en de modules.
 
+use crate::chat::{ChatCtx, ChatManager};
 use crate::db::{Db, Project};
+use crate::permissions::{Decision, Permissions};
+use std::sync::Arc;
 use crate::error::{AppError, AppResult};
 use crate::install::{self, InstallPlan};
 use crate::projects::{self, CreateRequest, Tools};
@@ -12,8 +15,11 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 pub struct AppState {
-    pub db: Db,
+    pub db: Arc<Db>,
     pub pty: PtyManager,
+    pub chat: Arc<ChatManager>,
+    pub chat_ctx: Arc<ChatCtx>,
+    pub perms: Arc<Permissions>,
 }
 
 const SETTING_KEYS: [&str; 3] = ["projects_dir", "setup_completed", "org"];
@@ -244,4 +250,70 @@ pub fn project_delete(app: AppHandle, state: State<'_, AppState>, id: String, de
     state.db.project_delete_record(&id)?;
     log::info!("project removed: {} (files deleted: {delete_files})", project.name);
     Ok(())
+}
+
+// ───────────── chat ─────────────
+
+#[tauri::command]
+pub fn chat_send(
+    state: State<'_, AppState>,
+    project_id: String,
+    text: String,
+    context: Option<String>,
+    language: String,
+) -> AppResult<()> {
+    state.db.project_get(&project_id)?;
+    state.chat.send(state.chat_ctx.clone(), project_id, text, context, language)
+}
+
+#[tauri::command]
+pub fn chat_cancel(state: State<'_, AppState>, project_id: String) {
+    state.perms.deny_all(&project_id);
+    state.chat.cancel(&project_id);
+}
+
+#[tauri::command]
+pub fn chat_running(state: State<'_, AppState>, project_id: String) -> bool {
+    state.chat.is_running(&project_id)
+}
+
+/// Opgeslagen gebeurtenissen van het huidige gesprek (JSON per gebeurtenis).
+#[tauri::command]
+pub fn chat_history(state: State<'_, AppState>, project_id: String) -> AppResult<Vec<serde_json::Value>> {
+    Ok(state
+        .db
+        .messages_active(&project_id)?
+        .iter()
+        .filter_map(|s| serde_json::from_str(s).ok())
+        .collect())
+}
+
+/// Nieuw gesprek: het oude blijft bewaard, maar het nieuwe begint zonder context.
+#[tauri::command]
+pub fn chat_new_session(state: State<'_, AppState>, project_id: String) -> AppResult<()> {
+    if state.chat.is_running(&project_id) {
+        return Err(AppError::Invalid("Claude is still working".into()));
+    }
+    state.db.project_get(&project_id)?;
+    state.db.session_create(&project_id, "claude-code")?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn permission_respond(state: State<'_, AppState>, id: String, decision: Decision) -> bool {
+    state.perms.respond(&state.db, &id, decision)
+}
+
+#[tauri::command]
+pub fn project_screens(state: State<'_, AppState>, id: String) -> AppResult<Vec<crate::studio_tools::Screen>> {
+    let p = state.db.project_get(&id)?;
+    crate::studio_tools::list_screens(std::path::Path::new(&p.path))
+}
+
+/// Ruwe `claude`-terminal in de projectmap ("geavanceerd"-tab).
+#[tauri::command]
+pub fn pty_open_claude(app: AppHandle, state: State<'_, AppState>, project_id: String) -> AppResult<String> {
+    let p = state.db.project_get(&project_id)?;
+    let claude = proc::find("claude").ok_or_else(|| AppError::ToolMissing("claude".into()))?;
+    state.pty.spawn(&app, &claude, &[], Some(std::path::Path::new(&p.path)))
 }

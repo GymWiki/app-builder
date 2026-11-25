@@ -9,7 +9,11 @@ export function log(level: Level, message: string) {
 }
 
 export function installGlobalErrorHandlers() {
-  window.addEventListener("error", (e) => log("error", `window error: ${e.message}`));
+  window.addEventListener("error", (e) => {
+    // Onschuldige browsermelding bij het opnieuw indelen van panelen; geen echte fout.
+    if (e.message.startsWith("ResizeObserver loop")) return e.stopImmediatePropagation();
+    log("error", `window error: ${e.message}`);
+  });
   window.addEventListener("unhandledrejection", (e) =>
     log("error", `unhandled rejection: ${e.reason instanceof Error ? e.reason.message : String(e.reason)}`),
   );

@@ -63,6 +63,117 @@ const tool = (id: ToolStatus["id"], state: ToolStatus["state"], extra: Partial<T
 let loggedIn = scenario !== "fresh";
 let fixed = scenario !== "fresh";
 
+// ── chat (nagebootst gedrag van de echte backend) ──
+const chats = new Map<string, unknown[]>();
+const runningChats = new Set<string>();
+const cancelled = new Set<string>();
+const permissionWaiters = new Map<string, (d: string) => void>();
+let seq = 0;
+
+async function mockChat(projectId: string, text: string) {
+  const push = (event: Record<string, unknown>) => {
+    chats.set(projectId, [...(chats.get(projectId) ?? []), ...(event.type === "text_delta" ? [] : [event])]);
+    emit("chat-event", { projectId, event });
+  };
+  const wait = async (ms: number) => {
+    await sleep(ms);
+    return !cancelled.has(projectId);
+  };
+  const id = ++seq;
+  runningChats.add(projectId);
+  push({ type: "user", text, context: null });
+  push({ type: "init", session_id: "mock-session", model: "mock" });
+  try {
+    if (text.toLowerCase().includes("login")) {
+      await wait(400);
+      push({
+        type: "done",
+        ok: false,
+        text: "Not logged in · Please run /login",
+        duration_ms: 300,
+        code: "not_logged_in",
+      });
+      return;
+    }
+    const reply =
+      "Sure! I'll add a **settings screen** and link it from the home screen.\n\n- A new `SettingsScreen` with a theme switch\n- A button on the home screen";
+    for (const word of reply.split(" ")) {
+      if (!(await wait(35))) return;
+      push({ type: "text_delta", message_id: `m${id}`, text: word + " " });
+    }
+    push({ type: "text", message_id: `m${id}`, text: reply });
+    push({
+      type: "tool_use",
+      id: `t${id}a`,
+      name: "Read",
+      kind: "read",
+      summary: "lib/main.dart",
+      path: "lib/main.dart",
+      detail: null,
+    });
+    await wait(300);
+    push({ type: "tool_result", tool_use_id: `t${id}a`, ok: true, text: "" });
+    if (text.toLowerCase().includes("internet")) {
+      const permId = `perm${id}`;
+      emit("permission-request", {
+        id: permId,
+        projectId,
+        tool: "WebFetch",
+        kind: "network",
+        summary: "https://pub.dev/packages/shared_preferences",
+        detail: "https://pub.dev/packages/shared_preferences",
+        key: "WebFetch(pub.dev)",
+      });
+      const decision = await new Promise<string>((r) => permissionWaiters.set(permId, r));
+      push({
+        type: "tool_use",
+        id: `t${id}n`,
+        name: "WebFetch",
+        kind: "network",
+        summary: "https://pub.dev/packages/shared_preferences",
+        path: null,
+        detail: "https://pub.dev/packages/shared_preferences",
+      });
+      await wait(300);
+      push({
+        type: "tool_result",
+        tool_use_id: `t${id}n`,
+        ok: decision !== "deny",
+        text: decision === "deny" ? "The user declined this action in Studio." : "ok",
+      });
+    }
+    push({
+      type: "tool_use",
+      id: `t${id}b`,
+      name: "Write",
+      kind: "edit",
+      summary: "lib/settings_screen.dart",
+      path: "lib/settings_screen.dart",
+      detail: null,
+    });
+    await wait(600);
+    push({ type: "tool_result", tool_use_id: `t${id}b`, ok: true, text: "" });
+    push({
+      type: "tool_use",
+      id: `t${id}c`,
+      name: "Bash",
+      kind: "command",
+      summary: "flutter analyze",
+      path: null,
+      detail: "flutter analyze",
+    });
+    await wait(600);
+    push({ type: "tool_result", tool_use_id: `t${id}c`, ok: true, text: "No issues found!" });
+    push({ type: "text", message_id: `m${id}b`, text: "Done! Your app now has a settings screen." });
+    push({ type: "done", ok: true, text: "Done!", duration_ms: 4000, code: null });
+    push({ type: "snapshot", commit: "abc1234", label: "Claude: " + text.slice(0, 40) });
+  } finally {
+    runningChats.delete(projectId);
+    cancelled.delete(projectId);
+    emit("chat-finished", { projectId });
+  }
+}
+
 export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}): Promise<unknown> {
   switch (cmd) {
     case "app_info":
@@ -132,6 +243,43 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
     }
     case "pty_backlog":
       return { data: "", end: 0 };
+    case "chat_send":
+      if (runningChats.has(args.projectId as string)) throw new AppError("invalid", "busy");
+      void mockChat(args.projectId as string, args.text as string);
+      return;
+    case "chat_cancel":
+      cancelled.add(args.projectId as string);
+      for (const [k, r] of permissionWaiters) {
+        r("deny");
+        permissionWaiters.delete(k);
+      }
+      return;
+    case "chat_running":
+      return runningChats.has(args.projectId as string);
+    case "chat_history":
+      return chats.get(args.projectId as string) ?? [];
+    case "chat_new_session":
+      chats.delete(args.projectId as string);
+      return;
+    case "permission_respond": {
+      const r = permissionWaiters.get(args.id as string);
+      r?.(args.decision as string);
+      permissionWaiters.delete(args.id as string);
+      return !!r;
+    }
+    case "project_screens":
+      return projects.some((p) => p.id === args.id) && scenario !== "noscreens"
+        ? [
+            { class: "HomeScreen", file: "lib/main.dart", line: 24 },
+            { class: "ScoreboardScreen", file: "lib/main.dart", line: 40 },
+          ]
+        : [];
+    case "pty_open_claude":
+      setTimeout(
+        () => emit("pty-data", { id: "mock-claude", data: "\x1b[1mClaude Code\x1b[0m ready.\r\n> ", end: 1 }),
+        300,
+      );
+      return "mock-claude";
     case "pty_write":
     case "pty_resize":
     case "pty_kill":

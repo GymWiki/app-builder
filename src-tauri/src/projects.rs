@@ -223,6 +223,7 @@ pub fn create_project(
         std::fs::create_dir_all(dir.join("lib"))?;
         std::fs::create_dir_all(dir.join("test"))?;
         std::fs::write(dir.join("lib/main.dart"), render_main(&req.template, name)?)?;
+        crate::studio_tools::write_theme(&dir, crate::studio_tools::DEFAULT_SEED)?;
         std::fs::write(dir.join("test/widget_test.dart"), smoke_test(&slug))?;
 
         // 3. projectgeheugen
@@ -321,6 +322,7 @@ mod tests {
             let s = render_main(t, "X").unwrap();
             assert!(s.contains("class MyApp extends StatelessWidget"), "{t}");
             assert!(s.contains("void main()"), "{t}");
+            assert!(s.contains("import 'app_theme.dart';") && s.contains("theme: AppTheme.light"), "{t}");
         }
         assert!(render_main("nope", "X").is_err());
     }
@@ -395,6 +397,7 @@ mod tests {
         assert_eq!(p.bundle_id, "com.example.mijnscorebord");
         assert_eq!(steps.borrow().as_slice(), ["prepare", "flutter_create", "template", "memory", "git", "save"]);
         let dir = Path::new(&p.path);
+        assert!(dir.join("lib/app_theme.dart").is_file() && dir.join(".studio/theme.json").is_file());
         assert!(dir.join(".git").is_dir() && dir.join("STUDIO.md").is_file() && dir.join("CLAUDE.md").is_file());
         assert!(std::fs::read_to_string(dir.join("lib/main.dart")).unwrap().contains("ScoreboardScreen"));
         assert!(std::fs::read_to_string(dir.join(".gitignore")).unwrap().contains("settings.local.json"));

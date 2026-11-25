@@ -26,7 +26,7 @@ import { toastError } from "@/lib/toast";
 import { ToolRow } from "./tool-row";
 import { useToolchain, type RowId } from "./use-toolchain";
 
-const PtyTerminal = lazy(() => import("./pty-terminal"));
+const PtyTerminal = lazy(() => import("@/components/pty-terminal"));
 
 interface TerminalSession {
   ptyId: string;

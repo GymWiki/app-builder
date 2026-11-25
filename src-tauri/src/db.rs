@@ -67,6 +67,17 @@ const MIGRATIONS: &[&str] = &[
         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
     "#,
+    // v2 — chatberichten per sessie
+    r#"
+    CREATE TABLE messages (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        kind       TEXT NOT NULL,
+        data       TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX idx_messages_session ON messages(session_id, id);
+    "#,
 ];
 
 /// De 8 verplichte checklistpunten (zie fase 5). Volgorde = weergavevolgorde.
@@ -111,6 +122,22 @@ pub struct NewProject {
     pub description: String,
     pub bundle_id: String,
     pub initial_commit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Session {
+    pub id: String,
+    pub engine_session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChecklistItem {
+    pub key: String,
+    pub blocking: bool,
+    pub status: String,
+    pub detail: String,
 }
 
 pub struct Db {
@@ -268,6 +295,97 @@ impl Db {
         Ok(())
     }
 
+    pub fn project_set_version(&self, id: &str, version: &str, build: i64) -> AppResult<()> {
+        self.lock().execute(
+            "UPDATE projects SET version = ?2, build_number = ?3,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            params![id, version, build],
+        )?;
+        Ok(())
+    }
+
+    pub fn project_touch_updated(&self, id: &str) -> AppResult<()> {
+        self.lock().execute(
+            "UPDATE projects SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            [id],
+        )?;
+        Ok(())
+    }
+
+    // ── sessies en berichten ──
+    /// De actieve sessie is de nieuwste van het project.
+    pub fn session_active(&self, project_id: &str) -> AppResult<Option<Session>> {
+        Ok(self
+            .lock()
+            .query_row(
+                "SELECT id, engine_session_id FROM sessions WHERE project_id = ?1
+                 ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                [project_id],
+                |r| Ok(Session { id: r.get(0)?, engine_session_id: r.get(1)? }),
+            )
+            .optional()?)
+    }
+
+    pub fn session_create(&self, project_id: &str, engine: &str) -> AppResult<Session> {
+        let id = uuid::Uuid::new_v4().to_string();
+        self.lock().execute(
+            "INSERT INTO sessions(id, project_id, engine) VALUES (?1, ?2, ?3)",
+            params![id, project_id, engine],
+        )?;
+        Ok(Session { id, engine_session_id: None })
+    }
+
+    pub fn session_set_engine_id(&self, session_id: &str, engine_session_id: &str) -> AppResult<()> {
+        self.lock().execute(
+            "UPDATE sessions SET engine_session_id = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            params![session_id, engine_session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn session_set_title_if_empty(&self, session_id: &str, title: &str) -> AppResult<()> {
+        self.lock()
+            .execute("UPDATE sessions SET title = ?2 WHERE id = ?1 AND title = ''", params![session_id, title])?;
+        Ok(())
+    }
+
+    pub fn message_insert(&self, session_id: &str, kind: &str, data: &str) -> AppResult<()> {
+        self.lock().execute(
+            "INSERT INTO messages(session_id, kind, data) VALUES (?1, ?2, ?3)",
+            params![session_id, kind, data],
+        )?;
+        Ok(())
+    }
+
+    /// Opgeslagen gebeurtenissen (JSON) van de actieve sessie, oudste eerst.
+    pub fn messages_active(&self, project_id: &str) -> AppResult<Vec<String>> {
+        let Some(s) = self.session_active(project_id)? else { return Ok(vec![]) };
+        let conn = self.lock();
+        let mut st = conn.prepare("SELECT data FROM messages WHERE session_id = ?1 ORDER BY id")?;
+        let rows = st.query_map([s.id], |r| r.get(0))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    // ── snapshots en checklist ──
+    pub fn snapshot_insert(&self, project_id: &str, commit: &str, label: &str, kind: &str, version: &str) -> AppResult<()> {
+        self.lock().execute(
+            "INSERT INTO snapshots(id, project_id, git_commit, label, kind, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![uuid::Uuid::new_v4().to_string(), project_id, commit, label, kind, version],
+        )?;
+        Ok(())
+    }
+
+    pub fn checklist_list(&self, project_id: &str) -> AppResult<Vec<ChecklistItem>> {
+        let conn = self.lock();
+        let mut st = conn.prepare(
+            "SELECT key, blocking, status, detail FROM checklist_items WHERE project_id = ?1 ORDER BY rowid",
+        )?;
+        let rows = st.query_map([project_id], |r| {
+            Ok(ChecklistItem { key: r.get(0)?, blocking: r.get::<_, i64>(1)? != 0, status: r.get(2)?, detail: r.get(3)? })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     pub fn project_exists_at(&self, path: &str) -> AppResult<bool> {
         Ok(self
             .lock()
@@ -357,6 +475,37 @@ mod tests {
         let n: i64 = db.lock().query_row("SELECT COUNT(*) FROM checklist_items", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 0);
         assert!(matches!(db.project_get(&p.id), Err(AppError::NotFound(_))));
+    }
+
+    #[test]
+    fn sessions_and_messages() {
+        let db = Db::open_in_memory().unwrap();
+        let p = db.project_insert(&sample("X", "/tmp/a")).unwrap();
+        assert!(db.session_active(&p.id).unwrap().is_none());
+        let s1 = db.session_create(&p.id, "claude-code").unwrap();
+        db.session_set_engine_id(&s1.id, "eng-1").unwrap();
+        db.message_insert(&s1.id, "user", r#"{"type":"user","text":"a"}"#).unwrap();
+        db.message_insert(&s1.id, "text", r#"{"type":"text"}"#).unwrap();
+        assert_eq!(db.messages_active(&p.id).unwrap().len(), 2);
+        assert_eq!(db.session_active(&p.id).unwrap().unwrap().engine_session_id.as_deref(), Some("eng-1"));
+        // een nieuw gesprek wordt de actieve sessie en begint leeg
+        let s2 = db.session_create(&p.id, "claude-code").unwrap();
+        assert_eq!(db.session_active(&p.id).unwrap().unwrap().id, s2.id);
+        assert!(db.messages_active(&p.id).unwrap().is_empty());
+        db.session_set_title_if_empty(&s2.id, "eerste").unwrap();
+        db.session_set_title_if_empty(&s2.id, "tweede").unwrap();
+    }
+
+    #[test]
+    fn version_and_checklist() {
+        let db = Db::open_in_memory().unwrap();
+        let p = db.project_insert(&sample("X", "/tmp/a")).unwrap();
+        db.project_set_version(&p.id, "1.2.0", 7).unwrap();
+        let p = db.project_get(&p.id).unwrap();
+        assert_eq!((p.version.as_str(), p.build_number), ("1.2.0", 7));
+        let items = db.checklist_list(&p.id).unwrap();
+        assert_eq!(items.len(), 8);
+        assert_eq!(items[0].key, "app_basics");
     }
 
     #[test]

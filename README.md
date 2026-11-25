@@ -2,7 +2,7 @@
 
 Een lichtgewicht desktop-app (Tauri 2 + React) waarmee niet-technische mensen een **Flutter-app** (iOS en Android) bouwen door te chatten met hun **eigen Claude Code-installatie**. De gebruiker houdt alle code: een gewone Flutter-projectmap met git. Denk "FlutterFlow, maar alleen AI en veel lichter".
 
-> Status: **Fase 0 (fundament) en Fase 1 (projecten + eerste-start-wizard)** zijn klaar. Chat, preview, linkermenu-secties en publiceren volgen in fase 2–5. Zie [DECISIONS.md](DECISIONS.md) voor gemaakte keuzes en wat nog niet is geverifieerd.
+> Status: **Fase 0–2** zijn klaar (fundament, projecten + wizard, chat + MCP). Live preview, linkermenu-secties en publiceren volgen in fase 3–5. Zie [DECISIONS.md](DECISIONS.md) voor gemaakte keuzes en wat nog niet is geverifieerd.
 
 ## Principes
 
@@ -38,6 +38,11 @@ src-tauri/              Rust-backend
   toolchain.rs          Git / Flutter / Android / Claude detectie + versiecontrole
   projects.rs           flutter create + sjabloon + git + STUDIO.md; veilig verwijderen
   pty.rs                ingebouwde terminal (portable-pty) met backlog
+  engine/               AiEngine-trait · claude.rs (CLI, stream-json) · stream.rs (parser)
+  chat.rs               één chatbeurt: sessie, opslag, MCP-config, engine, automatische momentopname
+  mcp.rs                lokale MCP-server (project_status, list_screens, get/set_theme, create_snapshot, bump_version, get_checklist, preview_*)
+  permissions.rs        bevestigingen in de UI voor netwerk/commando's/buiten-project
+  studio_tools.rs       de implementatie van de MCP-tools
   install.rs            vaste lijst begeleide installaties (de UI kiest nooit zelf een commando)
   templates/*.dart      sjablonen: leeg, scorebord, checklist, tracker
 ```
@@ -45,3 +50,9 @@ src-tauri/              Rust-backend
 ## Een project
 
 Studio maakt per project een map in `Documenten/Studio/<naam>` met `flutter create`, een sjabloon, `git init` + eerste commit, en twee geheugenbestanden: `STUDIO.md` (wat de app doet, keuzes) en `CLAUDE.md` (importeert `STUDIO.md`, zodat Claude Code het automatisch leest).
+
+## Chat
+
+De chat draait `claude -p --output-format stream-json` in de projectmap (prompt via stdin, sessie hervatten met `--resume`). Studio start Claude met een eigen MCP-server zodat Claude de app kan sturen. Netwerk, onbekende commando's en paden buiten het project vragen eerst bevestiging in de chat. Elke beurt met wijzigingen eindigt met een automatische git-momentopname.
+
+Echte-CLI-rooktest (kost een paar tokens van je eigen account): `cargo test --manifest-path src-tauri/Cargo.toml real_claude_smoke -- --ignored --nocapture`.

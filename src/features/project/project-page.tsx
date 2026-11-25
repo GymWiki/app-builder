@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, FolderSearch, PanelLeft, PanelRight, Send, Settings, Sparkles } from "lucide-react";
+import { ArrowLeft, FolderSearch, PanelLeft, PanelRight, Settings, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router";
+import { ChatPanel, type ChatContext } from "@/features/chat/chat-panel";
+import type { Screen } from "@/lib/types";
+import { ScreensList } from "./screens-list";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import { EmptyState } from "@/components/ds/empty-state";
 import { Panel as Pane, PanelHeader } from "@/components/ds/card";
@@ -39,12 +42,15 @@ export default function ProjectPage() {
   const [section, setSection] = useState<SectionId>("screens");
   const [device, setDevice] = useState<DeviceId>("medium");
   const [previewDark, setPreviewDark] = useState(false);
+  const [screen, setScreen] = useState<Screen | null>(null);
+  const [contextOff, setContextOff] = useState(false);
 
   const menuRef = usePanelRef();
   const sideRef = usePanelRef();
   const [menuHidden, setMenuHidden] = useState(false);
   const [sideHidden, setSideHidden] = useState(false);
   const layout = useDefaultLayout({ id: "studio-project-layout", storage: safeStorage() });
+  const sideLayout = useDefaultLayout({ id: "studio-side-layout", storage: safeStorage() });
 
   // Bijhouden wanneer het project voor het laatst is geopend.
   useEffect(() => {
@@ -78,6 +84,29 @@ export default function ProjectPage() {
 
   const p = project.data;
   const current = SECTIONS.find((s) => s.id === section)!;
+  const sectionNameEn = {
+    screens: "Screens",
+    data: "Data & login",
+    theme: "Theme",
+    assets: "Assets",
+    settings: "App settings",
+    versions: "Versions",
+    publish: "Publish",
+  }[section];
+  // Wat de gebruiker nu bekijkt gaat automatisch mee naar Claude (een gekozen scherm gaat voor het menu).
+  const context: ChatContext | null = contextOff
+    ? null
+    : screen
+      ? {
+          label: t("chat.context.screen", { name: screen.class }),
+          prompt: `The user selected the screen "${screen.class}" (${screen.file}). "This screen" means that one.`,
+        }
+      : section !== "screens"
+        ? {
+            label: t("chat.context.section", { name: t(`workspace.sections.${section}.name`) }),
+            prompt: `The user is looking at the "${sectionNameEn}" section of Studio.`,
+          }
+        : null;
   const toggle = (ref: typeof menuRef, hidden: boolean) => (hidden ? ref.current?.expand() : ref.current?.collapse());
 
   return (
@@ -205,7 +234,10 @@ export default function ProjectPage() {
                   key={sid}
                   type="button"
                   aria-current={section === sid ? "page" : undefined}
-                  onClick={() => setSection(sid)}
+                  onClick={() => {
+                    setSection(sid);
+                    setContextOff(false);
+                  }}
                   className={cn(
                     "t-body flex items-center gap-2.5 rounded-lg px-3 py-2 text-left font-medium transition-colors duration-[var(--dur)]",
                     section === sid
@@ -240,17 +272,45 @@ export default function ProjectPage() {
           onResize={(s) => setSideHidden(s.asPercentage === 0)}
         >
           <Pane className="h-full border-l" aria-label={t("workspace.propertiesLabel")} inert={sideHidden}>
-            <PanelHeader title={t(`workspace.sections.${section}.name`)} />
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              <p className="t-body text-muted-foreground">{t(`workspace.sections.${section}.desc`)}</p>
-              <div className="bg-muted/50 mt-4 rounded-xl border border-dashed p-4">
-                <p className="t-body flex items-center gap-2 font-medium">
-                  <current.icon aria-hidden className="text-primary-text size-4" /> {t("workspace.comingSoon")}
-                </p>
-                <p className="t-small text-muted-foreground mt-1">{t("workspace.comingSoonBody")}</p>
-              </div>
-            </div>
-            <ChatBox />
+            <Group
+              orientation="vertical"
+              id="studio-side"
+              defaultLayout={sideLayout.defaultLayout}
+              onLayoutChanged={sideLayout.onLayoutChanged}
+            >
+              <Panel id="properties" defaultSize="26%" minSize="12%" collapsible collapsedSize={0}>
+                <div className="flex h-full flex-col">
+                  <PanelHeader title={t(`workspace.sections.${section}.name`)} />
+                  <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                    {section === "screens" ? (
+                      <ScreensList
+                        projectId={p.id}
+                        selected={screen?.class ?? null}
+                        onSelect={(sc) => {
+                          setScreen(sc);
+                          setContextOff(false);
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <p className="t-body text-muted-foreground">{t(`workspace.sections.${section}.desc`)}</p>
+                        <div className="bg-muted/50 mt-4 rounded-xl border border-dashed p-4">
+                          <p className="t-body flex items-center gap-2 font-medium">
+                            <current.icon aria-hidden className="text-primary-text size-4" />{" "}
+                            {t("workspace.comingSoon")}
+                          </p>
+                          <p className="t-small text-muted-foreground mt-1">{t("workspace.comingSoonBody")}</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </Panel>
+              <HorizontalHandle />
+              <Panel id="chat" minSize="30%">
+                <ChatPanel projectId={p.id} context={context} onDismissContext={() => setContextOff(true)} />
+              </Panel>
+            </Group>
           </Pane>
         </Panel>
       </Group>
@@ -264,25 +324,8 @@ function ResizeHandle() {
   );
 }
 
-/** Chatbox onderaan het rechterpaneel; de echte chat volgt in fase 2. */
-function ChatBox() {
-  const { t } = useTranslation();
+function HorizontalHandle() {
   return (
-    <div className="shrink-0 border-t p-3">
-      <p className="t-small text-muted-foreground mb-2 font-semibold">{t("workspace.chat.title")}</p>
-      <div className="bg-muted/50 flex items-end gap-2 rounded-xl border p-2">
-        <textarea
-          disabled
-          rows={2}
-          aria-label={t("workspace.chat.title")}
-          placeholder={t("workspace.chat.placeholder")}
-          className="placeholder:text-muted-foreground t-body min-h-0 flex-1 resize-none bg-transparent px-1 outline-none"
-        />
-        <Button size="icon-sm" disabled aria-label={t("workspace.chat.title")}>
-          <Send />
-        </Button>
-      </div>
-      <p className="t-small text-muted-foreground mt-2">{t("workspace.chat.disabled")}</p>
-    </div>
+    <Separator className="bg-border data-[separator=hover]:bg-primary/60 data-[separator=active]:bg-primary focus-visible:bg-primary relative h-px transition-colors duration-[var(--dur)] outline-none after:absolute after:inset-x-0 after:-inset-y-1 focus-visible:h-0.5" />
   );
 }

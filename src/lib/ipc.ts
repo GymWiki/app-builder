@@ -1,7 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toAppError, AppError } from "./errors";
-import type { AppInfo, FlutterCheck, InstallPlan, Project, Settings, TemplateId, ToolStatus } from "./types";
+import type {
+  AppInfo,
+  ChatEvent,
+  FlutterCheck,
+  InstallPlan,
+  PermissionDecision,
+  Project,
+  Screen,
+  Settings,
+  TemplateId,
+  ToolStatus,
+} from "./types";
 
 export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -49,6 +60,17 @@ export const api = {
   ptyWrite: (id: string, data: string) => call<void>("pty_write", { id, data }),
   ptyResize: (id: string, cols: number, rows: number) => call<void>("pty_resize", { id, cols, rows }),
   ptyKill: (id: string) => call<void>("pty_kill", { id }),
+
+  chatSend: (projectId: string, text: string, context: string | null, language: string) =>
+    call<void>("chat_send", { projectId, text, context, language }),
+  chatCancel: (projectId: string) => call<void>("chat_cancel", { projectId }),
+  chatRunning: (projectId: string) => call<boolean>("chat_running", { projectId }),
+  chatHistory: (projectId: string) => call<ChatEvent[]>("chat_history", { projectId }),
+  chatNewSession: (projectId: string) => call<void>("chat_new_session", { projectId }),
+  permissionRespond: (id: string, decision: PermissionDecision) =>
+    call<boolean>("permission_respond", { id, decision }),
+  projectScreens: (id: string) => call<Screen[]>("project_screens", { id }),
+  ptyOpenClaude: (projectId: string) => call<string>("pty_open_claude", { projectId }),
 
   projectsList: (query?: string) => call<Project[]>("projects_list", { query: query || null }),
   projectGet: (id: string) => call<Project>("project_get", { id }),

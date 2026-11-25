@@ -24,7 +24,11 @@
     "dark": "Donker",
     "system": "Systeem"
   },
-  "language": { "label": "Taal", "en": "English", "nl": "Nederlands" },
+  "language": {
+    "label": "Taal",
+    "en": "English",
+    "nl": "Nederlands"
+  },
   "home": {
     "title": "Jouw apps",
     "subtitle": "Bouw mobiele apps door te chatten. Alle code blijft van jou.",
@@ -81,10 +85,22 @@
       "save": "Opslaan"
     },
     "templates": {
-      "blank": { "name": "Leeg", "desc": "Een leeg scherm. Vertel Studio wat het moet bouwen." },
-      "scoreboard": { "name": "Scorebord", "desc": "Twee spelers, plus- en minknoppen en een reset." },
-      "checklist": { "name": "Checklist", "desc": "Items toevoegen, afvinken en wegvegen." },
-      "tracker": { "name": "Tracker", "desc": "Leg dingen vast gedurende de dag en bekijk je geschiedenis." }
+      "blank": {
+        "name": "Leeg",
+        "desc": "Een leeg scherm. Vertel Studio wat het moet bouwen."
+      },
+      "scoreboard": {
+        "name": "Scorebord",
+        "desc": "Twee spelers, plus- en minknoppen en een reset."
+      },
+      "checklist": {
+        "name": "Checklist",
+        "desc": "Items toevoegen, afvinken en wegvegen."
+      },
+      "tracker": {
+        "name": "Tracker",
+        "desc": "Leg dingen vast gedurende de dag en bekijk je geschiedenis."
+      }
     }
   },
   "removeProject": {
@@ -103,19 +119,34 @@
     "previewLabel": "Live preview",
     "propertiesLabel": "Eigenschappen en chat",
     "sections": {
-      "screens": { "name": "Schermen", "desc": "Bekijk alle schermen van je app en hoe mensen ertussen navigeren." },
+      "screens": {
+        "name": "Schermen",
+        "desc": "Bekijk alle schermen van je app en hoe mensen ertussen navigeren."
+      },
       "data": {
         "name": "Data & inloggen",
         "desc": "Koppel je eigen Firebase of Supabase, of bewaar data op de telefoon."
       },
-      "theme": { "name": "Thema", "desc": "Kleuren, lettertypen en de algemene look, live te zien in de preview." },
-      "assets": { "name": "Bestanden", "desc": "App-icoon, startscherm en afbeeldingen in alle formaten." },
-      "settings": { "name": "App-instellingen", "desc": "Naam, bundle-ID, versie, rechten en minimale OS-versie." },
+      "theme": {
+        "name": "Thema",
+        "desc": "Kleuren, lettertypen en de algemene look, live te zien in de preview."
+      },
+      "assets": {
+        "name": "Bestanden",
+        "desc": "App-icoon, startscherm en afbeeldingen in alle formaten."
+      },
+      "settings": {
+        "name": "App-instellingen",
+        "desc": "Naam, bundle-ID, versie, rechten en minimale OS-versie."
+      },
       "versions": {
         "name": "Versies",
         "desc": "Automatische momentopnamen, terug in de tijd en een changelog schrijven."
       },
-      "publish": { "name": "Publiceren", "desc": "Een begeleide checklist naar Google Play en de App Store." }
+      "publish": {
+        "name": "Publiceren",
+        "desc": "Een begeleide checklist naar Google Play en de App Store."
+      }
     },
     "comingSoon": "Komt in een volgende stap",
     "comingSoonBody": "Dit onderdeel staat op de planning. Het paneel is er al, zodat de indeling hetzelfde blijft.",
@@ -131,11 +162,6 @@
       "tablet": "Tablet"
     },
     "previewTheme": "Preview-thema",
-    "chat": {
-      "title": "Chat met Claude",
-      "placeholder": "Chatten komt in de volgende stap",
-      "disabled": "Chatten met Claude komt in de volgende stap."
-    },
     "panels": {
       "showMenu": "Menu tonen",
       "hideMenu": "Menu verbergen",
@@ -148,6 +174,15 @@
     "notFound": {
       "title": "We kunnen dit project niet vinden",
       "body": "Het is misschien verwijderd. Ga terug naar je projecten en kies een ander project."
+    },
+    "screens": {
+      "title": "Schermen",
+      "empty": "Nog geen schermen gevonden",
+      "emptyHint": "Vraag Claude er een toe te voegen. Schermen zijn widgets waarvan de naam op Screen of Page eindigt.",
+      "refresh": "Verversen",
+      "select": "Praat over dit scherm",
+      "selected": "Gekozen voor de chat",
+      "hint": "Kies een scherm om er direct in de chat over te praten."
     }
   },
   "settings": {
@@ -334,7 +369,10 @@
       "title": "We konden dat niet vinden",
       "fix": "Het is misschien verwijderd. Ga terug naar je projecten en probeer het opnieuw."
     },
-    "invalid": { "title": "Dat klopt niet helemaal", "fix": "Controleer wat je hebt ingevuld en probeer het opnieuw." },
+    "invalid": {
+      "title": "Dat klopt niet helemaal",
+      "fix": "Controleer wat je hebt ingevuld en probeer het opnieuw."
+    },
     "tool_missing": {
       "title": "{{tool}} is nog niet beschikbaar",
       "fix": "Open de installatie om het te installeren. Studio begeleidt je stap voor stap."
@@ -343,7 +381,10 @@
       "title": "Een hulpmiddel meldde een probleem",
       "fix": "Open de installatie om je hulpmiddelen te controleren en probeer het opnieuw. De technische details staan in het logbestand (Instellingen)."
     },
-    "timeout": { "title": "Dit duurt te lang", "fix": "Controleer je internetverbinding en probeer het opnieuw." },
+    "timeout": {
+      "title": "Dit duurt te lang",
+      "fix": "Controleer je internetverbinding en probeer het opnieuw."
+    },
     "path_exists": {
       "title": "Die map bestaat al",
       "fix": "Kies een andere naam of een andere projectenmap in Instellingen."
@@ -368,5 +409,102 @@
     "toastMessage": "Dit is een vriendelijke melding",
     "emptyTitle": "Hier is nog niets",
     "emptyBody": "Een korte uitleg en één duidelijke volgende stap."
+  },
+  "chat": {
+    "title": "Chat met Claude",
+    "tabChat": "Chat",
+    "tabAdvanced": "Geavanceerd",
+    "newConversation": "Nieuw gesprek",
+    "placeholder": "Vertel Claude wat er gebouwd of aangepast moet worden…",
+    "send": "Verstuur",
+    "stop": "Stop",
+    "working": "Claude is bezig…",
+    "sendHint": "Enter om te versturen · Shift+Enter voor een nieuwe regel",
+    "empty": {
+      "title": "Wat gaan we bouwen?",
+      "body": "Beschrijf het in je eigen woorden. Claude past de app voor je aan en legt uit wat het deed."
+    },
+    "suggestions": [
+      "Voeg een tweede scherm toe met een instellingenpagina",
+      "Maak de kleuren turquoise en de knoppen ronder",
+      "Leg uit wat deze app tot nu toe doet"
+    ],
+    "context": {
+      "screen": "Scherm: {{name}}",
+      "section": "Onderdeel: {{name}}",
+      "remove": "Deze context niet meesturen"
+    },
+    "tool": {
+      "read": {
+        "running": "Bekijkt {{target}}",
+        "done": "Bekeken: {{target}}",
+        "failed": "Kon {{target}} niet lezen"
+      },
+      "edit": {
+        "running": "Past {{target}} aan",
+        "done": "Aangepast: {{target}}",
+        "failed": "Kon {{target}} niet aanpassen"
+      },
+      "command": {
+        "running": "Voert uit: {{target}}",
+        "done": "Uitgevoerd: {{target}}",
+        "failed": "Mislukt: {{target}}"
+      },
+      "network": {
+        "running": "Opent {{target}}",
+        "done": "Geopend: {{target}}",
+        "failed": "Kon {{target}} niet openen"
+      },
+      "studio": {
+        "running": "Studio: {{target}}",
+        "done": "Studio: {{target}}",
+        "failed": "Studio kon {{target}} niet doen"
+      },
+      "other": {
+        "running": "{{target}}",
+        "done": "{{target}}",
+        "failed": "{{target}} mislukt"
+      }
+    },
+    "details": "Details",
+    "permission": {
+      "title": {
+        "command": "Claude wil een commando uitvoeren",
+        "network": "Claude wil het internet gebruiken",
+        "edit": "Claude wil een bestand buiten je project aanpassen",
+        "read": "Claude wil een bestand buiten je project bekijken",
+        "studio": "Claude wil een Studio-tool gebruiken",
+        "other": "Claude wil iets doen waarvoor jouw akkoord nodig is"
+      },
+      "allowOnce": "Eenmalig toestaan",
+      "allowAlways": "Altijd toestaan in dit project",
+      "deny": "Niet toestaan",
+      "hint": "Er gebeurt niets voordat je kiest. “Altijd” geldt alleen voor dit project."
+    },
+    "snapshot": "Momentopname opgeslagen: {{label}}",
+    "errors": {
+      "not_logged_in": {
+        "title": "Je bent niet ingelogd bij Claude",
+        "fix": "Open de installatie en kies “Inloggen”. Je logt zelf in; Studio ziet je wachtwoord nooit."
+      },
+      "tool_missing": {
+        "title": "Claude Code is niet geïnstalleerd",
+        "fix": "Open de installatie om het te installeren. Studio begeleidt je stap voor stap."
+      },
+      "outdated": {
+        "title": "Je Claude Code is te oud voor Studio",
+        "fix": "Werk het bij (voer “claude update” uit in een terminal, of open de installatie) en probeer opnieuw."
+      },
+      "failed": {
+        "title": "Claude kon dit niet afmaken",
+        "fix": "Probeer het opnieuw of vraag iets kleiners. Blijft het mislukken, dan helpen de technische details hieronder bij een supportvraag."
+      }
+    },
+    "advanced": {
+      "intro": "Dit is de echte Claude Code in je projectmap, voor wie van een terminal houdt. Wijzigingen hier zie je ook in je project.",
+      "start": "Terminal starten",
+      "stop": "Terminal sluiten",
+      "running": "Terminal actief"
+    }
   }
 }

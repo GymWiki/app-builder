@@ -54,3 +54,43 @@ export interface AppInfo {
 }
 
 export type Settings = Partial<Record<"projects_dir" | "setup_completed" | "org", string>>;
+
+export interface Screen {
+  class: string;
+  file: string;
+  line: number;
+}
+
+export type ToolKind = "read" | "edit" | "command" | "network" | "studio" | "other";
+
+/** Spiegel van `ChatEvent` in src-tauri/src/engine/mod.rs. */
+export type ChatEvent =
+  | { type: "user"; text: string; context: string | null }
+  | { type: "init"; session_id: string; model: string | null }
+  | { type: "text_delta"; message_id: string; text: string }
+  | { type: "text"; message_id: string; text: string }
+  | {
+      type: "tool_use";
+      id: string;
+      name: string;
+      kind: ToolKind;
+      summary: string;
+      path: string | null;
+      detail: string | null;
+    }
+  | { type: "tool_result"; tool_use_id: string; ok: boolean; text: string }
+  | { type: "snapshot"; commit: string; label: string }
+  | { type: "done"; ok: boolean; text: string; duration_ms: number | null; code: string | null }
+  | { type: "error"; code: string; message: string };
+
+export interface PermissionRequest {
+  id: string;
+  projectId: string;
+  tool: string;
+  kind: ToolKind;
+  summary: string;
+  detail: string | null;
+  key: string;
+}
+
+export type PermissionDecision = "allow_once" | "allow_always" | "deny";

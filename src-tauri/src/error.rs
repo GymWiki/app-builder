@@ -11,6 +11,8 @@ pub enum AppError {
     Db(#[from] rusqlite::Error),
     #[error("file system error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("invalid data: {0}")]
+    Json(#[from] serde_json::Error),
     #[error("{0} not found")]
     NotFound(String),
     #[error("invalid input: {0}")]
@@ -34,6 +36,7 @@ impl AppError {
         match self {
             AppError::Db(_) => "db",
             AppError::Io(_) => "io",
+            AppError::Json(_) => "invalid",
             AppError::NotFound(_) => "not_found",
             AppError::Invalid(_) => "invalid",
             AppError::ToolMissing(_) => "tool_missing",
