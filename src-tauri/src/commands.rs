@@ -20,6 +20,7 @@ pub struct AppState {
     pub chat: Arc<ChatManager>,
     pub chat_ctx: Arc<ChatCtx>,
     pub perms: Arc<Permissions>,
+    pub preview: Arc<crate::preview::PreviewManager>,
 }
 
 const SETTING_KEYS: [&str; 3] = ["projects_dir", "setup_completed", "org"];
@@ -316,4 +317,53 @@ pub fn pty_open_claude(app: AppHandle, state: State<'_, AppState>, project_id: S
     let p = state.db.project_get(&project_id)?;
     let claude = proc::find("claude").ok_or_else(|| AppError::ToolMissing("claude".into()))?;
     state.pty.spawn(&app, &claude, &[], Some(std::path::Path::new(&p.path)))
+}
+
+// ───────────── preview ─────────────
+
+#[tauri::command]
+pub async fn preview_start(app: AppHandle, state: State<'_, AppState>, project_id: String, target: String) -> AppResult<()> {
+    let flutter = proc::find("flutter").ok_or_else(|| AppError::ToolMissing("flutter".into()))?;
+    let project = state.db.project_get(&project_id)?;
+    let dir = PathBuf::from(&project.path);
+    if !crate::preview::project_dir_exists(&dir) {
+        return Err(AppError::NotFound(format!("Flutter project at {}", dir.display())));
+    }
+    let handle = app.clone();
+    blocking(move || {
+        let st = handle.state::<AppState>();
+        st.preview.start(&flutter, &project_id, &dir, &target)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn preview_stop(state: State<'_, AppState>) -> AppResult<()> {
+    let p = state.preview.clone();
+    blocking(move || {
+        p.stop();
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn preview_state(state: State<'_, AppState>) -> crate::preview::PreviewState {
+    state.preview.state()
+}
+
+#[tauri::command]
+pub fn preview_log(state: State<'_, AppState>) -> Vec<String> {
+    state.preview.log()
+}
+
+#[tauri::command]
+pub fn preview_reload(state: State<'_, AppState>) -> AppResult<()> {
+    state.preview.reload()
+}
+
+#[tauri::command]
+pub async fn preview_devices() -> AppResult<Vec<crate::preview::Device>> {
+    let flutter = proc::find("flutter").ok_or_else(|| AppError::ToolMissing("flutter".into()))?;
+    blocking(move || crate::preview::list_devices(&flutter)).await
 }

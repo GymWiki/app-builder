@@ -9,8 +9,10 @@ mod logging;
 mod mcp;
 mod permissions;
 mod projects;
+mod preview;
 mod proc;
 mod pty;
+mod screenshot;
 mod studio_tools;
 mod toolchain;
 
@@ -47,7 +49,11 @@ pub fn run() {
                 }),
                 Duration::from_secs(600),
             ));
-            let mcp = mcp::start(mcp::Deps { db: db.clone(), perms: perms.clone() })?;
+            let handle = app.handle().clone();
+            let preview = Arc::new(preview::PreviewManager::new(Arc::new(move |name, payload| {
+                let _ = handle.emit(name, payload);
+            })));
+            let mcp = mcp::start(mcp::Deps { db: db.clone(), perms: perms.clone(), preview: preview.clone(), work_dir: dir.join("shots") })?;
 
             let handle = app.handle().clone();
             let chat_ctx = Arc::new(chat::ChatCtx {
@@ -60,7 +66,7 @@ pub fn run() {
             });
             let chat = Arc::new(chat::ChatManager::new(Arc::new(engine::claude::ClaudeEngine::new())));
             log::info!("Studio {} started on {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS);
-            app.manage(commands::AppState { db, pty: pty::PtyManager::default(), chat, chat_ctx, perms });
+            app.manage(commands::AppState { db, pty: pty::PtyManager::default(), chat, chat_ctx, perms, preview });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -93,7 +99,21 @@ pub fn run() {
             commands::permission_respond,
             commands::project_screens,
             commands::pty_open_claude,
+            commands::preview_start,
+            commands::preview_stop,
+            commands::preview_state,
+            commands::preview_log,
+            commands::preview_reload,
+            commands::preview_devices,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Studio");
+        .build(tauri::generate_context!())
+        .expect("error while building Studio")
+        .run(|app, event| {
+            // Geen weesprocessen: de preview (flutter/dart) stoppen als Studio afsluit.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(state) = app.try_state::<commands::AppState>() {
+                    state.preview.stop();
+                }
+            }
+        });
 }

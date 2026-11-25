@@ -4,9 +4,11 @@ import { toAppError, AppError } from "./errors";
 import type {
   AppInfo,
   ChatEvent,
+  Device,
   FlutterCheck,
   InstallPlan,
   PermissionDecision,
+  PreviewState,
   Project,
   Screen,
   Settings,
@@ -71,6 +73,13 @@ export const api = {
     call<boolean>("permission_respond", { id, decision }),
   projectScreens: (id: string) => call<Screen[]>("project_screens", { id }),
   ptyOpenClaude: (projectId: string) => call<string>("pty_open_claude", { projectId }),
+
+  previewStart: (projectId: string, target: string) => call<void>("preview_start", { projectId, target }),
+  previewStop: () => call<void>("preview_stop"),
+  previewState: () => call<PreviewState>("preview_state"),
+  previewLog: () => call<string[]>("preview_log"),
+  previewReload: () => call<void>("preview_reload"),
+  previewDevices: () => call<Device[]>("preview_devices"),
 
   projectsList: (query?: string) => call<Project[]>("projects_list", { query: query || null }),
   projectGet: (id: string) => call<Project>("project_get", { id }),

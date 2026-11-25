@@ -25,6 +25,7 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 portable-pty = "0.9"
 which = "8"
 uuid = { version = "1", features = ["v4"] }
+notify = "8"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

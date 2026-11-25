@@ -1,4 +1,3 @@
-import { Smartphone } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
@@ -64,19 +63,12 @@ export function PhoneFrame({
         >
           <div
             className={cn(
-              "grid h-full w-full place-items-center overflow-hidden",
+              "relative h-full w-full overflow-hidden",
               device === "tablet" ? "rounded-[1.25rem]" : "rounded-[2rem]",
               dark ? "bg-neutral-900 text-neutral-100" : "bg-white text-neutral-900",
             )}
           >
-            <div className="max-w-[16rem] px-6 text-center">
-              <Smartphone aria-hidden className="mx-auto mb-4 size-8 opacity-40" strokeWidth={1.5} />
-              <p className="t-heading">{t("workspace.preview.title")}</p>
-              <p className={cn("t-small mt-1", dark ? "text-neutral-400" : "text-neutral-600")}>
-                {t("workspace.preview.body")}
-              </p>
-              {children}
-            </div>
+            {children}
           </div>
         </div>
       </div>

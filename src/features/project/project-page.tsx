@@ -6,6 +6,7 @@ import { Link, useParams } from "react-router";
 import { ChatPanel, type ChatContext } from "@/features/chat/chat-panel";
 import type { Screen } from "@/lib/types";
 import { ScreensList } from "./screens-list";
+import { PreviewPanel } from "@/features/preview/preview-panel";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import { EmptyState } from "@/components/ds/empty-state";
 import { Panel as Pane, PanelHeader } from "@/components/ds/card";
@@ -19,7 +20,7 @@ import { qk } from "@/hooks";
 import { api } from "@/lib/ipc";
 import { friendlyError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
-import { DEVICES, PhoneFrame, type DeviceId } from "./phone-frame";
+import { DEVICES, type DeviceId } from "./phone-frame";
 import { SECTIONS, type SectionId } from "./sections";
 import { Moon, Sun } from "lucide-react";
 
@@ -256,7 +257,7 @@ export default function ProjectPage() {
 
         <Panel id="preview" minSize="30%">
           <section aria-label={t("workspace.previewLabel")} className="h-full">
-            <PhoneFrame device={device} dark={previewDark} />
+            <PreviewPanel projectId={p.id} device={device} dark={previewDark} />
           </section>
         </Panel>
         <ResizeHandle />

@@ -41,14 +41,13 @@ const mk = (
   checklistDone: done,
   checklistTotal: 8,
 });
-let projects: Project[] =
-  scenario === "ready"
-    ? [
-        mk("friday_scores", "Friday Scores", "scoreboard", "testing", 12, 4),
-        mk("water_tracker", "Water Tracker", "tracker", "draft", 60 * 26, 1),
-        mk("groceries", "Groceries", "checklist", "published", 60 * 24 * 9, 8),
-      ]
-    : [];
+let projects: Project[] = ["ready", "nodevices", "noscreens"].includes(scenario)
+  ? [
+      mk("friday_scores", "Friday Scores", "scoreboard", "testing", 12, 4),
+      mk("water_tracker", "Water Tracker", "tracker", "draft", 60 * 26, 1),
+      mk("groceries", "Groceries", "checklist", "published", 60 * 24 * 9, 8),
+    ]
+  : [];
 
 const tool = (id: ToolStatus["id"], state: ToolStatus["state"], extra: Partial<ToolStatus> = {}): ToolStatus => ({
   id,
@@ -174,6 +173,26 @@ async function mockChat(projectId: string, text: string) {
   }
 }
 
+// ── preview ──
+type MockPreview = {
+  projectId: string | null;
+  status: string;
+  target: string;
+  url: string | null;
+  problems: unknown[];
+  reloads: number;
+};
+let preview: MockPreview = { projectId: null, status: "stopped", target: "web", url: null, problems: [], reloads: 0 };
+const setPreview = (p: Partial<MockPreview>) => {
+  preview = { ...preview, ...p };
+  emit("preview-state", preview);
+};
+const MOCK_PAGE =
+  "data:text/html," +
+  encodeURIComponent(
+    "<body style='margin:0;font:16px sans-serif'><div style='background:#4f46e5;color:#fff;padding:18px'>Friday Scores</div><div style='padding:24px;text-align:center'><div style='font-size:64px'>7</div><button>+1</button></div></body>",
+  );
+
 export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}): Promise<unknown> {
   switch (cmd) {
     case "app_info":
@@ -280,6 +299,59 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
         300,
       );
       return "mock-claude";
+    case "preview_start": {
+      const id = args.projectId as string;
+      setPreview({
+        projectId: id,
+        status: "starting",
+        target: args.target as string,
+        url: null,
+        problems: [],
+        reloads: 0,
+      });
+      await sleep(900);
+      if (id === "water_tracker" && args.target === "web") {
+        setPreview({
+          status: "error",
+          problems: [
+            {
+              file: "lib/main.dart",
+              line: 12,
+              message: "Expected ';' after this.",
+              excerpt:
+                "lib/main.dart:12:5: Error: Expected ';' after this.\n  runApp(const MyApp())\n                       ^",
+            },
+          ],
+        });
+      } else setPreview({ status: "running", url: args.target === "web" ? MOCK_PAGE : null });
+      return;
+    }
+    case "preview_stop":
+      setPreview({ status: "stopped", url: null, problems: [] });
+      return;
+    case "preview_state":
+      return preview;
+    case "preview_log":
+      return [
+        "Launching lib/main.dart on Web Server in debug mode...",
+        "lib/main.dart is being served at http://127.0.0.1:51234",
+      ];
+    case "preview_reload":
+      return;
+    case "preview_devices":
+      await sleep(300);
+      return scenario === "nodevices"
+        ? []
+        : [
+            { id: "1A2B3C", name: "Pixel 8", platform: "android-arm64", emulator: false, wireless: false },
+            {
+              id: "emulator-5554",
+              name: "Android SDK built for x86",
+              platform: "android-x64",
+              emulator: true,
+              wireless: false,
+            },
+          ];
     case "pty_write":
     case "pty_resize":
     case "pty_kill":

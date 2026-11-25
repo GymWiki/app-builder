@@ -216,12 +216,6 @@ pub fn get_checklist(db: &Db, p: &Project) -> AppResult<Value> {
         "key": i.key, "blocking": i.blocking, "status": i.status, "detail": i.detail })).collect::<Vec<_>>() }))
 }
 
-// ───────────── preview (komt in fase 3) ─────────────
-
-pub fn preview_status() -> Value {
-    json!({ "running": false, "note": "The live preview is not available yet in this version of Studio." })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

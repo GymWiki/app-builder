@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
 import { initChatListeners } from "@/features/chat/chat-store";
+import { initPreviewListener } from "@/features/preview/preview-store";
 import { createHashRouter, Navigate, Outlet, RouterProvider, useLocation } from "react-router";
 import { Toaster } from "@/components/ds/toaster";
 import { ErrorBoundary } from "@/components/layout/error-boundary";
@@ -49,6 +50,7 @@ const router = createHashRouter([
 
 export function App() {
   useEffect(() => initChatListeners(), []);
+  useEffect(() => initPreviewListener(), []);
   return (
     <ErrorBoundary>
       <TooltipProvider delayDuration={300}>

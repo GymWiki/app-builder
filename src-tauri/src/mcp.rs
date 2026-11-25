@@ -3,7 +3,10 @@
 //! Studio bij elke start nieuw maakt, en controleert de Host-header (tegen DNS-rebinding).
 
 use crate::db::Db;
+use crate::error::AppError;
 use crate::permissions::{Decision, Permissions};
+use crate::preview::PreviewManager;
+use crate::screenshot;
 use crate::studio_tools as tools;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -23,6 +26,9 @@ pub struct McpInfo {
 pub struct Deps {
     pub db: Arc<Db>,
     pub perms: Arc<Permissions>,
+    pub preview: Arc<PreviewManager>,
+    /// Tijdelijke map voor schermafdrukken.
+    pub work_dir: PathBuf,
 }
 
 pub fn tool_list() -> Value {
@@ -33,8 +39,8 @@ pub fn tool_list() -> Value {
         {"name":"get_theme","description":"Current Studio-managed theme (seed color).","inputSchema":no_args},
         {"name":"set_theme","description":"Set the app's seed color and regenerate lib/app_theme.dart.",
          "inputSchema":{"type":"object","properties":{"seedColor":{"type":"string","description":"Hex color like #4F46E5"}},"required":["seedColor"]}},
-        {"name":"preview_status","description":"Whether the live preview is running.","inputSchema":no_args},
-        {"name":"preview_screenshot","description":"Screenshot of the live preview (not available yet).","inputSchema":no_args},
+        {"name":"preview_status","description":"Whether the live preview is running, its URL and any build/runtime problems.","inputSchema":no_args},
+        {"name":"preview_screenshot","description":"Screenshot (PNG) of the running live preview, so you can check your own result.","inputSchema":{"type":"object","properties":{"width":{"type":"integer","description":"Default 390"},"height":{"type":"integer","description":"Default 844"}}}},
         {"name":"create_snapshot","description":"Save the current state of the project as a restorable snapshot (git commit).",
          "inputSchema":{"type":"object","properties":{"label":{"type":"string","description":"Short description of what changed"}},"required":["label"]}},
         {"name":"bump_version","description":"Increase the app version in pubspec.yaml (and Studio).",
@@ -62,8 +68,31 @@ fn call_tool(deps: &Deps, project_id: &str, name: &str, args: &Value) -> Value {
         "list_screens" => tools::list_screens(&dir).map(|s| json!(s)),
         "get_theme" => tools::get_theme(&dir),
         "set_theme" => tools::set_theme(&dir, &arg("seedColor")),
-        "preview_status" => Ok(tools::preview_status()),
-        "preview_screenshot" => return text_result(&json!("The live preview is not available yet, so there is no screenshot. Ask the user to describe what they see."), true),
+        "preview_status" => {
+            let st = deps.preview.state();
+            let mine = st.project_id.as_deref() == Some(project_id);
+            Ok(if mine {
+                json!({ "running": matches!(st.status.as_str(), "running" | "reloading"), "status": st.status, "url": st.url,
+                        "problems": st.problems, "hotReloads": st.reloads })
+            } else {
+                json!({ "running": false, "status": "stopped", "note": "The live preview is not running for this project. Ask the user to press Start in the preview panel." })
+            })
+        }
+        "preview_screenshot" => {
+            let st = deps.preview.state();
+            let url = match (&st.url, st.project_id.as_deref() == Some(project_id)) {
+                (Some(u), true) if st.status != "error" => u.clone(),
+                _ => return text_result(&json!("The live preview is not running (or has a build error), so there is no screenshot. Check preview_status, fix errors, or ask the user to start the preview."), true),
+            };
+            let n = |k: &str, d: u32| args.get(k).and_then(Value::as_u64).map(|v| v as u32).unwrap_or(d);
+            return match screenshot::capture(&url, n("width", 390), n("height", 844), &deps.work_dir) {
+                Ok(png) => json!({"content":[
+                    {"type":"image","data":screenshot::base64(&png),"mimeType":"image/png"},
+                    {"type":"text","text":"Screenshot of the live preview."}]}),
+                Err(AppError::ToolMissing(_)) => text_result(&json!("No Chrome or Edge browser was found on this computer, so screenshots are unavailable. Ask the user to describe what they see."), true),
+                Err(e) => text_result(&json!(crate::logging::redact(&e.to_string())), true),
+            };
+        }
         "create_snapshot" => tools::create_snapshot(&deps.db, &project, &arg("label"), "manual"),
         "bump_version" => tools::bump_version(&deps.db, &project, &arg("part")),
         "get_checklist" => tools::get_checklist(&deps.db, &project),
@@ -238,7 +267,8 @@ mod tests {
             })
             .unwrap();
         let perms = Arc::new(Permissions::new(Arc::new(|_| {}), Duration::from_millis(100)));
-        (Deps { db, perms }, p.id, dir)
+        let preview = Arc::new(PreviewManager::new(Arc::new(|_, _| {})));
+        (Deps { db, perms, preview, work_dir: std::env::temp_dir().join("studio-mcp-shots") }, p.id, dir)
     }
 
     fn rpc(deps: &Deps, pid: &str, method: &str, params: Value) -> Value {
@@ -277,6 +307,10 @@ mod tests {
         assert!(tool_text(&call("get_checklist", json!({}))).contains("app_basics"));
         let shot = call("preview_screenshot", json!({}));
         assert_eq!(shot["result"]["isError"], true);
+        assert!(tool_text(&shot).contains("not running"));
+        let ps = call("preview_status", json!({}));
+        assert_eq!(ps["result"]["isError"], false);
+        assert!(tool_text(&ps).contains("\"running\": false"));
         assert!(tool_text(&call("bogus", json!({}))).contains("unknown tool"));
         // onbekend project
         let r = rpc(&deps, "missing", "tools/call", json!({"name":"project_status","arguments":{}}));
@@ -323,5 +357,32 @@ mod tests {
         let cfg = config_json(&info, &pid);
         assert_eq!(cfg["mcpServers"]["studio"]["type"], "http");
         assert!(cfg["mcpServers"]["studio"]["url"].as_str().unwrap().ends_with(&pid));
+    }
+
+    /// Echte Chromium + python3 nodig: `STUDIO_BROWSER=… STUDIO_BROWSER_NO_SANDBOX=1 cargo test real_screenshot_tool -- --ignored`
+    #[cfg(unix)]
+    #[test]
+    #[ignore]
+    fn real_screenshot_tool() {
+        use std::os::unix::fs::PermissionsExt;
+        let (mut deps, pid, dir) = deps_with_project();
+        let www = dir.join("www");
+        std::fs::create_dir_all(&www).unwrap();
+        std::fs::write(www.join("index.html"), "<body style='background:#4f46e5;color:#fff;font:48px sans-serif'>Hello preview</body>").unwrap();
+        let fake = dir.join("flutter");
+        std::fs::write(&fake, format!("#!/bin/bash\nif [ \"$2\" = \"--help\" ]; then echo '--web-port --web-hostname'; exit 0; fi\nfor a in \"$@\"; do case $a in --web-port=*) port=${{a#--web-port=}};; esac; done\ncd {}\npython3 -m http.server $port --bind 127.0.0.1 >/dev/null 2>&1 &\necho \"lib/main.dart is being served at http://127.0.0.1:$port\"\nwhile IFS= read -r -n1 c; do [ \"$c\" = q ] && kill %1 && exit 0; done\n", www.display())).unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        deps.work_dir = dir.join("shots");
+        deps.preview.start(&fake, &pid, &dir, "web").unwrap();
+        let end = std::time::Instant::now() + Duration::from_secs(10);
+        while deps.preview.state().status != "running" && std::time::Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let r = rpc(&deps, &pid, "tools/call", json!({"name":"preview_screenshot","arguments":{}}));
+        deps.preview.stop();
+        let content = &r["result"]["content"];
+        assert_eq!(content[0]["type"], "image", "got {r}");
+        assert_eq!(content[0]["mimeType"], "image/png");
+        assert!(content[0]["data"].as_str().unwrap().starts_with("iVBOR"), "not a PNG");
     }
 }

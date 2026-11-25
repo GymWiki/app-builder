@@ -94,3 +94,30 @@ export interface PermissionRequest {
 }
 
 export type PermissionDecision = "allow_once" | "allow_always" | "deny";
+
+export interface PreviewProblem {
+  file: string | null;
+  line: number | null;
+  message: string;
+  excerpt: string;
+}
+
+export type PreviewStatus = "stopped" | "starting" | "running" | "reloading" | "error";
+
+export interface PreviewState {
+  projectId: string | null;
+  status: PreviewStatus;
+  /** "web" of een apparaat-id */
+  target: string;
+  url: string | null;
+  problems: PreviewProblem[];
+  reloads: number;
+}
+
+export interface Device {
+  id: string;
+  name: string;
+  platform: string;
+  emulator: boolean;
+  wireless: boolean;
+}

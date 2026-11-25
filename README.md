@@ -2,7 +2,7 @@
 
 Een lichtgewicht desktop-app (Tauri 2 + React) waarmee niet-technische mensen een **Flutter-app** (iOS en Android) bouwen door te chatten met hun **eigen Claude Code-installatie**. De gebruiker houdt alle code: een gewone Flutter-projectmap met git. Denk "FlutterFlow, maar alleen AI en veel lichter".
 
-> Status: **Fase 0–2** zijn klaar (fundament, projecten + wizard, chat + MCP). Live preview, linkermenu-secties en publiceren volgen in fase 3–5. Zie [DECISIONS.md](DECISIONS.md) voor gemaakte keuzes en wat nog niet is geverifieerd.
+> Status: **Fase 0–3** zijn klaar (fundament, projecten + wizard, chat + MCP, live preview). Linkermenu-secties en publiceren volgen in fase 4–5. Zie [DECISIONS.md](DECISIONS.md) voor gemaakte keuzes en wat nog niet is geverifieerd.
 
 ## Principes
 
@@ -41,6 +41,8 @@ src-tauri/              Rust-backend
   engine/               AiEngine-trait · claude.rs (CLI, stream-json) · stream.rs (parser)
   chat.rs               één chatbeurt: sessie, opslag, MCP-config, engine, automatische momentopname
   mcp.rs                lokale MCP-server (project_status, list_screens, get/set_theme, create_snapshot, bump_version, get_checklist, preview_*)
+  preview.rs            flutter run (web-server/apparaat), logparser, hot restart via notify, apparaten
+  screenshot.rs         headless Edge/Chrome → PNG voor preview_screenshot
   permissions.rs        bevestigingen in de UI voor netwerk/commando's/buiten-project
   studio_tools.rs       de implementatie van de MCP-tools
   install.rs            vaste lijst begeleide installaties (de UI kiest nooit zelf een commando)
@@ -56,3 +58,9 @@ Studio maakt per project een map in `Documenten/Studio/<naam>` met `flutter crea
 De chat draait `claude -p --output-format stream-json` in de projectmap (prompt via stdin, sessie hervatten met `--resume`). Studio start Claude met een eigen MCP-server zodat Claude de app kan sturen. Netwerk, onbekende commando's en paden buiten het project vragen eerst bevestiging in de chat. Elke beurt met wijzigingen eindigt met een automatische git-momentopname.
 
 Echte-CLI-rooktest (kost een paar tokens van je eigen account): `cargo test --manifest-path src-tauri/Cargo.toml real_claude_smoke -- --ignored --nocapture`.
+
+## Live preview
+
+De preview draait `flutter run -d web-server` en toont de app in het telefoonframe; elke wijziging in `lib/` herlaadt hem vanzelf. Bouwfouten verschijnen als banner met "Laat Claude dit oplossen". Voor een echte telefoon: knop "Echte telefoon" (USB of draadloos, met uitleg).
+
+Extra rooktests (alleen met echte Chromium): `STUDIO_BROWSER=<pad> STUDIO_BROWSER_NO_SANDBOX=1 cargo test --manifest-path src-tauri/Cargo.toml -- --ignored real_browser real_screenshot_tool`.

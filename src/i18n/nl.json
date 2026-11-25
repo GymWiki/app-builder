@@ -150,10 +150,6 @@
     },
     "comingSoon": "Komt in een volgende stap",
     "comingSoonBody": "Dit onderdeel staat op de planning. Het paneel is er al, zodat de indeling hetzelfde blijft.",
-    "preview": {
-      "title": "De live preview komt hierna",
-      "body": "Je app draait straks hier, in een telefoonframe, en ververst na elke wijziging."
-    },
     "device": {
       "label": "Preview-apparaat",
       "small": "Kleine telefoon",
@@ -179,7 +175,7 @@
       "title": "Schermen",
       "empty": "Nog geen schermen gevonden",
       "emptyHint": "Vraag Claude er een toe te voegen. Schermen zijn widgets waarvan de naam op Screen of Page eindigt.",
-      "refresh": "Verversen",
+      "refresh": "Schermen verversen",
       "select": "Praat over dit scherm",
       "selected": "Gekozen voor de chat",
       "hint": "Kies een scherm om er direct in de chat over te praten."
@@ -505,6 +501,64 @@
       "start": "Terminal starten",
       "stop": "Terminal sluiten",
       "running": "Terminal actief"
+    }
+  },
+  "preview": {
+    "title": "Live preview",
+    "start": "Preview starten",
+    "stop": "Stoppen",
+    "refresh": "Vernieuwen",
+    "realDevice": "Echte telefoon",
+    "status": {
+      "stopped": "Niet actief",
+      "starting": "Bezig met starten…",
+      "running": "Actief",
+      "reloading": "Bijwerken…",
+      "error": "Probleem"
+    },
+    "emptyTitle": "Zie je app live",
+    "emptyBody": "Start de preview om je app hier te laten draaien. Hij werkt zichzelf bij na elke wijziging.",
+    "startingBody": "Flutter bouwt je app. De eerste keer kan een minuut of twee duren.",
+    "onDevice": "Draait op {{device}}",
+    "onDeviceBody": "Kijk op je telefoon. Wijzigingen verschijnen daar vanzelf.",
+    "problem": {
+      "title_one": "De app heeft een probleem",
+      "title_other": "De app heeft {{count}} problemen",
+      "fix": "Laat Claude dit oplossen",
+      "showLog": "Log tonen",
+      "hideLog": "Log verbergen",
+      "where": "{{file}} regel {{line}}",
+      "fixPrompt": "De live preview toont dit probleem. Los het op en zorg dat de app weer bouwt:\\n\\n```\\n{{error}}\\n```",
+      "busy": "Claude is al bezig"
+    },
+    "log": "Technisch log",
+    "device": {
+      "title": "Draai op je eigen telefoon",
+      "intro": "Zie je app op een echte telefoon terwijl je bouwt. Kies hieronder je telefoon, of volg de stappen als hij niet verschijnt.",
+      "refresh": "Opnieuw zoeken",
+      "run": "Hier draaien",
+      "emulator": "Emulator",
+      "wireless": "Draadloos",
+      "none": "Nog geen telefoon gevonden",
+      "noneBody": "Sluit je telefoon aan, volg de stappen hieronder en kies “Opnieuw zoeken”.",
+      "scanning": "Zoeken naar telefoons…",
+      "stepsTitle": "Zo verbind je een Android-telefoon",
+      "usb": [
+        "Open op je telefoon Instellingen, daarna Over de telefoon, en tik zeven keer op “Build-nummer” om Ontwikkelaarsopties aan te zetten.",
+        "Open Instellingen, daarna Ontwikkelaarsopties, en zet “USB-foutopsporing” aan.",
+        "Verbind de telefoon met een USB-kabel met deze computer.",
+        "Tik op de telefoon op “Toestaan” als er wordt gevraagd deze computer te vertrouwen.",
+        "Kom terug en kies “Opnieuw zoeken”."
+      ],
+      "wirelessTitle": "Zonder kabel (Android 11 of nieuwer)",
+      "wireless_steps": [
+        "Zet de telefoon op hetzelfde wifi-netwerk als deze computer.",
+        "Zet in Ontwikkelaarsopties “Draadloze foutopsporing” aan en open die.",
+        "Tik op “Apparaat koppelen met koppelcode”. Voer in een terminal uit: adb pair <adres:poort van de telefoon> en typ de code.",
+        "Voer daarna uit: adb connect <adres:poort op het scherm Draadloze foutopsporing>.",
+        "Kies “Opnieuw zoeken”."
+      ],
+      "ios": "iPhones kunnen alleen vanaf een Mac met Xcode. Studio ondersteunt dit samen met publiceren voor iOS."
     }
   }
 }

@@ -321,7 +321,7 @@ mod tests {
                 }
             });
         }
-        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms }).unwrap();
+        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots") }).unwrap();
         let events: Arc<Mutex<Vec<Value>>> = Arc::default();
         let sink = events.clone();
         let ctx = ChatCtx { db: db.clone(), mcp, config_dir: root.join("mcp"), emit: Arc::new(move |n, v| { if n == "chat-event" { sink.lock().unwrap().push(v["event"].clone()) } }) };

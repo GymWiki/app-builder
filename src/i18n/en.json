@@ -150,10 +150,6 @@
     },
     "comingSoon": "Coming in a later step",
     "comingSoonBody": "This section is part of the roadmap. The panel is already here so the layout stays the same.",
-    "preview": {
-      "title": "Live preview comes next",
-      "body": "Your app will run here, in a phone frame, and refresh after every change."
-    },
     "device": {
       "label": "Preview device",
       "small": "Small phone",
@@ -179,7 +175,7 @@
       "title": "Screens",
       "empty": "No screens found yet",
       "emptyHint": "Ask Claude to add one. Screens are widgets whose name ends in Screen or Page.",
-      "refresh": "Refresh",
+      "refresh": "Refresh screens",
       "select": "Talk about this screen",
       "selected": "Selected for chat",
       "hint": "Pick a screen to talk about it directly in the chat."
@@ -505,6 +501,64 @@
       "start": "Start terminal",
       "stop": "Close terminal",
       "running": "Terminal running"
+    }
+  },
+  "preview": {
+    "title": "Live preview",
+    "start": "Start preview",
+    "stop": "Stop",
+    "refresh": "Refresh",
+    "realDevice": "Real phone",
+    "status": {
+      "stopped": "Not running",
+      "starting": "Starting…",
+      "running": "Running",
+      "reloading": "Updating…",
+      "error": "Problem"
+    },
+    "emptyTitle": "See your app live",
+    "emptyBody": "Start the preview to run your app here. It updates by itself after every change.",
+    "startingBody": "Flutter is building your app. The first time can take a minute or two.",
+    "onDevice": "Running on {{device}}",
+    "onDeviceBody": "Look at your phone. Changes appear there by themselves.",
+    "problem": {
+      "title_one": "The app has a problem",
+      "title_other": "The app has {{count}} problems",
+      "fix": "Let Claude fix this",
+      "showLog": "Show log",
+      "hideLog": "Hide log",
+      "where": "{{file}} line {{line}}",
+      "fixPrompt": "The live preview shows this problem. Please fix it and make sure the app builds again:\\n\\n```\\n{{error}}\\n```",
+      "busy": "Claude is already working"
+    },
+    "log": "Technical log",
+    "device": {
+      "title": "Run on your own phone",
+      "intro": "See your app on a real phone while you build. Pick your phone below, or follow the steps if it doesn’t show up.",
+      "refresh": "Look again",
+      "run": "Run here",
+      "emulator": "Emulator",
+      "wireless": "Wireless",
+      "none": "No phone found yet",
+      "noneBody": "Connect your phone and follow the steps below, then choose “Look again”.",
+      "scanning": "Looking for phones…",
+      "stepsTitle": "How to connect an Android phone",
+      "usb": [
+        "On your phone open Settings, then About phone, and tap “Build number” seven times to turn on Developer options.",
+        "Open Settings, then Developer options, and turn on “USB debugging”.",
+        "Connect the phone to this computer with a USB cable.",
+        "On the phone, tap “Allow” when it asks to trust this computer.",
+        "Come back here and choose “Look again”."
+      ],
+      "wirelessTitle": "Without a cable (Android 11 or newer)",
+      "wireless_steps": [
+        "Put the phone on the same Wi-Fi network as this computer.",
+        "In Developer options turn on “Wireless debugging” and open it.",
+        "Tap “Pair device with pairing code”. In a terminal run: adb pair <address:port from the phone>, then type the code.",
+        "Then run: adb connect <address:port shown on the Wireless debugging screen>.",
+        "Choose “Look again”."
+      ],
+      "ios": "iPhones can only be used from a Mac with Xcode. Studio will support this together with iOS publishing."
     }
   }
 }
