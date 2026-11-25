@@ -18,7 +18,13 @@ use std::sync::Mutex;
 pub enum ChatEvent {
     /// De gebruiker stuurde een bericht (alleen voor opslag/herspelen).
     User { text: String, context: Option<String> },
-    Init { session_id: String, model: Option<String> },
+    Init {
+        session_id: String,
+        model: Option<String>,
+        /// (servernaam, status) zoals de CLI die bij de start meldt.
+        #[serde(default)]
+        mcp: Vec<(String, String)>,
+    },
     TextDelta { message_id: String, text: String },
     Text { message_id: String, text: String },
     ToolUse {

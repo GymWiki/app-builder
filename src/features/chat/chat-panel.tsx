@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ds/spinner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toastError } from "@/lib/toast";
+import { ProfileStatusLine } from "@/features/profile/profile-status-line";
 import { AdvancedTerminal } from "./advanced-terminal";
 import { useChat } from "./chat-store";
 import { AssistantBubble, ErrorCard, PermissionCard, SnapshotChip, ToolCard, UserBubble } from "./message-views";
@@ -104,6 +105,7 @@ export function ChatPanel({
       </div>
 
       <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col">
+        <ProfileStatusLine projectId={projectId} />
         <div
           ref={log}
           role="log"

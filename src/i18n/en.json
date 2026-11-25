@@ -283,7 +283,11 @@
           "Add flutter/bin to your PATH (the guide shows how).",
           "Restart Studio, then choose “Check again”."
         ]
-      }
+      },
+      "issues": {
+        "dart_old": "Your Flutter includes Dart {{dart}}. Studio needs Dart 3.9 or newer (Flutter 3.35 or newer)."
+      },
+      "updateSteps": ["Open a terminal and run: flutter upgrade", "Choose “Check again”."]
     },
     "android": {
       "name": "Android toolchain",
@@ -1083,6 +1087,26 @@
         "needFastlane": "Install Fastlane first (see Accounts).",
         "needKey": "Add your Google Play key first (see Accounts)."
       }
+    }
+  },
+  "profile": {
+    "working": "Getting Claude ready for this project…",
+    "ready": "Claude is ready for this project ✓",
+    "limited": "Claude works, but without the extra Flutter knowledge for now. It fixes itself once there is a connection.",
+    "dev": {
+      "title": "Developer mode",
+      "on": "Developer mode is on. Click the version line five more times to turn it off.",
+      "project": "Project profile",
+      "version": "Profile version {{version}} (current {{current}})",
+      "plugin": "Official Flutter plugin: {{state}}",
+      "dart": "Dart {{dart}}",
+      "dartMcp": "Dart MCP server",
+      "structure": "Structure: {{structure}}",
+      "reapply": "Apply profile again",
+      "yes": "installed",
+      "no": "not installed",
+      "okay": "available",
+      "notOkay": "not available"
     }
   }
 }

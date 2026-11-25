@@ -111,23 +111,37 @@ pub fn theme_dart(seed_hex: &str) -> String {
     )
 }
 
+/// Waar het gegenereerde thema staat: in de feature-first structuur onder `lib/core/theme/`,
+/// in oudere (platte) projecten nog `lib/app_theme.dart`.
+pub fn theme_file(project_dir: &Path) -> &'static str {
+    if project_dir.join("lib/core").is_dir() { "lib/core/theme/app_theme.dart" } else { "lib/app_theme.dart" }
+}
+
 pub fn write_theme(project_dir: &Path, seed_hex: &str) -> AppResult<()> {
     if !valid_hex(seed_hex) {
         return Err(AppError::Invalid("seedColor must look like #4F46E5".into()));
     }
     std::fs::create_dir_all(project_dir.join(".studio"))?;
-    std::fs::create_dir_all(project_dir.join("lib"))?;
+    let file = project_dir.join(theme_file(project_dir));
+    if let Some(d) = file.parent() {
+        std::fs::create_dir_all(d)?;
+    }
     let json = serde_json::to_string_pretty(&json!({ "seedColor": seed_hex.to_uppercase() }))?;
     std::fs::write(project_dir.join(".studio/theme.json"), json + "\n")?;
-    std::fs::write(project_dir.join("lib/app_theme.dart"), theme_dart(seed_hex))?;
+    std::fs::write(file, crate::templates::adapt_material(project_dir, &theme_dart(seed_hex)))?;
     Ok(())
+}
+
+/// Gebruikt de app het gegenereerde thema al? (main.dart of app.dart verwijst naar `AppTheme.light`.)
+fn theme_wired(project_dir: &Path) -> bool {
+    ["lib/main.dart", "lib/app.dart"].iter().any(|f| std::fs::read_to_string(project_dir.join(f)).is_ok_and(|t| t.contains("AppTheme.light")))
 }
 
 pub fn get_theme(project_dir: &Path) -> AppResult<Value> {
     match std::fs::read_to_string(project_dir.join(".studio/theme.json")) {
         Ok(t) => {
             let v: Value = serde_json::from_str(&t).map_err(|e| AppError::Invalid(format!("theme.json: {e}")))?;
-            Ok(json!({ "managed": true, "seedColor": v["seedColor"], "file": "lib/app_theme.dart",
+            Ok(json!({ "managed": true, "seedColor": v["seedColor"], "file": theme_file(project_dir),
                        "usage": "MaterialApp(theme: AppTheme.light, darkTheme: AppTheme.dark)" }))
         }
         Err(_) => Ok(json!({ "managed": false, "seedColor": null,
@@ -137,16 +151,15 @@ pub fn get_theme(project_dir: &Path) -> AppResult<Value> {
 }
 
 pub fn set_theme(project_dir: &Path, seed_hex: &str) -> AppResult<Value> {
-    let had = project_dir.join("lib/app_theme.dart").exists();
+    let had = project_dir.join(theme_file(project_dir)).exists();
     write_theme(project_dir, seed_hex)?;
-    let main = std::fs::read_to_string(project_dir.join("lib/main.dart")).unwrap_or_default();
-    let wired = main.contains("AppTheme.light");
+    let wired = theme_wired(project_dir);
     Ok(json!({
-        "ok": true, "seedColor": seed_hex.to_uppercase(), "file": "lib/app_theme.dart",
+        "ok": true, "seedColor": seed_hex.to_uppercase(), "file": theme_file(project_dir),
         "wired": wired,
         "next": if wired { "The app already uses AppTheme; hot reload will show the new colors." }
-                else if had { "lib/main.dart does not use AppTheme yet: set theme: AppTheme.light and darkTheme: AppTheme.dark on MaterialApp." }
-                else { "Created lib/app_theme.dart. Now set theme: AppTheme.light and darkTheme: AppTheme.dark on MaterialApp in lib/main.dart." },
+                else if had { "the app does not use AppTheme yet: set theme: AppTheme.light and darkTheme: AppTheme.dark on MaterialApp." }
+                else { "Created the theme file. Now set theme: AppTheme.light and darkTheme: AppTheme.dark on MaterialApp." },
     }))
 }
 
@@ -269,6 +282,7 @@ mod tests {
                 description: String::new(),
                 bundle_id: "com.example.demo".into(),
                 initial_commit: None,
+                profile_version: 0,
             })
             .unwrap();
         (db, p)
@@ -304,6 +318,7 @@ mod tests {
         let r = set_theme(&d, "#0d9488").unwrap();
         assert_eq!(r["seedColor"], "#0D9488");
         assert_eq!(r["wired"], false);
+        assert_eq!(r["file"], "lib/app_theme.dart", "flat legacy project");
         assert!(std::fs::read_to_string(d.join("lib/app_theme.dart")).unwrap().contains("Color(0xFF0D9488)"));
         assert_eq!(get_theme(&d).unwrap()["seedColor"], "#0D9488");
         std::fs::write(d.join("lib/main.dart"), "theme: AppTheme.light").unwrap();
@@ -321,6 +336,17 @@ mod tests {
         assert!(set_store_listing(&d, &json!({"title":"x".repeat(31)})).is_err());
         assert!(set_store_listing(&d, &json!({"category":"weapons"})).is_err());
         assert_eq!(get_store_listing(&d).unwrap()["listing"]["title"], "Friday Scores", "a rejected update changes nothing");
+    }
+
+    #[test]
+    fn feature_first_projects_keep_the_theme_in_core() {
+        let d = tmp();
+        std::fs::create_dir_all(d.join("lib/core/theme")).unwrap();
+        std::fs::write(d.join("lib/app.dart"), "theme: AppTheme.light").unwrap();
+        let r = set_theme(&d, "#112233").unwrap();
+        assert_eq!((r["file"].as_str(), r["wired"].as_bool()), (Some("lib/core/theme/app_theme.dart"), Some(true)));
+        assert!(d.join("lib/core/theme/app_theme.dart").is_file() && !d.join("lib/app_theme.dart").exists());
+        assert_eq!(get_theme(&d).unwrap()["file"], "lib/core/theme/app_theme.dart");
     }
 
     #[test]

@@ -80,6 +80,26 @@ fn help_text(program: &Path) -> String {
 
 const REQUIRED_FLAGS: &[&str] = &["--output-format", "--mcp-config", "--resume", "--allowedTools", "--permission-mode"];
 
+/// `claude auth status --json`: alleen `apiProvider` wordt gelezen (nooit tokens).
+pub fn provider_is_first_party(json: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(json.trim()).ok().and_then(|v| v["apiProvider"].as_str().map(|p| p == "firstParty")).unwrap_or(false)
+}
+
+static ISOLATE: Mutex<Option<HashMap<PathBuf, bool>>> = Mutex::new(None);
+
+/// Gebruikersinstellingen mogen alleen buiten beeld blijven bij een gewoon Claude-abonnement. Bij Bedrock, Vertex of
+/// Foundry kan de verbinding juist in die instellingen staan; dan laten we ze met rust.
+fn isolate_user_settings(program: &Path) -> bool {
+    let mut cache = ISOLATE.lock().unwrap_or_else(|e| e.into_inner());
+    let map = cache.get_or_insert_with(HashMap::new);
+    if let Some(v) = map.get(program) {
+        return *v;
+    }
+    let v = proc::run(program, &["auth", "status", "--json"], None, Duration::from_secs(20)).map(|o| provider_is_first_party(&o.stdout)).unwrap_or(false);
+    map.insert(program.to_path_buf(), v);
+    v
+}
+
 pub fn system_prompt(language: &str) -> String {
     let lang = if language.starts_with("nl") { "Dutch" } else { "English" };
     format!(
@@ -94,7 +114,7 @@ pub fn system_prompt(language: &str) -> String {
 }
 
 /// Bouwt de argumenten; de prompt gaat via stdin (veilig voor meerregelige tekst en Windows `.cmd`).
-pub fn build_args(help: &str, req: &TurnRequest) -> AppResult<Vec<String>> {
+pub fn build_args(help: &str, req: &TurnRequest, isolate_user_settings: bool) -> AppResult<Vec<String>> {
     for flag in REQUIRED_FLAGS {
         if !help.contains(flag) {
             // Een te oude CLI: de UI toont dit als "bijwerken".
@@ -117,6 +137,12 @@ pub fn build_args(help: &str, req: &TurnRequest) -> AppResult<Vec<String>> {
     ];
     if help.contains("--strict-mcp-config") {
         a.push("--strict-mcp-config".into());
+    }
+    // Alleen de instellingen van het project (profiel, plugin, regels) laden en niet de eigen plugins, skills en
+    // hooks van de gebruiker: dat scheelt tokens en maakt elke run voorspelbaar. Zo getest: 72 -> 32 skills.
+    if isolate_user_settings && help.contains("--setting-sources") {
+        a.push("--setting-sources".into());
+        a.push("project,local".into());
     }
     if help.contains("--include-partial-messages") {
         a.push("--include-partial-messages".into());
@@ -145,7 +171,8 @@ impl AiEngine for ClaudeEngine {
         if help.trim().is_empty() {
             return Err(AppError::CommandFailed("could not run `claude --help`".into()));
         }
-        let args = build_args(&help, req)?;
+        let isolate = isolate_user_settings(&program);
+        let args = build_args(&help, req, isolate)?;
 
         let mut cmd = proc::command(&program);
         cmd.args(&args).current_dir(&req.project_dir).stdin(Stdio::piped());
@@ -221,7 +248,7 @@ mod tests {
 
     #[test]
     fn builds_args_from_verified_flags() {
-        let a = build_args(HELP, &req(Some("abc"))).unwrap();
+        let a = build_args(HELP, &req(Some("abc")), false).unwrap();
         let joined = a.join(" ");
         assert!(joined.contains("-p --output-format stream-json --verbose"));
         assert!(joined.contains("--permission-prompt-tool mcp__studio__approve"));
@@ -232,14 +259,30 @@ mod tests {
     }
 
     #[test]
+    fn isolates_user_settings_only_when_asked_and_supported() {
+        let help = format!("{HELP} --setting-sources");
+        let on = build_args(&help, &req(None), true).unwrap().join(" ");
+        assert!(on.contains("--setting-sources project,local"));
+        assert!(!build_args(&help, &req(None), false).unwrap().join(" ").contains("--setting-sources"));
+        assert!(!build_args(HELP, &req(None), true).unwrap().join(" ").contains("--setting-sources"), "unknown flag is never passed");
+    }
+
+    #[test]
+    fn only_a_plain_claude_account_is_isolated() {
+        assert!(provider_is_first_party(r#"{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty"}"#));
+        assert!(!provider_is_first_party(r#"{"loggedIn":true,"apiProvider":"bedrock"}"#));
+        assert!(!provider_is_first_party("garbage"));
+    }
+
+    #[test]
     fn drops_optional_flags_the_cli_does_not_know() {
         let help = "--output-format --mcp-config --resume --allowedTools --permission-mode";
-        let a = build_args(help, &req(None)).unwrap();
+        let a = build_args(help, &req(None), false).unwrap();
         assert!(!a.iter().any(|x| x == "--include-partial-messages" || x == "--permission-prompt-tool" || x == "--resume"));
     }
 
     #[test]
     fn too_old_cli_is_reported() {
-        assert!(matches!(build_args("--output-format", &req(None)), Err(AppError::CommandFailed(m)) if m.contains("outdated")));
+        assert!(matches!(build_args("--output-format", &req(None), false), Err(AppError::CommandFailed(m)) if m.contains("outdated")));
     }
 }

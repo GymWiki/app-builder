@@ -11,6 +11,8 @@ use std::time::Duration;
 pub const MIN_GIT: &str = "2.20.0";
 pub const MIN_FLUTTER: &str = "3.24.0";
 pub const MIN_CLAUDE: &str = "2.1.0";
+/// De Dart-MCP-server (`dart mcp-server`) en de officiële Flutter-plugin vragen minstens Dart 3.9.
+pub const MIN_DART: &str = "3.9.0";
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -160,6 +162,13 @@ pub fn parse_flutter_machine_version(out: &str) -> Option<String> {
     v.get("frameworkVersion")?.as_str().map(Into::into)
 }
 
+/// `dartSdkVersion` uit dezelfde JSON (de Dart die bij deze Flutter hoort).
+pub fn parse_dart_version(out: &str) -> Option<String> {
+    let start = out.find('{')?;
+    let v: serde_json::Value = serde_json::from_str(out[start..].trim()).ok()?;
+    v.get("dartSdkVersion")?.as_str().and_then(parse_version).map(fmt_version)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DoctorSection {
     /// ok | warning | error | unknown
@@ -255,6 +264,15 @@ pub fn check_flutter() -> FlutterCheck {
         Ok(o) if o.ok() => {
             let text = parse_flutter_machine_version(&o.stdout).unwrap_or_else(|| o.stdout.clone());
             flutter = judge(flutter, &text);
+            // Dart te oud voor de Dart/Flutter-MCP en de officiële plugin: eerlijk melden met een oplossing.
+            if let (true, Some(dart)) = (flutter.state == "ok", parse_dart_version(&o.stdout)) {
+                if !is_at_least(&dart, MIN_DART) {
+                    flutter.state = "outdated".into();
+                    flutter.issue = Some("dart_old".into());
+                    flutter.detail = Some(format!("Dart {dart}"));
+                    flutter.min_version = Some(format!("{} (Dart {MIN_DART})", flutter.min_version.clone().unwrap_or_default()));
+                }
+            }
         }
         Ok(o) => {
             flutter.state = "warning".into();
@@ -316,6 +334,14 @@ mod tests {
         assert_eq!(parse_login_status(ok), Some(true));
         assert_eq!(parse_login_status(r#"{"loggedIn": false}"#), Some(false));
         assert_eq!(parse_login_status("not json"), None);
+    }
+
+    #[test]
+    fn dart_version_comes_from_the_flutter_json() {
+        let out = "{\n  \"frameworkVersion\": \"3.50.1\",\n  \"dartSdkVersion\": \"3.14.0 (build 3.14.0-1.0.dev)\"\n}";
+        assert_eq!(parse_dart_version(out).as_deref(), Some("3.14.0"));
+        assert!(is_at_least("3.14.0", MIN_DART) && !is_at_least("3.8.1", MIN_DART));
+        assert!(parse_dart_version("{}").is_none());
     }
 
     #[test]

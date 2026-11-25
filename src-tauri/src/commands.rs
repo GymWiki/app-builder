@@ -26,7 +26,7 @@ pub struct AppState {
     pub jobs: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
-const SETTING_KEYS: [&str; 3] = ["projects_dir", "setup_completed", "org"];
+const SETTING_KEYS: [&str; 4] = ["projects_dir", "setup_completed", "org", "dev_mode"];
 const DEFAULT_ORG: &str = "com.example";
 
 fn default_projects_dir(app: &AppHandle) -> PathBuf {
@@ -195,9 +195,12 @@ pub fn project_get(state: State<'_, AppState>, id: String) -> AppResult<Project>
 }
 
 #[tauri::command]
-pub fn project_open(state: State<'_, AppState>, id: String) -> AppResult<Project> {
+pub fn project_open(app: AppHandle, state: State<'_, AppState>, id: String) -> AppResult<Project> {
     state.db.project_touch_opened(&id)?;
-    state.db.project_get(&id)
+    let p = state.db.project_get(&id)?;
+    // Het profiel en de plugin horen er altijd te zijn; dit is goedkoop als alles al klaar is.
+    spawn_profile(&app, &p.id, PathBuf::from(&p.path), false);
+    Ok(p)
 }
 
 #[tauri::command]
@@ -239,7 +242,10 @@ pub async fn project_create(app: AppHandle, state: State<'_, AppState>, args: Cr
         })
     })
     .await
-    .inspect(|p| log::info!("project created: {} ({})", p.name, p.template))
+    .inspect(|p| {
+        log::info!("project created: {} ({})", p.name, p.template);
+        spawn_profile(&app, &p.id, PathBuf::from(&p.path), false);
+    })
     .inspect_err(|e| log::error!("project creation failed: {e}"))
 }
 
@@ -930,4 +936,101 @@ pub fn publish_ios() -> AppResult<()> {
     let work = std::path::Path::new(".");
     let req = UploadRequest { project_id: "", package: "", artifact: work, track: "", work_dir: work, fastlane: work };
     p.upload(&req, &mut |_| {})
+}
+
+// ───────────── projectprofiel ─────────────
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProfileStatus {
+    project_id: String,
+    /// working | ready | limited
+    state: String,
+    /// Alleen voor de ontwikkelaarsmodus.
+    reason: Option<String>,
+}
+
+fn profile_status(app: &AppHandle, id: &str, state: &str, reason: Option<String>) {
+    let _ = app.emit("profile-status", ProfileStatus { project_id: id.into(), state: state.into(), reason });
+}
+
+/// Zet op de achtergrond de officiële Flutter/Dart-plugin klaar (en past het profiel toe als dat nodig is).
+/// De gebruiker ziet alleen een rustige statusregel; mislukken is niet erg (Studio's eigen skills en tools werken door).
+pub fn spawn_profile(app: &AppHandle, project_id: &str, dir: PathBuf, force: bool) {
+    let (app, id) = (app.clone(), project_id.to_string());
+    std::thread::spawn(move || {
+        let st = app.state::<AppState>();
+        let Ok(p) = st.db.project_get(&id) else { return };
+        let version = st.db.profile_version(&id).unwrap_or(0);
+        let needs_files = force || version < crate::profile::CURRENT;
+        let needs_plugin = !crate::profile::plugin_enabled(&dir);
+        if !needs_files && !needs_plugin {
+            return;
+        }
+        profile_status(&app, &id, "working", None);
+        if needs_files {
+            let facts = crate::profile::ProjectFacts { name: &p.name, structure: crate::profile::structure_of(&dir) };
+            match crate::profile::apply(&dir, &facts) {
+                Ok(r) => {
+                    for (f, why) in &r.skipped {
+                        log::info!("profile: skipped {f}: {why}");
+                    }
+                    let _ = st.db.set_profile_version(&id, crate::profile::CURRENT);
+                }
+                Err(e) => log::warn!("profile: could not apply for {}: {e}", p.name),
+            }
+        }
+        let mut limited: Option<String> = None;
+        match proc::find("dart").and_then(|_| crate::profile::dart_version()) {
+            Some(v) if crate::profile::dart_mcp_supported(&v) => {}
+            Some(v) => limited = Some(format!("dart {v} is older than {}", crate::profile::MIN_DART)),
+            None => limited = Some("dart not found".into()),
+        }
+        if needs_plugin {
+            let source = std::env::var("STUDIO_PLUGIN_SOURCE").unwrap_or_else(|_| crate::profile::PLUGIN_SOURCE.into());
+            match proc::find("claude") {
+                Some(claude) => {
+                    if let crate::profile::PluginOutcome::Failed(m) = crate::profile::ensure_plugin(&claude, &dir, &source) {
+                        log::warn!("profile: plugin install failed: {m}");
+                        limited = Some(format!("plugin: {m}"));
+                    }
+                }
+                None => limited = Some("claude not found".into()),
+            }
+        }
+        profile_status(&app, &id, if limited.is_some() { "limited" } else { "ready" }, limited);
+    });
+}
+
+/// Alleen voor de ontwikkelaarsmodus.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileInfo {
+    version: u32,
+    current: u32,
+    plugin: bool,
+    dart: Option<String>,
+    dart_mcp_ok: bool,
+    structure: &'static str,
+}
+
+#[tauri::command]
+pub fn profile_info(state: State<'_, AppState>, project_id: String) -> AppResult<ProfileInfo> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let dart = crate::profile::dart_version();
+    Ok(ProfileInfo {
+        version: state.db.profile_version(&project_id)?,
+        current: crate::profile::CURRENT,
+        plugin: crate::profile::plugin_enabled(&dir),
+        dart_mcp_ok: dart.as_deref().is_some_and(crate::profile::dart_mcp_supported),
+        dart,
+        structure: crate::profile::structure_of(&dir),
+    })
+}
+
+#[tauri::command]
+pub fn profile_apply(app: AppHandle, state: State<'_, AppState>, project_id: String) -> AppResult<()> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    spawn_profile(&app, &project_id, dir, true);
+    Ok(())
 }

@@ -84,6 +84,10 @@ const MIGRATIONS: &[&str] = &[
     SELECT lower(hex(randomblob(16))), p.id, k.key, 0
     FROM projects p, (SELECT 'device_test' AS key UNION SELECT 'native_manual') k;
     "#,
+    // v4 — versie van het projectprofiel (0 = nog geen profiel)
+    r#"
+    ALTER TABLE projects ADD COLUMN profile_version INTEGER NOT NULL DEFAULT 0;
+    "#,
 ];
 
 /// De verplichte (blokkerende) checklistpunten. Volgorde = weergavevolgorde.
@@ -130,6 +134,7 @@ pub struct NewProject {
     pub description: String,
     pub bundle_id: String,
     pub initial_commit: Option<String>,
+    pub profile_version: u32,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -247,9 +252,9 @@ impl Db {
         let mut conn = self.lock();
         let tx = conn.transaction()?;
         tx.execute(
-            "INSERT INTO projects(id, name, slug, path, template, description, bundle_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![id, p.name, p.slug, p.path, p.template, p.description, p.bundle_id],
+            "INSERT INTO projects(id, name, slug, path, template, description, bundle_id, profile_version)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![id, p.name, p.slug, p.path, p.template, p.description, p.bundle_id, p.profile_version],
         )?;
         for key in CHECKLIST_KEYS {
             tx.execute(
@@ -419,6 +424,23 @@ impl Db {
         Ok(())
     }
 
+    pub fn profile_version(&self, id: &str) -> AppResult<u32> {
+        Ok(self.lock().query_row("SELECT profile_version FROM projects WHERE id = ?1", [id], |r| r.get(0)).optional()?.unwrap_or(0))
+    }
+
+    pub fn set_profile_version(&self, id: &str, v: u32) -> AppResult<()> {
+        self.lock().execute("UPDATE projects SET profile_version = ?2 WHERE id = ?1", params![id, v])?;
+        Ok(())
+    }
+
+    /// Projecten waarvan het profiel ouder is dan `current` (id, pad).
+    pub fn projects_below_profile(&self, current: u32) -> AppResult<Vec<(String, String)>> {
+        let conn = self.lock();
+        let mut st = conn.prepare("SELECT id, path FROM projects WHERE profile_version < ?1 ORDER BY created_at")?;
+        let rows = st.query_map([current], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     pub fn project_set_status(&self, id: &str, status: &str) -> AppResult<()> {
         self.lock().execute("UPDATE projects SET status = ?2 WHERE id = ?1", params![id, status])?;
         Ok(())
@@ -483,6 +505,7 @@ mod tests {
             description: "d".into(),
             bundle_id: "com.example.slug".into(),
             initial_commit: Some("abc123".into()),
+            profile_version: 0,
         }
     }
 
@@ -570,6 +593,21 @@ mod tests {
         db.checklist_update(&p.id, "legal", "done", "[]", None).unwrap();
         db.checklist_update(&p.id, "ai_test_run", "done", "[]", Some("fp1")).unwrap();
         assert_eq!(db.project_get(&p.id).unwrap().checklist_done, 2);
+    }
+
+    #[test]
+    fn profile_versions_drive_migration() {
+        let db = Db::open_in_memory().unwrap();
+        let a = db.project_insert(&sample("A", "/tmp/a")).unwrap();
+        let mut nb = sample("B", "/tmp/b");
+        nb.profile_version = 1;
+        let b = db.project_insert(&nb).unwrap();
+        assert_eq!(db.profile_version(&a.id).unwrap(), 0);
+        assert_eq!(db.profile_version(&b.id).unwrap(), 1);
+        assert_eq!(db.projects_below_profile(1).unwrap().len(), 1);
+        db.set_profile_version(&a.id, 1).unwrap();
+        assert!(db.projects_below_profile(1).unwrap().is_empty());
+        assert_eq!(db.projects_below_profile(2).unwrap().len(), 2, "a newer Studio profile selects every project");
     }
 
     #[test]

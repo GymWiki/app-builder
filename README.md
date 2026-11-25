@@ -2,7 +2,7 @@
 
 Een lichtgewicht desktop-app (Tauri 2 + React) waarmee niet-technische mensen een **Flutter-app** (iOS en Android) bouwen door te chatten met hun **eigen Claude Code-installatie**. De gebruiker houdt alle code: een gewone Flutter-projectmap met git. Denk "FlutterFlow, maar alleen AI en veel lichter".
 
-> Status: **Alle fasen 0–5** zijn gebouwd (fundament, projecten + wizard, chat + MCP, live preview, linkermenu, publiceren met checklist-poort en AI-testrun). Android eerst; iOS-publiceren is een ontworpen interface zonder implementatie. Lees _Nog niet geverifieerd_ in DECISIONS.md voordat je erop vertrouwt. Zie [DECISIONS.md](DECISIONS.md) voor gemaakte keuzes en wat nog niet is geverifieerd.
+> Status: **Fase 0–6** zijn gebouwd (fundament, projecten + wizard, chat + MCP, live preview, linkermenu, publiceren met checklist-poort en AI-testrun, projectprofiel voor Claude Code). Android eerst; iOS-publiceren is een ontworpen interface zonder implementatie. Lees _Nog niet geverifieerd_ in DECISIONS.md voordat je erop vertrouwt. Zie [DECISIONS.md](DECISIONS.md) voor gemaakte keuzes en wat nog niet is geverifieerd.
 
 ## Principes
 
@@ -46,6 +46,7 @@ src-tauri/              Rust-backend
   checklist.rs          checklist-poort (puur, getest) · testrun.rs AI-testrunner + Dart-crawler
   signing.rs · publish.rs  keystore (keytool), App Bundle, Fastlane-upload, iOS-interface
   platform.rs · assets.rs · screens.rs · meta.rs · keychain.rs · integrations.rs  instellingen, iconen, schermenboom, vermelding, geheimen, Supabase/Firebase
+  profile.rs · templates.rs  projectprofiel (CLAUDE.md, skills, regels, hooks, rechten, plugin) en de feature-first startbasis
   permissions.rs        bevestigingen in de UI voor netwerk/commando's/buiten-project
   studio_tools.rs       de implementatie van de MCP-tools
   install.rs            vaste lijst begeleide installaties (de UI kiest nooit zelf een commando)
@@ -71,3 +72,9 @@ Extra rooktests (alleen met echte Chromium): `STUDIO_BROWSER=<pad> STUDIO_BROWSE
 ## Browserdemo en e2e
 
 `npm run build:demo` bouwt een statische demo (gesimuleerde backend, scenario-kiezer bovenin) in `dist-demo/`. De scripts in `e2e/` draaien de hele UI in Chromium tegen die mock (zie `e2e/README.md`).
+
+## Projectprofiel
+
+Elk project krijgt automatisch een profiel zodat Claude Code snel, goedkoop en Flutter-correct werkt, zonder dat de gebruiker iets instelt: een korte `CLAUDE.md`, path-gebonden regels (`.claude/rules/`), zes kleine skills (`.claude/skills/studio-*`), rechten (deny op `build/`, `.dart_tool/`, `.git/`, gegenereerde bestanden), een formatteer-hook en de officiële `dart-flutter`-plugin. Het profiel is versioned (`profile_version`) en wordt veilig gemigreerd: bestanden van de gebruiker worden nooit overschreven. Ontwikkelaarsmodus: zeven keer klikken op de versieregel in Instellingen.
+
+Echte-tools-tests (Flutter, git en `claude` nodig): `cargo test --manifest-path src-tauri/Cargo.toml -- --ignored real_flutter_templates real_profile_end_to_end real_crawler --nocapture`.

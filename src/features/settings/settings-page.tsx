@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, FolderOpen } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import { Card } from "@/components/ds/card";
 import { LanguageSwitch } from "@/components/ds/language-switch";
 import { ThemeToggle } from "@/components/ds/theme-toggle";
 import { Logo } from "@/components/layout/top-bar";
+import { DevPanel } from "@/features/profile/dev-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +20,16 @@ import { toastError } from "@/lib/toast";
 
 const ORG_RE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 
+/** Telt snelle klikken (zeven binnen anderhalve seconde tussen elke klik). Staat buiten de component: het is een gebeurtenis, geen render. */
+function registerTap(c: { n: number; t: number }): boolean {
+  const now = Date.now();
+  c.n = now - c.t < 1500 ? c.n + 1 : 1;
+  c.t = now;
+  if (c.n < 7) return false;
+  c.n = 0;
+  return true;
+}
+
 export function SettingsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -26,11 +37,18 @@ export function SettingsPage() {
   const { data: info } = useAppInfo();
   const { data: settings } = useSettings();
   const orgId = useId();
+  const clicks = useRef({ n: 0, t: 0 });
+  const dev = settings?.dev_mode === "true";
+  // Verborgen: zeven keer klikken op de versieregel zet de ontwikkelaarsmodus aan of uit.
+  const tapVersion = async () => {
+    if (registerTap(clicks.current)) await save("dev_mode", dev ? "false" : "true");
+  };
+
   const [org, setOrg] = useState<string | null>(null);
   const orgValue = org ?? settings?.org ?? "com.example";
   const orgValid = ORG_RE.test(orgValue);
 
-  const save = async (key: "projects_dir" | "org", value: string) => {
+  const save = async (key: "projects_dir" | "org" | "dev_mode", value: string) => {
     try {
       await api.settingsSet(key, value);
       await Promise.all([
@@ -132,7 +150,7 @@ export function SettingsPage() {
         </Section>
 
         <Section title={t("settings.about")}>
-          <p className="t-body">
+          <p className="t-body" onClick={() => void tapVersion()}>
             {t("settings.version", { version: info?.version ?? "…", os: info ? `${info.os} (${info.arch})` : "…" })}
           </p>
           {info?.logDir && (
@@ -155,6 +173,7 @@ export function SettingsPage() {
             {t("settings.designSystem")}
           </Link>
         </Section>
+        {dev && <DevPanel />}
       </main>
     </div>
   );

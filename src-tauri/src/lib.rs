@@ -14,6 +14,7 @@ mod mcp;
 mod meta;
 mod permissions;
 mod platform;
+mod profile;
 mod projects;
 mod preview;
 mod proc;
@@ -23,6 +24,7 @@ mod screens;
 mod signing;
 mod screenshot;
 mod studio_tools;
+mod templates;
 mod testrun;
 mod toolchain;
 
@@ -76,6 +78,17 @@ pub fn run() {
             });
             let chat = Arc::new(chat::ChatManager::new(Arc::new(engine::claude::ClaudeEngine::new())));
             log::info!("Studio {} started on {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS);
+            // Bestaande projecten met een ouder profiel stil bijwerken (nooit bestanden van de gebruiker overschrijven).
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let st = handle.state::<commands::AppState>();
+                for (id, path) in st.db.projects_below_profile(profile::CURRENT).unwrap_or_default() {
+                    let dir = std::path::PathBuf::from(&path);
+                    if dir.is_dir() {
+                        commands::spawn_profile(&handle, &id, dir, false);
+                    }
+                }
+            });
             app.manage(commands::AppState { db, pty: pty::PtyManager::default(), chat, chat_ctx, perms, preview, data_dir: dir.clone(), jobs: Default::default() });
             Ok(())
         })
@@ -148,6 +161,8 @@ pub fn run() {
             commands::signing_prompt,
             commands::publish_android,
             commands::publish_ios,
+            commands::profile_info,
+            commands::profile_apply,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Studio")

@@ -19,6 +19,7 @@ import type {
   InstallPlan,
   PermissionDecision,
   PreviewState,
+  ProfileInfo,
   Project,
   Screen,
   Settings,
@@ -141,6 +142,9 @@ export const api = {
   publishAndroid: (projectId: string, track: string, confirmed: boolean) =>
     call<{ version: string; track: string }>("publish_android", { projectId, track, confirmed }),
   publishIos: () => call<void>("publish_ios"),
+
+  profileInfo: (projectId: string) => call<ProfileInfo>("profile_info", { projectId }),
+  profileApply: (projectId: string) => call<void>("profile_apply", { projectId }),
 
   projectsList: (query?: string) => call<Project[]>("projects_list", { query: query || null }),
   projectGet: (id: string) => call<Project>("project_get", { id }),

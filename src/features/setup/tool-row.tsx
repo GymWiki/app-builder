@@ -59,7 +59,7 @@ export function ToolRow({
   const isLogin = id === "claudeLogin";
   const ns = `tools.${id}`;
   const bad = state === "missing" || state === "outdated" || state === "warning";
-  const issue = id === "android" ? (status?.issue ?? "other") : null;
+  const issue = id === "android" ? (status?.issue ?? "other") : (status?.issue ?? null);
 
   // Uitleg + stappen per situatie
   let steps: string[] = [];
@@ -78,6 +78,8 @@ export function ToolRow({
   if (state === "checking") statusText = t("setup.checking");
   else if (state === "ok")
     statusText = status?.version ? t("setup.readyVersion", { version: status.version }) : t("setup.ready");
+  else if (id === "flutter" && issue === "dart_old")
+    statusText = t("tools.flutter.issues.dart_old", { dart: (status?.detail ?? "").replace("Dart ", "") });
   else if (state === "outdated")
     statusText = t("setup.outdated", { version: status?.version ?? "?", min: minVersion ?? status?.minVersion ?? "?" });
   else if (id === "android" && issue) statusText = t(`tools.android.issues.${issue}`);

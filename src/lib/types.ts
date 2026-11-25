@@ -53,7 +53,7 @@ export interface AppInfo {
   minVersions: { git: string; flutter: string; claude: string };
 }
 
-export type Settings = Partial<Record<"projects_dir" | "setup_completed" | "org", string>>;
+export type Settings = Partial<Record<"projects_dir" | "setup_completed" | "org" | "dev_mode", string>>;
 
 export interface Screen {
   class: string;
@@ -66,7 +66,7 @@ export type ToolKind = "read" | "edit" | "command" | "network" | "studio" | "oth
 /** Spiegel van `ChatEvent` in src-tauri/src/engine/mod.rs. */
 export type ChatEvent =
   | { type: "user"; text: string; context: string | null }
-  | { type: "init"; session_id: string; model: string | null }
+  | { type: "init"; session_id: string; model: string | null; mcp?: [string, string][] }
   | { type: "text_delta"; message_id: string; text: string }
   | { type: "text"; message_id: string; text: string }
   | {
@@ -241,4 +241,20 @@ export interface SigningStatus {
   gradleConfigured: boolean;
   playKey: boolean;
   fastlane: boolean;
+}
+
+export interface ProfileStatus {
+  projectId: string;
+  state: "working" | "ready" | "limited";
+  /** Alleen voor de ontwikkelaarsmodus. */
+  reason: string | null;
+}
+
+export interface ProfileInfo {
+  version: number;
+  current: number;
+  plugin: boolean;
+  dart: string | null;
+  dartMcpOk: boolean;
+  structure: "feature-first" | "flat";
 }

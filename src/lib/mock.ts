@@ -764,10 +764,18 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       const q = ((args.query as string | null) ?? "").toLowerCase();
       return projects.filter((p) => p.name.toLowerCase().includes(q));
     }
+    case "profile_info":
+      return { version: 1, current: 1, plugin: true, dart: "3.14.0", dartMcpOk: true, structure: "feature-first" };
+    case "profile_apply":
+      return;
     case "project_get":
     case "project_open": {
       const p = projects.find((x) => x.id === args.id);
       if (!p) throw new AppError("not_found", `project ${String(args.id)} not found`);
+      if (cmd === "project_open") {
+        emit("profile-status", { projectId: p.id, state: "working", reason: null });
+        setTimeout(() => emit("profile-status", { projectId: p.id, state: "ready", reason: null }), 1500);
+      }
       return p;
     }
     case "project_create": {

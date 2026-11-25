@@ -6,19 +6,7 @@ use crate::proc;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-#[cfg(test)]
-pub const TEMPLATES: [&str; 4] = ["blank", "scoreboard", "checklist", "tracker"];
 const MAX_NAME: usize = 60;
-
-pub fn template_source(template: &str) -> Option<&'static str> {
-    Some(match template {
-        "blank" => include_str!("../templates/blank.dart"),
-        "scoreboard" => include_str!("../templates/scoreboard.dart"),
-        "checklist" => include_str!("../templates/checklist.dart"),
-        "tracker" => include_str!("../templates/tracker.dart"),
-        _ => return None,
-    })
-}
 
 // Dart-trefwoorden die niet als pakketnaam mogen worden gebruikt.
 const DART_RESERVED: &[&str] = &[
@@ -81,23 +69,6 @@ pub fn bundle_id(org: &str, slug: &str) -> String {
     format!("{org}.{}", slug.replace('_', ""))
 }
 
-fn dart_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('\'', "\\'").replace('$', "\\$").replace(['\n', '\r'], " ")
-}
-
-pub fn render_main(template: &str, name: &str) -> AppResult<String> {
-    let src = template_source(template).ok_or_else(|| AppError::Invalid(format!("unknown template {template}")))?;
-    Ok(src.replace("__APP_NAME__", &dart_escape(name)))
-}
-
-pub fn smoke_test(slug: &str) -> String {
-    format!(
-        "import 'package:flutter_test/flutter_test.dart';\nimport 'package:{slug}/main.dart';\n\n\
-         void main() {{\n  testWidgets('app starts', (WidgetTester tester) async {{\n    \
-         await tester.pumpWidget(const MyApp());\n    expect(find.byType(MyApp), findsOneWidget);\n  }});\n}}\n"
-    )
-}
-
 /// Projectgeheugen: wordt door Claude gelezen (via CLAUDE.md) en door Studio bijgehouden.
 pub fn studio_md(name: &str, template: &str, description: &str, bundle: &str) -> String {
     let what = if description.trim().is_empty() {
@@ -111,6 +82,7 @@ pub fn studio_md(name: &str, template: &str, description: &str, bundle: &str) ->
          ## What the app does\n\n{what}\n\n\
          ## Facts\n\n\
          - Framework: Flutter (Material 3), targets Android and iOS\n\
+         - State: Riverpod (flutter_riverpod). Navigation: go_router. Structure: `lib/core/` (theme, models, navigation, shared widgets) and `lib/features/<screen>/`\n\
          - Starting template: {template}\n\
          - Bundle / application ID: `{bundle}`\n\n\
          ## Decisions\n\n\
@@ -118,14 +90,11 @@ pub fn studio_md(name: &str, template: &str, description: &str, bundle: &str) ->
          ## Working agreements\n\n\
          - The owner is not a programmer. Explain in plain language, keep changes small and focused.\n\
          - Keep all code inside `lib/` and tests inside `test/`. Prefer built-in Flutter widgets; add a package only when it clearly saves effort.\n\
+         - After finishing a task, add at most 3 lines about it under Decisions (what changed and why).\n\
          - After every change the app must still build and `flutter analyze` must stay clean.\n\
          - Never put secrets (API keys, passwords, signing keys) in the project. They live in the OS keychain.\n\
          - Update this file when the app's behavior or an important decision changes.\n"
     )
-}
-
-pub fn claude_md() -> &'static str {
-    "# Instructions for Claude\n\n@STUDIO.md\n"
 }
 
 /// Welke van de gewenste `flutter create`-opties bestaan echt in deze Flutter-versie?
@@ -185,7 +154,7 @@ pub fn create_project(
     if name.is_empty() || name.chars().count() > MAX_NAME {
         return Err(AppError::Invalid("project name must be 1-60 characters".into()));
     }
-    if template_source(&req.template).is_none() {
+    if crate::templates::files(&req.template).is_none() {
         return Err(AppError::Invalid(format!("unknown template {}", req.template)));
     }
     if !valid_org(&req.org) {
@@ -220,17 +189,23 @@ pub fn create_project(
 
         // 2. sjabloon
         progress("template");
-        std::fs::create_dir_all(dir.join("lib"))?;
+        // Vaste packages voor de gekozen state-/navigatie-oplossing (Riverpod + go_router).
+        let mut add = vec!["pub", "add"];
+        add.extend(crate::templates::PACKAGES);
+        let o = proc::run(&tools.flutter, &add, Some(&dir), Duration::from_secs(600))?;
+        if !o.ok() {
+            return Err(AppError::CommandFailed(format!("flutter pub add: {}", o.combined().trim())));
+        }
         std::fs::create_dir_all(dir.join("test"))?;
-        std::fs::write(dir.join("lib/main.dart"), render_main(&req.template, name)?)?;
+        crate::templates::write_all(&dir, &req.template, name)?;
         crate::studio_tools::write_theme(&dir, crate::studio_tools::DEFAULT_SEED)?;
-        std::fs::write(dir.join("test/widget_test.dart"), smoke_test(&slug))?;
+        std::fs::write(dir.join("test/widget_test.dart"), crate::templates::smoke_test(&slug))?;
 
         // 3. projectgeheugen
         progress("memory");
         let bundle = bundle_id(&req.org, &slug);
         std::fs::write(dir.join("STUDIO.md"), studio_md(name, &req.template, &req.description, &bundle))?;
-        std::fs::write(dir.join("CLAUDE.md"), claude_md())?;
+        crate::profile::apply(&dir, &crate::profile::ProjectFacts { name, structure: "feature-first" })?;
         let mut ignore = std::fs::read_to_string(dir.join(".gitignore")).unwrap_or_default();
         if !ignore.ends_with('\n') && !ignore.is_empty() {
             ignore.push('\n');
@@ -257,6 +232,7 @@ pub fn create_project(
             description: req.description.trim().to_string(),
             bundle_id: bundle,
             initial_commit: Some(commit),
+            profile_version: crate::profile::CURRENT,
         })
     })();
 
@@ -310,24 +286,6 @@ mod tests {
     }
 
     #[test]
-    fn app_name_is_escaped_in_dart() {
-        let src = render_main("blank", "Jan's $app\\").unwrap();
-        assert!(src.contains("title: 'Jan\\'s \\$app\\\\'"));
-        assert!(!src.contains("__APP_NAME__"));
-    }
-
-    #[test]
-    fn all_templates_define_my_app_and_main() {
-        for t in TEMPLATES {
-            let s = render_main(t, "X").unwrap();
-            assert!(s.contains("class MyApp extends StatelessWidget"), "{t}");
-            assert!(s.contains("void main()"), "{t}");
-            assert!(s.contains("import 'app_theme.dart';") && s.contains("theme: AppTheme.light"), "{t}");
-        }
-        assert!(render_main("nope", "X").is_err());
-    }
-
-    #[test]
     fn studio_md_mentions_facts() {
         let md = studio_md("Demo", "tracker", "Counts water", "com.example.demo");
         assert!(md.contains("# Demo") && md.contains("Counts water") && md.contains("com.example.demo"));
@@ -372,6 +330,7 @@ mod tests {
             &fake,
             "#!/bin/sh\n\
              if [ \"$2\" = \"--help\" ]; then echo '--org --project-name --platforms'; exit 0; fi\n\
+             if [ \"$1\" = pub ]; then echo \"$@\" >> \"$(dirname \"$0\")/pub-add.log\"; exit 0; fi\n\
              for a; do dir=\"$a\"; done\n\
              mkdir -p \"$dir/lib\" \"$dir/test\"\n\
              echo '// default' > \"$dir/lib/main.dart\"\n\
@@ -397,9 +356,23 @@ mod tests {
         assert_eq!(p.bundle_id, "com.example.mijnscorebord");
         assert_eq!(steps.borrow().as_slice(), ["prepare", "flutter_create", "template", "memory", "git", "save"]);
         let dir = Path::new(&p.path);
-        assert!(dir.join("lib/app_theme.dart").is_file() && dir.join(".studio/theme.json").is_file());
+        assert!(dir.join("lib/core/theme/app_theme.dart").is_file() && dir.join(".studio/theme.json").is_file());
+        assert!(!dir.join("lib/app_theme.dart").exists(), "feature-first projects keep the theme in lib/core");
         assert!(dir.join(".git").is_dir() && dir.join("STUDIO.md").is_file() && dir.join("CLAUDE.md").is_file());
-        assert!(std::fs::read_to_string(dir.join("lib/main.dart")).unwrap().contains("ScoreboardScreen"));
+        assert!(std::fs::read_to_string(dir.join("lib/features/scoreboard/scoreboard_screen.dart")).unwrap().contains("ScoreboardScreen"));
+        assert!(std::fs::read_to_string(dir.join("lib/core/navigation/app_router.dart")).unwrap().contains("ScoreboardScreen"));
+        assert!(std::fs::read_to_string(dir.join("pub-add.log")).is_err(), "pub add runs in the project dir, not next to the script");
+        let pubadd = std::fs::read_to_string(tmp.join("pub-add.log")).unwrap();
+        assert!(pubadd.contains("pub add flutter_riverpod go_router"), "{pubadd}");
+        // projectprofiel
+        let claude = std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
+        assert!(claude.lines().count() < 40 && claude.contains("Mijn Scorebord"));
+        for f in [".claude/settings.json", ".claude/rules/flutter.md", ".claude/skills/studio-screen/SKILL.md", ".claude/hooks/studio_format.dart", "lib/features/scoreboard/CLAUDE.md"] {
+            assert!(dir.join(f).is_file(), "missing {f}");
+        }
+        assert_eq!(db.profile_version(&p.id).unwrap(), crate::profile::CURRENT);
+        let tracked = proc::run(&tools.git, &["ls-files"], Some(dir), Duration::from_secs(10)).unwrap().stdout;
+        assert!(tracked.contains(".claude/skills/studio-screen/SKILL.md") && tracked.contains("CLAUDE.md"), "the profile is committed so every snapshot restores it");
         assert!(std::fs::read_to_string(dir.join(".gitignore")).unwrap().contains("settings.local.json"));
         let log = proc::run(&tools.git, &["log", "--oneline"], Some(dir), Duration::from_secs(10)).unwrap();
         assert_eq!(log.stdout.lines().count(), 1);
@@ -416,5 +389,31 @@ mod tests {
         assert!(!projects.join("mijn_scorebord-3").exists());
         assert_eq!(db.projects_list(None).unwrap().len(), 2);
         std::fs::remove_dir_all(tmp).unwrap();
+    }
+
+    /// Echte Flutter + git nodig: `cargo test real_flutter_templates -- --ignored --nocapture`
+    /// Maakt elk sjabloon aan zoals Studio dat doet, en draait `flutter analyze` en `flutter test`.
+    #[test]
+    #[ignore]
+    fn real_flutter_templates() {
+        let (Some(flutter), Some(git)) = (proc::find("flutter"), proc::find("git")) else { panic!("flutter and git must be on PATH") };
+        let root = std::env::temp_dir().join(format!("studio-real-{}", uuid::Uuid::new_v4()));
+        let db = Db::open_in_memory().unwrap();
+        let tools = Tools { flutter: flutter.clone(), git };
+        for template in crate::templates::TEMPLATES {
+            let req = CreateRequest { name: format!("Real {template}"), template: template.into(), description: String::new(), org: "com.example".into() };
+            let p = create_project(&db, &tools, &root, &req, &|s| println!("[{template}] {s}")).unwrap();
+            let dir = Path::new(&p.path);
+            let analyze = proc::run(&flutter, &["analyze"], Some(dir), Duration::from_secs(600)).unwrap();
+            println!("[{template}] analyze: {}", analyze.combined().lines().last().unwrap_or(""));
+            assert!(analyze.ok() && analyze.combined().contains("No issues found"), "{template}: {}", analyze.combined());
+            let test = proc::run(&flutter, &["test"], Some(dir), Duration::from_secs(600)).unwrap();
+            println!("[{template}] test: {}", test.combined().lines().last().unwrap_or(""));
+            assert!(test.ok(), "{template}: {}", test.combined());
+            let screens = crate::studio_tools::list_screens(dir).unwrap();
+            assert!(!screens.is_empty(), "{template}: list_screens finds the screen");
+            let g = crate::screens::screen_graph(dir).unwrap();
+            assert_eq!(g.home.as_deref(), Some(screens[0].class.as_str()), "{template}: the '/' route is the start screen");
+        }
     }
 }

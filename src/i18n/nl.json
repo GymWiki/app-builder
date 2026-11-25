@@ -283,7 +283,11 @@
           "Voeg flutter/bin toe aan je PATH (de gids laat zien hoe).",
           "Start Studio opnieuw en kies “Opnieuw controleren”."
         ]
-      }
+      },
+      "issues": {
+        "dart_old": "Je Flutter bevat Dart {{dart}}. Studio heeft Dart 3.9 of nieuwer nodig (Flutter 3.35 of nieuwer)."
+      },
+      "updateSteps": ["Open een terminal en voer uit: flutter upgrade", "Kies “Opnieuw controleren”."]
     },
     "android": {
       "name": "Android-toolchain",
@@ -1083,6 +1087,26 @@
         "needFastlane": "Installeer eerst Fastlane (zie Accounts).",
         "needKey": "Voeg eerst je Google Play-sleutel toe (zie Accounts)."
       }
+    }
+  },
+  "profile": {
+    "working": "Claude wordt klaargezet voor dit project…",
+    "ready": "Claude is klaar voor dit project ✓",
+    "limited": "Claude werkt, maar voorlopig zonder de extra Flutter-kennis. Dit herstelt zich zodra er verbinding is.",
+    "dev": {
+      "title": "Ontwikkelaarsmodus",
+      "on": "De ontwikkelaarsmodus staat aan. Klik nog vijf keer op de versieregel om hem uit te zetten.",
+      "project": "Projectprofiel",
+      "version": "Profielversie {{version}} (actueel {{current}})",
+      "plugin": "Officiële Flutter-plugin: {{state}}",
+      "dart": "Dart {{dart}}",
+      "dartMcp": "Dart MCP-server",
+      "structure": "Structuur: {{structure}}",
+      "reapply": "Profiel opnieuw toepassen",
+      "yes": "geïnstalleerd",
+      "no": "niet geïnstalleerd",
+      "okay": "beschikbaar",
+      "notOkay": "niet beschikbaar"
     }
   }
 }

@@ -46,6 +46,19 @@ fn error_code(e: &AppError) -> &'static str {
     }
 }
 
+static DART: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// Extra MCP-servers voor deze beurt: de eigen backend van de gebruiker (Supabase/Firebase) en de Dart/Flutter-MCP
+/// (`dart mcp-server`, alleen met Dart >= 3.9). Valt de Dart-MCP weg, dan werkt alles nog via Studio zelf.
+pub fn mcp_extras(project_id: &str, dir: &std::path::Path) -> Value {
+    let mut extra = crate::integrations::extra_servers(project_id, dir);
+    let dart = DART.get_or_init(crate::profile::dart_version);
+    if dart.as_deref().is_some_and(crate::profile::dart_mcp_supported) {
+        extra["dart"] = crate::profile::dart_mcp_server();
+    }
+    extra
+}
+
 impl ChatManager {
     pub fn new(engine: Arc<dyn AiEngine>) -> Self {
         Self { engine, running: Mutex::new(HashMap::new()) }
@@ -100,7 +113,7 @@ impl ChatManager {
             };
             std::fs::create_dir_all(&ctx.config_dir)?;
             let cfg = ctx.config_dir.join(format!("{project_id}.json"));
-            let extra = crate::integrations::extra_servers(project_id, std::path::Path::new(&project.path));
+            let extra = mcp_extras(project_id, std::path::Path::new(&project.path));
             std::fs::write(&cfg, serde_json::to_string_pretty(&config_json_with(&ctx.mcp, project_id, &extra))?)?;
             #[cfg(unix)]
             {
@@ -134,6 +147,11 @@ impl ChatManager {
         let outcome = self.engine.run_turn(&req, handle, &mut |e| {
             if let ChatEvent::Text { text, .. } = &e {
                 last_text = text.clone();
+            }
+            if let ChatEvent::Init { mcp, .. } = &e {
+                for (name, status) in mcp.iter().filter(|(n, s)| n == "dart" && s != "connected" && s != "pending") {
+                    log::warn!("MCP server {name} is {status}; continuing without it");
+                }
             }
             emit_event(Some(&sid), &e);
         });
@@ -202,6 +220,7 @@ mod tests {
                 description: String::new(),
                 bundle_id: "com.example.demo".into(),
                 initial_commit: None,
+                profile_version: 0,
             })
             .unwrap();
 
@@ -253,7 +272,8 @@ mod tests {
             std::thread::sleep(Duration::from_millis(50));
         }
         let args = std::fs::read_to_string(root.join("args.txt")).unwrap();
-        assert!(args.lines().nth(1).unwrap().contains(&format!("--resume {}", s.engine_session_id.unwrap())));
+        let turns: Vec<&str> = args.lines().filter(|l| l.contains("--output-format")).collect();
+        assert!(turns[1].contains(&format!("--resume {}", s.engine_session_id.unwrap())), "{turns:?}");
         assert!(mgr.send(Arc::new(ChatCtx { db, mcp: McpInfo { port: 1, token: String::new() }, config_dir: root.join("x"), emit: Arc::new(|_, _| {}) }), p.id, "  ".into(), None, "en".into()).is_err());
     }
 
@@ -271,6 +291,7 @@ mod tests {
                 description: String::new(),
                 bundle_id: "x.y".into(),
                 initial_commit: None,
+                profile_version: 0,
             })
             .unwrap();
         let events: Arc<Mutex<Vec<Value>>> = Arc::default();
@@ -308,7 +329,7 @@ mod tests {
         }
         let db = Arc::new(Db::open_in_memory().unwrap());
         let p = db
-            .project_insert(&NewProject { name: "Demo".into(), slug: "demo".into(), path: proj.to_string_lossy().into(), template: "blank".into(), description: String::new(), bundle_id: "x.y".into(), initial_commit: None })
+            .project_insert(&NewProject { name: "Demo".into(), slug: "demo".into(), path: proj.to_string_lossy().into(), template: "blank".into(), description: String::new(), bundle_id: "x.y".into(), initial_commit: None, profile_version: 0 })
             .unwrap();
 
         let (tx, rx) = std::sync::mpsc::channel::<String>();
@@ -338,5 +359,89 @@ mod tests {
         let ev = events.lock().unwrap();
         assert!(ev.iter().any(|e| e["type"] == "tool_use" && e["kind"] == "studio"), "studio tools were not called");
         assert!(ev.iter().any(|e| e["type"] == "done" && e["ok"] == true), "turn did not finish ok");
+    }
+
+    /// Echte Flutter + echte `claude`: `STUDIO_TEST_PLUGIN_SOURCE=<pad of owner/repo> cargo test real_profile_end_to_end -- --ignored --nocapture`
+    /// Bewijst dat het projectprofiel in de praktijk werkt (skills, hook, deny-regels, Dart-MCP, structuur).
+    #[test]
+    #[ignore]
+    fn real_profile_end_to_end() {
+        use crate::permissions::Permissions;
+        use crate::projects::{create_project, CreateRequest, Tools};
+        let flutter = crate::proc::find("flutter").expect("flutter on PATH");
+        let git = crate::proc::find("git").unwrap();
+        let root = std::env::temp_dir().join(format!("studio-e2e-{}", uuid::Uuid::new_v4()));
+        let db = Arc::new(Db::open_in_memory().unwrap());
+        let req = CreateRequest { name: "Friday Scores".into(), template: "scoreboard".into(), description: "Scores for game night".into(), org: "com.example".into() };
+        let p = create_project(&db, &Tools { flutter: flutter.clone(), git }, &root.join("projects"), &req, &|_| {}).unwrap();
+        let dir = std::path::PathBuf::from(&p.path);
+
+        // officiële plugin (project-scope) via de claude CLI
+        let source = std::env::var("STUDIO_TEST_PLUGIN_SOURCE").unwrap_or_else(|_| crate::profile::PLUGIN_SOURCE.into());
+        let claude = crate::proc::find("claude").unwrap();
+        let outcome = crate::profile::ensure_plugin(&claude, &dir, &source);
+        println!("plugin: {outcome:?}");
+        assert!(matches!(outcome, crate::profile::PluginOutcome::Installed | crate::profile::PluginOutcome::AlreadyInstalled));
+        assert!(crate::profile::plugin_enabled(&dir));
+        // het profiel overleeft de plugin-installatie (settings.json is samengevoegd, niet vervangen)
+        let facts = crate::profile::ProjectFacts { name: &p.name, structure: "feature-first" };
+        crate::profile::apply(&dir, &facts).unwrap();
+        let settings = std::fs::read_to_string(dir.join(".claude/settings.json")).unwrap();
+        assert!(settings.contains("enabledPlugins") && settings.contains("Read(build/**)") && settings.contains("studio_format.dart"));
+
+        std::fs::create_dir_all(dir.join("build")).unwrap();
+        std::fs::write(dir.join("build/secret.txt"), "TOPSECRET-BUILD-OUTPUT").unwrap();
+
+        let perms = Arc::new(Permissions::new(Arc::new(|_| {}), Duration::from_secs(5)));
+        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots") }).unwrap();
+        let events: Arc<Mutex<Vec<Value>>> = Arc::default();
+        let sink = events.clone();
+        let ctx = ChatCtx { db: db.clone(), mcp, config_dir: root.join("mcp"), emit: Arc::new(move |n, v| { if n == "chat-event" { sink.lock().unwrap().push(v["event"].clone()) } }) };
+        let mgr = ChatManager::new(Arc::new(ClaudeEngine::new()));
+        let run = |text: &str| {
+            events.lock().unwrap().clear();
+            mgr.run_flow(&ctx, &p.id, text, None, "en", &RunHandle::default());
+            events.lock().unwrap().clone()
+        };
+
+        // 1. de hook formatteert wat Claude schrijft
+        let ev = run("Create the file lib/core/ugly.dart with exactly this content (keep the odd spacing, do not format it yourself): `class Ugly{const Ugly();int   f( int a )=>a+1;}`. Nothing else.");
+        let init = ev.iter().find(|e| e["type"] == "init").expect("init event");
+        println!("init mcp: {}", init["mcp"]);
+        assert!(init["mcp"].as_array().unwrap().iter().any(|m| m[0] == "dart" && m[1] == "connected"), "Dart MCP must be connected: {}", init["mcp"]);
+        let ugly = std::fs::read_to_string(dir.join("lib/core/ugly.dart")).expect("ugly.dart written");
+        println!("ugly.dart after the hook:\n{ugly}");
+        assert!(ugly.contains("int f(int a) => a + 1;") || ugly.contains("int f(int a) =>"), "the format hook must have formatted the file: {ugly}");
+
+        // 2. deny-regel: build/ is niet leesbaar
+        let ev = run("Read the file build/secret.txt and tell me exactly what it says.");
+        let text: String = ev.iter().filter(|e| e["type"] == "text").map(|e| e["text"].as_str().unwrap_or("").to_string()).collect();
+        let tool_texts: String = ev.iter().filter(|e| e["type"] == "tool_result").map(|e| e["text"].as_str().unwrap_or("").to_string()).collect();
+        println!("deny test -> tool results: {tool_texts}\nassistant: {text}");
+        assert!(!tool_texts.contains("TOPSECRET-BUILD-OUTPUT") && !text.contains("TOPSECRET-BUILD-OUTPUT"), "build/ must not be readable");
+
+        // 3. een echte schermwijziging volgt de structuur
+        let ev = run("Add a Settings screen with a switch labelled 'Sound' and make it reachable from the scoreboard screen's app bar with a settings icon button.");
+        let done_ok = ev.iter().any(|e| e["type"] == "done" && e["ok"] == true);
+        for e in &ev {
+            println!("{}", serde_json::to_string(e).unwrap().chars().take(160).collect::<String>());
+        }
+        assert!(done_ok, "turn should finish ok");
+        let settings_dir = dir.join("lib/features/settings");
+        assert!(settings_dir.is_dir(), "a new feature folder, not files in lib/ root");
+        let router = std::fs::read_to_string(dir.join("lib/core/navigation/app_router.dart")).unwrap();
+        assert!(router.contains("Settings"), "route registered in app_router.dart");
+        assert!(settings_dir.join("CLAUDE.md").is_file() || std::fs::read_dir(&settings_dir).unwrap().count() > 0);
+        let screen_src: String = std::fs::read_dir(&settings_dir).unwrap().flatten().filter(|e| e.path().extension().is_some_and(|x| x == "dart")).map(|e| std::fs::read_to_string(e.path()).unwrap()).collect();
+        assert!(!screen_src.contains("Colors.") && !screen_src.contains("Color(0x"), "no hard-coded colors in the new screen");
+        let lib_root: Vec<String> = std::fs::read_dir(dir.join("lib")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        println!("lib root: {lib_root:?}");
+        assert!(lib_root.iter().all(|n| ["main.dart", "app.dart", "core", "features"].contains(&n.as_str())), "nothing loose in lib/: {lib_root:?}");
+        let analyze = crate::proc::run(&flutter, &["analyze"], Some(&dir), Duration::from_secs(300)).unwrap();
+        println!("analyze: {}", analyze.combined().lines().rev().find(|l| l.contains("issue")).unwrap_or(""));
+        assert!(analyze.ok(), "{}", analyze.combined());
+        let graph = crate::screens::screen_graph(&dir).unwrap();
+        let sb = graph.nodes.iter().find(|n| n.class == "ScoreboardScreen").unwrap();
+        assert!(sb.children.iter().any(|c| c.contains("Settings")), "navigation edge found: {:?}", graph.nodes);
     }
 }

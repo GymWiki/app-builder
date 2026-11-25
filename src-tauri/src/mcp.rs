@@ -284,6 +284,7 @@ mod tests {
                 description: String::new(),
                 bundle_id: "com.example.demo".into(),
                 initial_commit: None,
+                profile_version: 0,
             })
             .unwrap();
         let perms = Arc::new(Permissions::new(Arc::new(|_| {}), Duration::from_millis(100)));

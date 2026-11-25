@@ -84,6 +84,13 @@ pub fn parse_compile_error(line: &str) -> Option<(String, u32, String)> {
     Some((file.to_string(), ln, msg.trim().to_string()))
 }
 
+/// Echte uitvoer van `flutter run -d web-server` (Flutter 3.50): `Performing hot restart...   71ms`. De regel zonder
+/// tijd is "bezig", met tijd is "klaar". Native apparaten melden `Reloaded N of M libraries in Xms`.
+fn is_finished_reload(line: &str) -> bool {
+    let t = line.trim_end();
+    (t.contains("Performing hot restart") || t.contains("Performing hot reload")) && t.strip_suffix("ms").and_then(|r| r.chars().last()).is_some_and(|c| c.is_ascii_digit())
+}
+
 impl Inner {
     fn set_status(&mut self, s: &str) {
         self.state.status = s.to_string();
@@ -123,10 +130,24 @@ impl Inner {
             self.state.url = Some(url);
             self.state.problems.clear();
             self.set_status("running");
-        } else if line.contains("Restarted application in") || line.starts_with("Reloaded ") {
+        } else if is_finished_reload(line) && !self.state.problems.is_empty() {
+            // Echte uitvoer: de compilatiefouten staan VOOR "Performing hot restart... 123ms". Die herstart is mislukt,
+            // dus de fouten moeten blijven staan.
+            self.state.reloads += 1;
+            self.set_status("error");
+        } else if line.contains("Performing hot re") && !is_finished_reload(line) {
+            // Begin van een nieuwe poging: oude fouten vervallen.
+            self.state.problems.clear();
+            self.set_status("reloading");
+        } else if line.contains("Restarted application in") || line.starts_with("Reloaded ") || is_finished_reload(line) {
             self.state.problems.clear();
             self.state.reloads += 1;
             self.set_status("running");
+        } else if line.contains("No client connected") {
+            // Nog geen browser verbonden (in Studio is dat het iframe): niets kapot, wel niets te herladen.
+            if self.state.status == "reloading" {
+                self.set_status("running");
+            }
         } else if let Some((file, ln, msg)) = parse_compile_error(line) {
             self.state.problems.push(Problem { file: Some(file), line: Some(ln), message: msg, excerpt: line.to_string() });
             self.capture = Some((self.state.problems.len() - 1, EXCERPT_LINES));
@@ -474,6 +495,28 @@ mod tests {
     }
 
     #[test]
+    fn real_flutter_compile_error_survives_the_failed_restart_line() {
+        let i = feed(&[
+            "Performing hot restart...",
+            "lib/app.dart:21:6: Error: Expected ';' after this.",
+            "this is not dart;",
+            "     ^^",
+            "lib/app.dart:21:9: Error: 'not' isn't a type.",
+            "Performing hot restart...                                          123ms",
+            "Try again after fixing the above error(s).",
+        ]);
+        assert_eq!(i.state.status, "error");
+        assert_eq!(i.state.problems[0].file.as_deref(), Some("lib/app.dart"));
+        assert_eq!(i.state.problems[0].line, Some(21));
+        // Een goede herstart daarna herstelt de status en wist de fouten.
+        let mut i = i;
+        i.feed_line("Performing hot restart...");
+        i.feed_line("Performing hot restart...                                          80ms");
+        assert_eq!(i.state.status, "running");
+        assert!(i.state.problems.is_empty());
+    }
+
+    #[test]
     fn parses_compile_errors() {
         assert_eq!(
             parse_compile_error("lib/main.dart:12:5: Error: Expected ';' after this."),
@@ -492,6 +535,28 @@ mod tests {
         assert!(i.feed_line("Restarted application in 812ms."));
         assert_eq!(i.state.reloads, 1);
         assert!(!i.feed_line("   "), "blank lines change nothing");
+    }
+
+    #[test]
+    fn real_flutter_3_50_web_server_output() {
+        // Letterlijk uit een echte run (zie DECISIONS.md, fase 6).
+        let mut i = feed(&[
+            "Launching lib/main.dart on Web Server in debug mode...",
+            "Waiting for connection from debug service on Web Server...         34.9s",
+            "lib/main.dart is being served at http://127.0.0.1:38205",
+            "The web-server device requires the Dart Debug Chrome extension for debugging.",
+            "Flutter run key commands.",
+        ]);
+        assert_eq!((i.state.status.as_str(), i.state.reloads), ("running", 0));
+        i.state.status = "reloading".into();
+        i.feed_line("Performing hot restart...");
+        assert_eq!(i.state.reloads, 0, "the line without a time is still busy");
+        i.feed_line("Recompile complete. No client connected.");
+        assert_eq!(i.state.status, "running", "no browser yet is not a failure");
+        i.feed_line("Performing hot restart...                                           71ms");
+        assert_eq!((i.state.status.as_str(), i.state.reloads), ("running", 1));
+        i.feed_line("Reloaded 1 of 593 libraries in 305ms (compile: 12 ms, reload: 150 ms).");
+        assert_eq!(i.state.reloads, 2);
     }
 
     #[test]
@@ -598,7 +663,12 @@ mod tests {
             false
         };
         assert!(wait(&|s| s.status == "running" && s.url.is_some()), "state: {:?}", mgr.state());
-        let argv = std::fs::read_to_string(root.join("argv.txt")).unwrap();
+        let argv = (0..100)
+            .find_map(|_| {
+                std::thread::sleep(Duration::from_millis(50));
+                std::fs::read_to_string(root.join("argv.txt")).ok().filter(|t| !t.is_empty())
+            })
+            .expect("fake flutter wrote its arguments");
         assert!(argv.contains("-d web-server") && argv.contains("--web-hostname=127.0.0.1") && argv.contains("--web-port="));
 
         // Wijziging in lib/ → automatisch hot restart (het nep-proces antwoordt met "Restarted").
@@ -650,5 +720,58 @@ mod tests {
             assert!(matches!(mgr.start(&fake, "p", &root, "web"), Err(AppError::CommandFailed(m)) if m.contains("outdated")));
             assert!(matches!(mgr.start(&fake, "p", &root, "x; rm -rf /"), Err(AppError::Invalid(_))));
         }
+    }
+
+    /// Echte Flutter: `STUDIO_TEST_PROJECT=<map> cargo test real_preview -- --ignored --nocapture`
+    /// Start de web-preview, wacht tot hij draait, breekt de code (bouwfout), herstelt, en stopt.
+    #[test]
+    #[ignore]
+    fn real_preview() {
+        let dir = std::path::PathBuf::from(std::env::var("STUDIO_TEST_PROJECT").expect("STUDIO_TEST_PROJECT"));
+        let flutter = proc::find("flutter").expect("flutter on PATH");
+        let mgr = PreviewManager::new(Arc::new(|_, _| {}));
+        let mut helper: Option<std::process::Child> = None;
+        mgr.start(&flutter, "p", &dir, "web").unwrap();
+        let wait = |label: &str, secs: u64, cond: &dyn Fn(&PreviewState) -> bool| {
+            let end = Instant::now() + Duration::from_secs(secs);
+            while Instant::now() < end {
+                if cond(&mgr.state()) {
+                    println!("OK  {label}: {:?} url={:?} reloads={} problems={}", mgr.state().status, mgr.state().url, mgr.state().reloads, mgr.state().problems.len());
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(500));
+            }
+            println!("TIMEOUT {label}: {:?}\n--- log tail ---\n{}", mgr.state(), mgr.log().iter().rev().take(25).rev().cloned().collect::<Vec<_>>().join("\n"));
+            mgr.stop();
+            panic!("{label}");
+        };
+        wait("running", 280, &|s| s.status == "running" && s.url.is_some());
+        // Een web-server-preview kan pas herstarten als er een browser is verbonden (in Studio is dat het iframe).
+        if let Ok(cmd) = std::env::var("STUDIO_TEST_OPEN_BROWSER") {
+            let url = mgr.state().url.unwrap();
+            let mut parts = cmd.split_whitespace();
+            helper = Some(std::process::Command::new(parts.next().unwrap()).args(parts).arg(&url).stdout(std::process::Stdio::null()).spawn().expect("browser helper"));
+            std::thread::sleep(Duration::from_secs(25));
+        }
+        // 1. gewone wijziging -> automatische hot restart
+        let main = dir.join("lib/app.dart");
+        let original = std::fs::read_to_string(&main).unwrap();
+        std::fs::write(&main, original.replace("debugShowCheckedModeBanner: false,", "debugShowCheckedModeBanner: true,")).unwrap();
+        wait("auto reload after an edit", 120, &|s| s.reloads >= 1);
+        // 2. bouwfout -> probleem met bestand en regel
+        std::fs::write(&main, format!("{original}\nthis is not dart;\n")).unwrap();
+        wait("compile error detected", 120, &|s| s.status == "error" && !s.problems.is_empty());
+        let p = &mgr.state().problems[0];
+        println!("problem: file={:?} line={:?} message={}", p.file, p.line, p.message);
+        println!("--- real compile error log ---\n{}\n--- end ---", mgr.log().iter().rev().take(14).rev().cloned().collect::<Vec<_>>().join("\n"));
+        // 3. herstel -> weer groen, problemen weg
+        std::fs::write(&main, &original).unwrap();
+        wait("recovered", 120, &|s| s.status == "running" && s.problems.is_empty());
+        mgr.stop();
+        if let Some(mut h) = helper {
+            let _ = h.kill();
+            let _ = h.wait();
+        }
+        assert_eq!(mgr.state().status, "stopped");
     }
 }

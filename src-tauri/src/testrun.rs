@@ -98,7 +98,8 @@ pub fn native_features(pubspec: &str) -> Vec<String> {
 pub fn ensure_crawler(dir: &Path, package: &str) -> AppResult<PathBuf> {
     let p = dir.join(CRAWLER_REL);
     std::fs::create_dir_all(dir.join(".studio"))?;
-    std::fs::write(&p, include_str!("../templates/studio_crawl_test.dart").replace("__PACKAGE__", package))?;
+    let src = include_str!("../templates/studio_crawl_test.dart").replace("__PACKAGE__", package);
+    std::fs::write(&p, crate::templates::adapt_material(dir, &src))?;
     // Het gegenereerde testbestand hoort niet in git (en mag de code-vingerafdruk niet beïnvloeden).
     let gi = dir.join(".gitignore");
     let text = std::fs::read_to_string(&gi).unwrap_or_default();
@@ -243,5 +244,55 @@ mod tests {
         // zonder rapport: geen rapport (de UI toont de log)
         std::fs::write(&fake, "#!/bin/sh\necho boom\nexit 1\n").unwrap();
         assert!(run(&fake, &d, &mut |_| {}).unwrap().report.is_none());
+    }
+
+    /// Echte Flutter: `cargo test real_crawler -- --ignored --nocapture`. Draait de crawler tegen elk sjabloon.
+    #[test]
+    #[ignore]
+    fn real_crawler() {
+        use crate::db::Db;
+        use crate::projects::{create_project, CreateRequest, Tools};
+        let (Some(flutter), Some(git)) = (crate::proc::find("flutter"), crate::proc::find("git")) else { panic!("flutter and git on PATH") };
+        let root = std::env::temp_dir().join(format!("studio-crawl-real-{}", uuid::Uuid::new_v4()));
+        let db = Db::open_in_memory().unwrap();
+        let tools = Tools { flutter: flutter.clone(), git };
+        for template in ["scoreboard", "checklist", "tracker", "blank"] {
+            let req = CreateRequest { name: format!("Crawl {template}"), template: template.into(), description: String::new(), org: "com.example".into() };
+            let p = create_project(&db, &tools, &root, &req, &|_| {}).unwrap();
+            let dir = std::path::Path::new(&p.path);
+            let out = run(&flutter, dir, &mut |_| {}).unwrap();
+            match &out.report {
+                Some(r) => {
+                    println!("[{template}] passed={} screens={} taps={} errors={} warnings={}", r.passed(), r.screens.len(), r.tapped, r.error_count(), r.warning_count());
+                    for s in &r.screens {
+                        for i in &s.issues {
+                            println!("   [{}] {} {}: {}", s.name, i.severity, i.kind, i.message);
+                        }
+                    }
+                    for i in &r.errors {
+                        println!("   [global] {} {}: {} {}", i.severity, i.kind, i.message, i.detail);
+                    }
+                }
+                None => println!("[{template}] NO REPORT. Log tail:\n{}", out.log.lines().rev().take(25).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n")),
+            }
+            assert!(out.report.is_some(), "{template}: the crawler must produce a report");
+        }
+    }
+
+    /// Echte Flutter: `STUDIO_TEST_PROJECT=<map> cargo test real_crawler_project -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn real_crawler_project() {
+        let dir = std::path::PathBuf::from(std::env::var("STUDIO_TEST_PROJECT").expect("STUDIO_TEST_PROJECT"));
+        let flutter = crate::proc::find("flutter").expect("flutter on PATH");
+        let out = run(&flutter, &dir, &mut |_| {}).unwrap();
+        let r = out.report.expect("report");
+        println!("passed={} screens={:?} taps={} errors={} warnings={}", r.passed(), r.screens.iter().map(|s| format!("{} (depth {}, {} taps)", s.name, s.depth, s.taps)).collect::<Vec<_>>(), r.tapped, r.error_count(), r.warning_count());
+        for s in &r.screens {
+            for i in &s.issues {
+                println!("   [{}] {} {}: {}", s.name, i.severity, i.kind, i.message);
+            }
+        }
+        println!("screenshots: {:?}", r.screens.iter().filter_map(|s| s.screenshot.clone()).collect::<Vec<_>>());
     }
 }

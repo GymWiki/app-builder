@@ -84,9 +84,16 @@ pub fn parse_line(line: &str, project_dir: &Path) -> Vec<ChatEvent> {
     let is_sub = !v.get("parent_tool_use_id").map(Value::is_null).unwrap_or(true);
     match kind {
         "system" if v.get("subtype").and_then(Value::as_str) == Some("init") => {
+            let mcp = v["mcp_servers"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|m| (m["name"].as_str().unwrap_or_default().to_string(), m["status"].as_str().unwrap_or_default().to_string()))
+                .collect();
             vec![ChatEvent::Init {
                 session_id: v.get("session_id").and_then(Value::as_str).unwrap_or_default().to_string(),
                 model: v.get("model").and_then(Value::as_str).map(str::to_string),
+                mcp,
             }]
         }
         "stream_event" if !is_sub => {
@@ -177,6 +184,15 @@ mod tests {
         assert!(events.iter().any(|e| matches!(e, ChatEvent::Text { text, .. } if text == "done")));
         assert!(events.iter().any(|e| matches!(e, ChatEvent::TextDelta { .. })));
         assert!(matches!(events.last(), Some(ChatEvent::Done { ok: true, text, code: None, .. }) if text == "done"));
+    }
+
+    #[test]
+    fn init_reports_mcp_server_status() {
+        let line = r#"{"type":"system","subtype":"init","session_id":"s1","mcp_servers":[{"name":"studio","status":"connected"},{"name":"dart","status":"failed"}]}"#;
+        match &parse_line(line, &dir())[0] {
+            ChatEvent::Init { mcp, .. } => assert_eq!(mcp, &vec![("studio".to_string(), "connected".to_string()), ("dart".to_string(), "failed".to_string())]),
+            e => panic!("{e:?}"),
+        }
     }
 
     #[test]

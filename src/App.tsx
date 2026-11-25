@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { initChatListeners } from "@/features/chat/chat-store";
 import { initJobListeners } from "@/features/sections/publish/jobs-store";
+import { initProfileListener } from "@/features/profile/profile-store";
 import { initPreviewListener } from "@/features/preview/preview-store";
 import { createHashRouter, Navigate, Outlet, RouterProvider, useLocation } from "react-router";
 import { Toaster } from "@/components/ds/toaster";
@@ -54,6 +55,7 @@ export function App() {
   useEffect(() => initChatListeners(), []);
   useEffect(() => initPreviewListener(), []);
   useEffect(() => initJobListeners(), []);
+  useEffect(() => initProfileListener(), []);
   return (
     <ErrorBoundary>
       <TooltipProvider delayDuration={300}>
