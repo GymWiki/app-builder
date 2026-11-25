@@ -21,7 +21,7 @@ export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS
 /** Alle backend-aanroepen lopen hierdoor: getypeerde fouten, en in dev-in-de-browser een mock. */
 export async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (!inTauri()) {
-    if (import.meta.env.DEV) {
+    if (import.meta.env.DEV || import.meta.env.VITE_DEMO) {
       const { mockInvoke } = await import("./mock");
       return (await mockInvoke(cmd, args)) as T;
     }
@@ -36,7 +36,7 @@ export async function call<T>(cmd: string, args?: Record<string, unknown>): Prom
 
 export async function onEvent<T>(name: string, cb: (payload: T) => void): Promise<UnlistenFn> {
   if (!inTauri()) {
-    if (import.meta.env.DEV) {
+    if (import.meta.env.DEV || import.meta.env.VITE_DEMO) {
       const { mockListen } = await import("./mock");
       return mockListen(name, cb as (p: unknown) => void);
     }

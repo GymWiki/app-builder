@@ -560,5 +560,12 @@
       ],
       "ios": "iPhones can only be used from a Mac with Xcode. Studio will support this together with iOS publishing."
     }
+  },
+  "demo": {
+    "banner": "Demo in your browser: a simulated backend. No real Flutter, Git or Claude is used.",
+    "scenario": "Scenario",
+    "fresh": "First start",
+    "ready": "With projects",
+    "empty": "No projects"
   }
 }

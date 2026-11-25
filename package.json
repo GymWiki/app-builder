@@ -13,7 +13,8 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm test && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml",
+    "build:demo": "tsc -b && vite build --mode demo --base ./ --outDir dist-demo"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.108.4",

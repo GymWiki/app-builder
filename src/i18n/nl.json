@@ -560,5 +560,12 @@
       ],
       "ios": "iPhones kunnen alleen vanaf een Mac met Xcode. Studio ondersteunt dit samen met publiceren voor iOS."
     }
+  },
+  "demo": {
+    "banner": "Demo in je browser: een gesimuleerde backend. Er wordt geen echte Flutter, Git of Claude gebruikt.",
+    "scenario": "Scenario",
+    "fresh": "Eerste start",
+    "ready": "Met projecten",
+    "empty": "Geen projecten"
   }
 }

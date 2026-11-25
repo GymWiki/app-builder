@@ -3,6 +3,7 @@ import { initChatListeners } from "@/features/chat/chat-store";
 import { initPreviewListener } from "@/features/preview/preview-store";
 import { createHashRouter, Navigate, Outlet, RouterProvider, useLocation } from "react-router";
 import { Toaster } from "@/components/ds/toaster";
+import { DemoBanner } from "@/components/layout/demo-banner";
 import { ErrorBoundary } from "@/components/layout/error-boundary";
 import { Spinner } from "@/components/ds/spinner";
 import { useSettings } from "@/hooks";
@@ -54,7 +55,12 @@ export function App() {
   return (
     <ErrorBoundary>
       <TooltipProvider delayDuration={300}>
-        <RouterProvider router={router} />
+        <div className="flex h-full flex-col">
+          <DemoBanner />
+          <div className="min-h-0 flex-1">
+            <RouterProvider router={router} />
+          </div>
+        </div>
         <Toaster />
       </TooltipProvider>
     </ErrorBoundary>
