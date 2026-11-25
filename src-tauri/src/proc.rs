@@ -110,6 +110,25 @@ mod tests {
     fn missing_binary_is_reported() {
         assert!(run(Path::new("/nonexistent/xyz"), &[], None, Duration::from_secs(1)).is_err());
     }
+
+    /// Een subproces dat een geheim uit de kluis uitprint (ook over meerdere regels) levert nooit de waarde aan de UI of log.
+    #[cfg(unix)]
+    #[test]
+    fn subprocess_output_is_scrubbed_of_vault_values_and_env_values() {
+        let key = format!("SUBPROCKEYLINE{}", uuid::Uuid::new_v4().simple());
+        let pem = format!("-----BEGIN PRIVATE KEY-----\n{key}\n-----END PRIVATE KEY-----\n");
+        crate::scrub::register("proc-test/key", &crate::scrub::values_from_file(pem.as_bytes()));
+        let mut lines: Vec<String> = vec![];
+        let script = format!("echo 'building…'; printf '%s\n' '-----BEGIN PRIVATE KEY-----' '{key}' '-----END PRIVATE KEY-----'; echo \"env=$STUDIO_TEST_SECRET\"");
+        let env = vec![("STUDIO_TEST_SECRET".to_string(), "envsecret-1234567890".to_string())];
+        let sh = std::path::Path::new("/bin/sh");
+        run_streaming(sh, &["-c", &script], None, &env, Duration::from_secs(10), &mut |l| lines.push(l.to_string())).unwrap();
+        let all = lines.join("\n");
+        assert!(!all.contains(&key) && !all.contains("envsecret-1234567890"), "{all}");
+        assert!(all.contains("building"), "normal output is untouched");
+        crate::scrub::unregister("proc-test/key");
+    }
+
 }
 
 /// Draait een programma en geeft de uitvoer (stdout + stderr) regel voor regel door. `env` wordt

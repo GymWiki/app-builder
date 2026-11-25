@@ -116,10 +116,37 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_runs_project ON runs(project_id, id DESC);
     "#,
+    // v7 — integraties en geheimen (fase 10): ALLEEN metadata; de waarden staan in de keychain / versleutelde bestanden
+    r#"
+    CREATE TABLE secret_meta (
+        scope       TEXT NOT NULL,
+        integration TEXT NOT NULL,
+        field       TEXT NOT NULL,
+        kind        TEXT NOT NULL DEFAULT 'text' CHECK (kind IN ('text','file')),
+        file_name   TEXT NOT NULL DEFAULT '',
+        derived     TEXT NOT NULL DEFAULT '{}',
+        set_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        last_used   TEXT,
+        used_by     TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (scope, integration, field)
+    );
+    CREATE TABLE integration_state (
+        project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        integration    TEXT NOT NULL,
+        enabled        INTEGER NOT NULL DEFAULT 0,
+        last_tested    TEXT,
+        last_test_ok   INTEGER,
+        last_test_code TEXT,
+        expires_at     TEXT,
+        PRIMARY KEY (project_id, integration)
+    );
+    INSERT INTO checklist_items(id, project_id, key, blocking)
+    SELECT lower(hex(randomblob(16))), id, 'no_leaks', 1 FROM projects;
+    "#,
 ];
 
 /// De verplichte (blokkerende) checklistpunten. Volgorde = weergavevolgorde.
-pub const CHECKLIST_KEYS: [&str; 8] = [
+pub const CHECKLIST_KEYS: [&str; 9] = [
     "app_basics",
     "data_auth",
     "legal",
@@ -128,6 +155,7 @@ pub const CHECKLIST_KEYS: [&str; 8] = [
     "accounts_signing",
     "version_changelog",
     "final_confirmation",
+    "no_leaks",
 ];
 /// Adviespunten: blokkeren het publiceren niet.
 pub const ADVISORY_KEYS: [&str; 2] = ["device_test", "native_manual"];
@@ -170,6 +198,33 @@ pub struct NewProject {
 pub struct Session {
     pub id: String,
     pub engine_session_id: Option<String>,
+}
+
+/// Metadata van één geheim veld. De waarde zelf staat hier nooit.
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretMeta {
+    pub scope: String,
+    pub integration: String,
+    pub field: String,
+    pub kind: String,
+    pub file_name: String,
+    /// Niet-geheime waarden uit een bestand (bv. het e-mailadres van een service account).
+    pub derived: std::collections::BTreeMap<String, String>,
+    pub set_at: String,
+    pub last_used: Option<String>,
+    pub used_by: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrationState {
+    pub integration: String,
+    pub enabled: bool,
+    pub last_tested: Option<String>,
+    pub last_test_ok: Option<bool>,
+    pub last_test_code: Option<String>,
+    pub expires_at: Option<String>,
 }
 
 /// Eén run, zoals in de tabel `runs`.
@@ -291,7 +346,6 @@ impl Db {
         Self::init(Connection::open(path)?)
     }
 
-    #[cfg(test)]
     pub fn open_in_memory() -> AppResult<Self> {
         Self::init(Connection::open_in_memory()?)
     }
@@ -566,6 +620,110 @@ impl Db {
         Ok(RunsSummary::from_runs(&rows))
     }
 
+    // ── integraties en geheimen (alleen metadata) ──
+    pub fn secret_meta_upsert(&self, m: &SecretMeta) -> AppResult<()> {
+        self.lock().execute(
+            "INSERT INTO secret_meta(scope, integration, field, kind, file_name, derived) VALUES (?1,?2,?3,?4,?5,?6)
+             ON CONFLICT(scope, integration, field) DO UPDATE SET kind=?4, file_name=?5, derived=?6,
+               set_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')",
+            params![m.scope, m.integration, m.field, m.kind, m.file_name, serde_json::to_string(&m.derived).unwrap_or_else(|_| "{}".into())],
+        )?;
+        Ok(())
+    }
+
+    fn secret_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SecretMeta> {
+        let derived: String = r.get(5)?;
+        Ok(SecretMeta {
+            scope: r.get(0)?,
+            integration: r.get(1)?,
+            field: r.get(2)?,
+            kind: r.get(3)?,
+            file_name: r.get(4)?,
+            derived: serde_json::from_str(&derived).unwrap_or_default(),
+            set_at: r.get(6)?,
+            last_used: r.get(7)?,
+            used_by: r.get(8)?,
+        })
+    }
+
+    pub fn secret_meta_get(&self, scope: &str, integration: &str, field: &str) -> AppResult<Option<SecretMeta>> {
+        Ok(self
+            .lock()
+            .query_row(
+                "SELECT scope, integration, field, kind, file_name, derived, set_at, last_used, used_by FROM secret_meta
+                 WHERE scope=?1 AND integration=?2 AND field=?3",
+                params![scope, integration, field],
+                Self::secret_row,
+            )
+            .optional()?)
+    }
+
+    #[cfg(test)]
+    pub fn secret_meta_list(&self, scopes: &[&str]) -> AppResult<Vec<SecretMeta>> {
+        let conn = self.lock();
+        let mut st = conn.prepare("SELECT scope, integration, field, kind, file_name, derived, set_at, last_used, used_by FROM secret_meta ORDER BY integration, field")?;
+        let rows = st.query_map([], Self::secret_row)?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?.into_iter().filter(|m| scopes.contains(&m.scope.as_str())).collect())
+    }
+
+    pub fn secret_meta_delete(&self, scope: &str, integration: &str, field: &str) -> AppResult<()> {
+        self.lock().execute("DELETE FROM secret_meta WHERE scope=?1 AND integration=?2 AND field=?3", params![scope, integration, field])?;
+        Ok(())
+    }
+
+    pub fn secret_touch_used(&self, scope: &str, integration: &str, field: &str, by: &str) -> AppResult<()> {
+        self.lock().execute(
+            "UPDATE secret_meta SET last_used=strftime('%Y-%m-%dT%H:%M:%fZ','now'), used_by=?4 WHERE scope=?1 AND integration=?2 AND field=?3",
+            params![scope, integration, field, by],
+        )?;
+        Ok(())
+    }
+
+    pub fn integration_set_enabled(&self, project_id: &str, integration: &str, enabled: bool) -> AppResult<()> {
+        self.lock().execute(
+            "INSERT INTO integration_state(project_id, integration, enabled) VALUES (?1,?2,?3)
+             ON CONFLICT(project_id, integration) DO UPDATE SET enabled=?3",
+            params![project_id, integration, enabled as i64],
+        )?;
+        Ok(())
+    }
+
+    pub fn integration_states(&self, project_id: &str) -> AppResult<Vec<IntegrationState>> {
+        let conn = self.lock();
+        let mut st = conn.prepare("SELECT integration, enabled, last_tested, last_test_ok, last_test_code, expires_at FROM integration_state WHERE project_id=?1")?;
+        let rows = st.query_map([project_id], |r| {
+            Ok(IntegrationState {
+                integration: r.get(0)?,
+                enabled: r.get::<_, i64>(1)? != 0,
+                last_tested: r.get(2)?,
+                last_test_ok: r.get::<_, Option<i64>>(3)?.map(|v| v != 0),
+                last_test_code: r.get(4)?,
+                expires_at: r.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn integration_record_test(&self, project_id: &str, integration: &str, ok: bool, code: &str, expires_at: Option<&str>) -> AppResult<()> {
+        self.lock().execute(
+            "INSERT INTO integration_state(project_id, integration, enabled, last_tested, last_test_ok, last_test_code, expires_at)
+             VALUES (?1,?2,0,strftime('%Y-%m-%dT%H:%M:%fZ','now'),?3,?4,?5)
+             ON CONFLICT(project_id, integration) DO UPDATE SET last_tested=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+               last_test_ok=?3, last_test_code=?4, expires_at=?5",
+            params![project_id, integration, ok as i64, code, expires_at],
+        )?;
+        Ok(())
+    }
+
+    /// Een nieuwe waarde maakt het oude testresultaat ongeldig.
+    pub fn integration_clear_test(&self, project_id: &str, integration: &str) -> AppResult<()> {
+        self.lock().execute(
+            "UPDATE integration_state SET last_tested=NULL, last_test_ok=NULL, last_test_code=NULL, expires_at=NULL WHERE project_id=?1 AND integration=?2",
+            params![project_id, integration],
+        )?;
+        Ok(())
+    }
+
     // ── snapshots en checklist ──
     pub fn snapshot_insert(&self, project_id: &str, commit: &str, label: &str, kind: &str, version: &str) -> AppResult<()> {
         self.lock().execute(
@@ -697,7 +855,7 @@ mod tests {
     fn insert_seeds_checklist_and_snapshot() {
         let db = Db::open_in_memory().unwrap();
         let p = db.project_insert(&sample("Mijn app", "/tmp/a")).unwrap();
-        assert_eq!(p.checklist_total, 8);
+        assert_eq!(p.checklist_total, 9);
         assert_eq!(p.checklist_done, 0);
         assert_eq!(p.status, "draft");
         let n: i64 = db
@@ -842,8 +1000,8 @@ mod tests {
         let p = db.project_get(&p.id).unwrap();
         assert_eq!((p.version.as_str(), p.build_number), ("1.2.0", 7));
         let items = db.checklist_list(&p.id).unwrap();
-        assert_eq!(items.len(), 10);
-        assert_eq!(items.iter().filter(|i| i.blocking).count(), 8);
+        assert_eq!(items.len(), 11);
+        assert_eq!(items.iter().filter(|i| i.blocking).count(), 9);
         assert_eq!(items[0].key, "app_basics");
     }
 

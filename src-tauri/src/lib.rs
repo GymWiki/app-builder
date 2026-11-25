@@ -2,6 +2,7 @@ mod chat;
 mod checklist;
 mod assets;
 mod commands;
+mod connect;
 mod db;
 mod engine;
 mod error;
@@ -10,10 +11,14 @@ mod install;
 mod index;
 mod integrations;
 mod scope;
+mod scrub;
+mod vault;
 mod quality;
 mod keychain;
+mod leak;
 mod logging;
 mod mcp;
+mod manifest;
 mod meta;
 mod permissions;
 mod platform;
@@ -55,6 +60,26 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let db = Arc::new(db::Db::open(&dir.join("studio.db"))?);
+            // De kluis: waarden in de OS-keychain, bestanden versleuteld in de app-datamap, metadata in SQLite.
+            // De ingebouwde manifesten worden bij elke start gecontroleerd; een fout daarin is een programmeerfout, geen gebruikersfout.
+            let ids: Vec<&str> = manifest::all().iter().map(|m| m.id.as_str()).collect();
+            for m in manifest::all() {
+                if let Err(e) = manifest::check(m, &ids) {
+                    log::error!("integration manifest problem: {e}");
+                }
+            }
+            vault::init(vault::Vault::new(Arc::new(vault::KeychainBackend), &dir, db.clone()));
+            {
+                // Op de achtergrond: oude opslag overnemen en bekende geheimen aan de scrubber geven.
+                let db = db.clone();
+                std::thread::spawn(move || {
+                    let ids: Vec<String> = db.projects_list(None).unwrap_or_default().into_iter().map(|p| p.id).collect();
+                    for id in &ids {
+                        vault::global().migrate_legacy(id);
+                    }
+                    vault::global().load_scrubber(&ids);
+                });
+            }
 
             // Bevestigingen: een aanvraag van Claude wordt als event naar de UI gestuurd.
             let handle = app.handle().clone();
@@ -69,7 +94,18 @@ pub fn run() {
                 let _ = handle.emit(name, payload);
             })));
             let scopes: Arc<scope::ScopeRegistry> = Default::default();
-            let mcp = mcp::start(mcp::Deps { db: db.clone(), perms: perms.clone(), preview: preview.clone(), work_dir: dir.join("shots"), scopes: scopes.clone() })?;
+            let emit_handle = app.handle().clone();
+            let mcp = mcp::start(mcp::Deps {
+                db: db.clone(),
+                perms: perms.clone(),
+                preview: preview.clone(),
+                work_dir: dir.join("shots"),
+                scopes: scopes.clone(),
+                vault: vault::global(),
+                emit: Arc::new(move |name, payload| {
+                    let _ = emit_handle.emit(name, payload);
+                }),
+            })?;
 
             let handle = app.handle().clone();
             let chat_ctx = Arc::new(chat::ChatCtx {
@@ -170,6 +206,20 @@ pub fn run() {
             commands::publish_ios,
             commands::profile_info,
             commands::run_metrics,
+            commands::integration_list,
+            commands::integration_set_enabled,
+            commands::secret_field_set_text,
+            commands::secret_field_set_file,
+            commands::secret_field_delete,
+            commands::secret_field_reveal,
+            commands::secret_test,
+            commands::vault_export,
+            commands::vault_import,
+            commands::vault_export_file,
+            commands::vault_import_file,
+            commands::leaks_scan,
+            commands::leak_move_to_vault,
+            commands::leak_fix_prompt,
             commands::profile_apply,
         ])
         .build(tauri::generate_context!())

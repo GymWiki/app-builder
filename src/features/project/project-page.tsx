@@ -11,6 +11,9 @@ import { DataView } from "@/features/sections/data-view";
 import { AssetsView } from "@/features/sections/assets-view";
 import { SettingsView } from "@/features/sections/settings-view";
 import { VersionsView } from "@/features/sections/versions-view";
+import { IntegrationsView } from "@/features/integrations/integrations-view";
+import { SecretsView } from "@/features/integrations/secrets-view";
+import type { JumpTarget } from "@/features/integrations/use-integrations";
 import { PublishView, type PublishTab } from "@/features/sections/publish/publish-view";
 import { useChecklist } from "@/features/sections/publish/use-checklist";
 import { AutoRetest } from "@/features/sections/publish/auto-retest";
@@ -25,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { qk } from "@/hooks";
-import { api } from "@/lib/ipc";
+import { api, onEvent } from "@/lib/ipc";
 import { friendlyError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { DEVICES, type DeviceId } from "./phone-frame";
@@ -54,9 +57,10 @@ export default function ProjectPage() {
   const [screen, setScreen] = useState<Screen | null>(null);
   const [contextOff, setContextOff] = useState(false);
   const [publishTab, setPublishTab] = useState<PublishTab>("checklist");
+  const [jump, setJump] = useState<JumpTarget | null>(null);
   const checklist = useChecklist(id);
   const evalDone = checklist.data?.done ?? 0;
-  const evalTotal = checklist.data?.total ?? 8;
+  const evalTotal = checklist.data?.total ?? 9;
   const canPublish = checklist.data?.canPublish ?? false;
 
   const menuRef = usePanelRef();
@@ -70,6 +74,32 @@ export default function ProjectPage() {
   useEffect(() => {
     if (id) void api.projectOpen(id).catch(() => undefined);
   }, [id]);
+
+  // Springen naar een kaart (Integraties) of een kopje/veld (Geheimen): vanuit de checklist, een knop of een verzoek van Claude.
+  const jumpTo = (kind: "integrations" | "secrets", integration: string, field?: string) => {
+    setJump({ integration, field, nonce: Date.now() });
+    setSection(kind);
+  };
+  useEffect(() => {
+    // Claude kan de gebruiker vragen een geheim in te vullen (MCP-tool); Claude ziet de waarde nooit.
+    const un = onEvent<{ projectId: string; integration: string; field: string; integrationOn: boolean }>(
+      "open-secret",
+      (e) => {
+        if (e.projectId === id) {
+          setJump({ integration: e.integration, field: e.integrationOn ? e.field : undefined, nonce: Date.now() });
+          setSection(e.integrationOn ? "secrets" : "integrations");
+        }
+      },
+    );
+    return () => void un.then((f) => f());
+  }, [id]);
+  /** Bestemmingen uit de checklist: `secrets:<id>`, `integrations:<id>`, `leaks` of een gewone sectie. */
+  const goto = (dest: string) => {
+    if (dest.startsWith("secrets:")) return jumpTo("secrets", dest.slice(8));
+    if (dest.startsWith("integrations:")) return jumpTo("integrations", dest.slice(13));
+    if (dest === "leaks") return jumpTo("secrets", "leaks");
+    setSection(dest === "preview" ? "screens" : (dest as SectionId));
+  };
 
   if (project.isPending) {
     return (
@@ -102,6 +132,8 @@ export default function ProjectPage() {
     section === "assets" ||
     section === "settings" ||
     section === "versions" ||
+    section === "integrations" ||
+    section === "secrets" ||
     section === "publish";
   const current = SECTIONS.find((s) => s.id === section)!;
   const sectionNameEn = {
@@ -111,6 +143,8 @@ export default function ProjectPage() {
     assets: "Assets",
     settings: "App settings",
     versions: "Versions",
+    integrations: "Integrations",
+    secrets: "Secrets",
     publish: "Publish",
   }[section];
   // Wat de gebruiker nu bekijkt gaat automatisch mee naar Claude (een gekozen scherm gaat voor het menu).
@@ -292,14 +326,17 @@ export default function ProjectPage() {
               {section === "assets" && <AssetsView projectId={p.id} />}
               {section === "settings" && <SettingsView project={p} />}
               {section === "versions" && <VersionsView project={p} />}
-              {section === "publish" && (
-                <PublishView
-                  project={p}
-                  tab={publishTab}
-                  onTab={setPublishTab}
-                  goto={(sec) => setSection(sec === "preview" ? "screens" : (sec as SectionId))}
+              {section === "integrations" && (
+                <IntegrationsView
+                  projectId={p.id}
+                  target={jump}
+                  onAddSecrets={(t2) => jumpTo("secrets", t2.integration, t2.field)}
                 />
               )}
+              {section === "secrets" && (
+                <SecretsView projectId={p.id} target={jump} onGoIntegrations={() => setSection("integrations")} />
+              )}
+              {section === "publish" && <PublishView project={p} tab={publishTab} onTab={setPublishTab} goto={goto} />}
             </section>
           )}
         </Panel>

@@ -1,5 +1,6 @@
 // Alleen voor `npm run dev` in een gewone browser (zonder Tauri): een in-memory backend,
 // zodat de UI zonder desktop-shell kan worden ontwikkeld en getest. Niet in productie.
+import { mockLeaks, vaultHas, vaultInvoke, vaultMissing, vaultSetKeystore } from "./mock-vault";
 import { AppError } from "./errors";
 import type { Project, TemplateId, ToolStatus } from "./types";
 
@@ -313,6 +314,18 @@ function mockEvaluate(id: string) {
     missing,
     next: missing.length ? next : null,
   });
+  /** Punt met ontbrekende geheimen uit de (gesimuleerde) kluis: `secret:<integratie>.<veld>` en een knop naar dat kopje. */
+  const secretItem = (projectId: string, key: string, other: string[], otherNext: string, secretFirst = false) => {
+    const gaps = vaultMissing(projectId).filter((g) => g.items.includes(key));
+    const missing = [...gaps.map((g) => `secret:${g.integration}.${g.field}`), ...other];
+    const g0 = gaps[0];
+    const next =
+      g0 && (secretFirst || other.length === 0)
+        ? `${g0.enabled ? "secrets" : "integrations"}:${g0.integration}`
+        : otherNext;
+    return mk(key, true, missing, next);
+  };
+  const leaks = mockLeaks().length;
   const items = [
     mk(
       "app_basics",
@@ -320,9 +333,9 @@ function mockEvaluate(id: string) {
       [...(platform.bundleId.startsWith("com.example.") ? ["bundle_id"] : []), ...(fs.icon ? [] : ["icon"])],
       fs.icon ? "settings" : "assets",
     ),
-    mk(
+    secretItem(
+      id,
       "data_auth",
-      true,
       [...(m.data.provider ? [] : ["provider"]), ...(accounts && !m.legal.accountDeletion ? ["account_deletion"] : [])],
       "data",
     ),
@@ -352,15 +365,12 @@ function mockEvaluate(id: string) {
       ],
       "publish:listing",
     ),
-    mk(
+    secretItem(
+      id,
       "accounts_signing",
-      true,
-      [
-        ...(fs.keystore ? [] : ["keystore"]),
-        ...(fs.gradle ? [] : ["gradle"]),
-        ...(m.publishing.playAccountReady ? [] : ["play_account"]),
-      ],
+      [...(fs.gradle ? [] : ["gradle"]), ...(m.publishing.playAccountReady ? [] : ["play_account"])],
       "publish:signing",
+      true,
     ),
     mk(
       "version_changelog",
@@ -369,6 +379,7 @@ function mockEvaluate(id: string) {
       "versions",
     ),
   ];
+  items.push({ ...mk("no_leaks", true, leaks ? [`leaks:${leaks}`] : [], "leaks"), status: leaks ? "failed" : "done" });
   const others = items.every((i) => i.status === "done");
   items.push({
     ...mk(
@@ -412,6 +423,8 @@ const emitJob = (projectId: string, job: string, status: string) => emit("job-st
 const emitLine = (projectId: string, job: string, line: string) => emit("job-log", { projectId, job, line });
 
 export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}): Promise<unknown> {
+  const v = await vaultInvoke(cmd, args);
+  if (v.handled) return v.value;
   switch (cmd) {
     case "app_info":
       return {
@@ -722,18 +735,16 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
     case "signing_status":
       return {
         keytool: true,
-        keystore: fs.keystore,
-        keystorePath: fs.keystore
-          ? "C:\\Users\\me\\AppData\\Roaming\\app.studio.desktop\\keystores\\x\\upload-keystore.jks"
-          : null,
+        keystore: vaultHas(args.projectId as string, "android_signing", "keystore"),
+        keystorePath: null,
         gradleConfigured: fs.gradle,
-        playKey: secrets.has(`${args.projectId}:play_service_account_json`),
+        playKey: vaultHas(args.projectId as string, "google_play", "service_account"),
         fastlane: true,
       };
     case "signing_create_keystore":
       await sleep(500);
-      fs.keystore = true;
-      return "keystore";
+      vaultSetKeystore(args.projectId as string);
+      return "vault";
     case "signing_prompt":
       return "Configure release signing from environment variables.";
     case "publish_android": {

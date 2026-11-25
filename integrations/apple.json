@@ -1,0 +1,69 @@
+{
+  "id": "apple",
+  "naam": "integrations.apple.name",
+  "categorie": "stores",
+  "beschrijving": "integrations.apple.desc",
+  "icoon": "apple",
+  "scope": "global",
+  "velden": [
+    {
+      "id": "issuer_id",
+      "label": "integrations.apple.fields.issuer_id.label",
+      "type": "text",
+      "geheim": false,
+      "verplicht": true,
+      "scope": "global",
+      "validatie": {
+        "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      },
+      "hulptekst": "integrations.apple.fields.issuer_id.help",
+      "guideId": null,
+      "envVar": "STUDIO_APPLE_ISSUER_ID"
+    },
+    {
+      "id": "key_id",
+      "label": "integrations.apple.fields.key_id.label",
+      "type": "text",
+      "geheim": false,
+      "verplicht": true,
+      "scope": "global",
+      "validatie": {
+        "regex": "^[A-Z0-9]{10}$"
+      },
+      "hulptekst": "integrations.apple.fields.key_id.help",
+      "guideId": null,
+      "envVar": "STUDIO_APPLE_KEY_ID"
+    },
+    {
+      "id": "team_id",
+      "label": "integrations.apple.fields.team_id.label",
+      "type": "text",
+      "geheim": false,
+      "verplicht": true,
+      "scope": "global",
+      "validatie": {
+        "regex": "^[A-Z0-9]{10}$"
+      },
+      "hulptekst": "integrations.apple.fields.team_id.help",
+      "guideId": null,
+      "envVar": "STUDIO_APPLE_TEAM_ID"
+    },
+    {
+      "id": "private_key",
+      "label": "integrations.apple.fields.private_key.label",
+      "type": "file",
+      "geheim": true,
+      "verplicht": true,
+      "scope": "global",
+      "validatie": {
+        "bestandstype": ["p8"],
+        "bevat": "PRIVATE KEY"
+      },
+      "hulptekst": "integrations.apple.fields.private_key.help",
+      "guideId": null,
+      "envVar": "STUDIO_APPLE_KEY_PATH"
+    }
+  ],
+  "testVerbinding": "apple_local",
+  "checklistItems": ["accounts_signing"]
+}

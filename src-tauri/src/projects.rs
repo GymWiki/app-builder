@@ -212,6 +212,7 @@ pub fn create_project(
         }
         ignore.push_str("\n# Studio / Claude Code (local only)\n.claude/settings.local.json\n");
         std::fs::write(dir.join(".gitignore"), ignore)?;
+        crate::leak::ensure_gitignore(&dir)?;
 
         // 4. git
         progress("git");

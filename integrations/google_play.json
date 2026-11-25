@@ -1,0 +1,29 @@
+{
+  "id": "google_play",
+  "naam": "integrations.google_play.name",
+  "categorie": "stores",
+  "beschrijving": "integrations.google_play.desc",
+  "icoon": "play",
+  "scope": "global",
+  "velden": [
+    {
+      "id": "service_account",
+      "label": "integrations.google_play.fields.service_account.label",
+      "type": "file",
+      "geheim": true,
+      "verplicht": true,
+      "scope": "global",
+      "validatie": {
+        "bestandstype": ["json"],
+        "json": ["type=service_account", "client_email", "private_key"]
+      },
+      "hulptekst": "integrations.google_play.fields.service_account.help",
+      "guideId": null,
+      "envVar": "STUDIO_PLAY_KEY_PATH",
+      "afgeleid": ["client_email", "project_id"]
+    }
+  ],
+  "testVerbinding": "google_play_local",
+  "checklistItems": ["accounts_signing"],
+  "afhankelijkheden": ["android_signing"]
+}

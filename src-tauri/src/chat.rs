@@ -111,11 +111,24 @@ impl ChatManager {
     /// momentopname, run, controle met gerichte reparatie, eventueel terugdraaien, metingen.
     pub fn run_flow(&self, ctx: &ChatCtx, project_id: &str, text: &str, context: Option<String>, language: &str, handle: &RunHandle) {
         let started = Instant::now();
+        // Wat de gebruiker intikt of selecteert kan een geheim bevatten: dat gaat nooit naar het model (ook niet naar de
+        // goedkope classificatievraag) en komt niet in de opgeslagen berichten.
+        let text = &crate::scrub::scrub(text);
+        let context = context.map(|c| crate::scrub::scrub(&c));
         let emit_event = |session: Option<&str>, e: &ChatEvent| {
             if let (Some(s), false) = (session, matches!(e, ChatEvent::TextDelta { .. })) {
                 let _ = ctx.db.message_insert(s, kind_of(e), &serde_json::to_string(e).unwrap_or_default());
             }
             (ctx.emit)("chat-event", json!({ "projectId": project_id, "event": e }));
+        };
+        // Alles wat in de chat, de opslag of naar het model gaat, loopt eerst door de scrubber.
+        let emit_event = |session: Option<&str>, e: &ChatEvent| {
+            let mut v = serde_json::to_value(e).unwrap_or_default();
+            crate::scrub::scrub_value(&mut v);
+            match serde_json::from_value::<ChatEvent>(v) {
+                Ok(clean) => emit_event(session, &clean),
+                Err(_) => emit_event(session, e),
+            }
         };
 
         let project = match ctx.db.project_get(project_id) {
@@ -147,8 +160,10 @@ impl ChatManager {
 
         // 2. Momentopname van vóór de run (daar draaien we naar terug als de controle mislukt) en een verse schermindex.
         let snap_label = format!("Before Claude: {}", text.chars().take(40).collect::<String>().replace('\n', " "));
-        let _ = studio_tools::create_snapshot(&ctx.db, &project, &snap_label, "auto");
-        let base = gitops::head(&dir).ok();
+        let pre = studio_tools::create_snapshot(&ctx.db, &project, &snap_label, "auto");
+        // Geblokkeerd door de lekcontrole: dan is er geen veilig terugdraaipunt, dus geen controle met terugdraaien.
+        let pre_blocked = pre.as_ref().map(|v| v["blocked"] == "leak").unwrap_or(false);
+        let base = gitops::head(&dir).ok().filter(|_| !pre_blocked);
         let _ = std::fs::create_dir_all(dir.join(".studio")).and_then(|_| std::fs::write(dir.join(".studio/screens.md"), index.render_markdown()));
 
         // 3. MCP-config en per-run instellingen.
@@ -192,7 +207,7 @@ impl ChatManager {
         let mut stats = TurnStats::default();
         let mut resume = session.engine_session_id.clone();
         let mut turn = |prompt: String, stats: &mut TurnStats| {
-            let req = TurnRequest { project_dir: dir.clone(), prompt, resume: resume.clone(), mcp_config: cfg.clone(), language: language.to_string(), settings: settings.clone() };
+            let req = TurnRequest { project_dir: dir.clone(), prompt: crate::scrub::scrub(&prompt), resume: resume.clone(), mcp_config: cfg.clone(), language: language.to_string(), settings: settings.clone() };
             let mut last_ok = None;
             let outcome = self.engine.run_turn(&req, handle, &mut |e| {
                 if let ChatEvent::Init { mcp, .. } = &e {
@@ -301,6 +316,10 @@ impl ChatManager {
         let label: String = format!("Claude: {}", text.chars().take(50).collect::<String>().replace('\n', " "));
         if !gate_result.rolled_back {
             if let Ok(v) = studio_tools::create_snapshot(&ctx.db, &project, &label, "auto") {
+                if v["blocked"] == "leak" {
+                    let n = v["leaks"].as_array().map(|a| a.len()).unwrap_or(0);
+                    emit_event(Some(&sid), &ChatEvent::Status { code: "leak_blocked".into(), detail: Some(n.to_string()) });
+                }
                 if v["created"] == true {
                     emit_event(Some(&sid), &ChatEvent::Snapshot { commit: v["commit"].as_str().unwrap_or_default().to_string(), label });
                 }
@@ -592,6 +611,58 @@ mod tests {
         assert_eq!(db.runs_summary(&p.id, 5).unwrap().denied_edits, 2);
     }
 
+    /// Een geheim komt nooit in de chat, de opgeslagen berichten of de prompt voor het model, ook niet als de gebruiker
+    /// het zelf in de chat plakt of de AI het (per ongeluk) uitprint.
+    #[cfg(unix)]
+    #[test]
+    fn secrets_never_reach_the_chat_the_stored_messages_or_the_model() {
+        use std::os::unix::fs::PermissionsExt;
+        let secret = format!("CHATSECRET-{}", uuid::Uuid::new_v4().simple());
+        crate::scrub::register("chat-test/secret", std::slice::from_ref(&secret));
+        let (bin, _proj, db, p, ctx, mgr) = scoped_fixture(false);
+        let events: Arc<Mutex<Vec<Value>>> = Arc::default();
+        let sink = events.clone();
+        let ctx = ChatCtx { emit: Arc::new(move |n, v| if n == "chat-event" { sink.lock().unwrap().push(v["event"].clone()) }), ..ctx };
+        let line = |t: &str| format!("{t}\n");
+        let stream = [
+            line(r#"{"type":"system","subtype":"init","session_id":"s1","model":"m"}"#),
+            line(&format!(r#"{{"type":"assistant","message":{{"id":"m1","content":[{{"type":"text","text":"The token is {secret} ok"}}]}}}}"#)),
+            line(&format!(r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"t1","content":"env dump {secret}"}}]}}}}"#)),
+            line(&format!(r#"{{"type":"result","subtype":"success","is_error":false,"result":"done {secret}","duration_ms":5}}"#)),
+        ]
+        .concat();
+        std::fs::write(bin.join("stream.jsonl"), stream).unwrap();
+        let claude = bin.join("claude");
+        std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+        mgr.run_flow(&ctx, &p.id, &format!("my key is {secret}, remember it"), Some(format!("selected {secret}")), "en", &RunHandle::default());
+        let emitted = serde_json::to_string(&*events.lock().unwrap()).unwrap();
+        assert!(emitted.contains("••••") && !emitted.contains(&secret), "events sent to the UI: {emitted}");
+        let stored = db.messages_active(&p.id).unwrap().join("\n");
+        assert!(!stored.contains(&secret) && stored.contains("••••"), "stored messages");
+        let stdin = std::fs::read_to_string(bin.join("stdin.txt")).unwrap();
+        assert!(!stdin.contains(&secret), "the prompt for the model must not hold the secret: {stdin}");
+        crate::scrub::unregister("chat-test/secret");
+    }
+
+    /// Een lek blokkeert het vastleggen na de run en laat het terugdraaien niet los op niet-vastgelegd werk.
+    #[cfg(unix)]
+    #[test]
+    fn a_leak_found_before_a_run_disables_rollback_and_blocks_the_snapshot() {
+        use std::os::unix::fs::PermissionsExt;
+        let (bin, proj, db, p, ctx, mgr) = scoped_fixture(true); // nep-flutter klaagt altijd
+        // Het werk van de gebruiker staat nog niet in git en bevat een geheim.
+        std::fs::write(proj.join("lib/features/home/home_screen.dart"), "// user work\nconst k = 'ghp_abcdefghijklmnopqrstuvwxyz0123456789';\n").unwrap();
+        let claude = bin.join("claude");
+        std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let head = crate::gitops::head(&proj).unwrap();
+        mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+        let st = statuses(&db, &p.id);
+        assert!(st.iter().any(|s| s.starts_with("leak_blocked:")), "{st:?}");
+        assert!(!st.iter().any(|s| s.starts_with("rolled_back") || s.starts_with("repairing")), "no rollback without a safe base: {st:?}");
+        assert!(std::fs::read_to_string(proj.join("lib/features/home/home_screen.dart")).unwrap().contains("user work"), "the user's own work was not touched");
+        assert_eq!(crate::gitops::head(&proj).unwrap(), head, "nothing with a secret was committed");
+    }
+
     #[cfg(unix)]
     #[test]
     fn each_screen_keeps_its_own_conversation_and_new_chat_resets_all() {
@@ -682,7 +753,7 @@ mod tests {
                 }
             });
         }
-        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots"), scopes: Default::default() }).unwrap();
+        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots"), scopes: Default::default(), vault: crate::vault::global(), emit: Arc::new(|_, _| {}) }).unwrap();
         let events: Arc<Mutex<Vec<Value>>> = Arc::default();
         let sink = events.clone();
         let ctx = ChatCtx { db: db.clone(), mcp, config_dir: root.join("mcp"), scopes: Default::default(), checks: false, flutter: None, emit: Arc::new(move |n, v| { if n == "chat-event" { sink.lock().unwrap().push(v["event"].clone()) } }) };
@@ -733,7 +804,7 @@ mod tests {
 
         let perms = Arc::new(Permissions::new(Arc::new(|_| {}), Duration::from_secs(5)));
         let scopes: Arc<ScopeRegistry> = Default::default();
-        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots"), scopes: scopes.clone() }).unwrap();
+        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots"), scopes: scopes.clone(), vault: crate::vault::global(), emit: Arc::new(|_, _| {}) }).unwrap();
         let events: Arc<Mutex<Vec<Value>>> = Arc::default();
         let sink = events.clone();
         let ctx = ChatCtx { db: db.clone(), mcp, config_dir: root.join("mcp"), scopes, checks: false, flutter: None, emit: Arc::new(move |n, v| { if n == "chat-event" { sink.lock().unwrap().push(v["event"].clone()) } }) };
@@ -790,7 +861,7 @@ mod tests {
         std::fs::write(dir.join("build/secret.txt"), "TOPSECRET-BUILD-OUTPUT").unwrap();
 
         let perms = Arc::new(Permissions::new(Arc::new(|_| {}), Duration::from_secs(5)));
-        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots"), scopes: Default::default() }).unwrap();
+        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots"), scopes: Default::default(), vault: crate::vault::global(), emit: Arc::new(|_, _| {}) }).unwrap();
         let events: Arc<Mutex<Vec<Value>>> = Arc::default();
         let sink = events.clone();
         let ctx = ChatCtx { db: db.clone(), mcp, config_dir: root.join("mcp"), scopes: Default::default(), checks: false, flutter: None, emit: Arc::new(move |n, v| { if n == "chat-event" { sink.lock().unwrap().push(v["event"].clone()) } }) };

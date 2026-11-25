@@ -39,6 +39,19 @@ pub fn restore_files(dir: &Path, base: &str, files: &[String]) -> AppResult<()> 
     Ok(())
 }
 
+/// Bestanden in de git-index.
+pub fn tracked_files(dir: &Path) -> AppResult<Vec<String>> {
+    Ok(git(dir, &["ls-files"])?.lines().map(str::to_string).filter(|l| !l.is_empty()).collect())
+}
+
+/// Wat een momentopname zou vastleggen: bestanden in de index plus nieuwe, niet-genegeerde bestanden.
+pub fn visible_files(dir: &Path) -> AppResult<Vec<String>> {
+    let mut v: Vec<String> = git(dir, &["ls-files", "--cached", "--others", "--exclude-standard"])?.lines().map(str::to_string).filter(|l| !l.is_empty()).collect();
+    v.sort();
+    v.dedup();
+    Ok(v)
+}
+
 pub fn head(dir: &Path) -> AppResult<String> {
     Ok(git(dir, &["rev-parse", "HEAD"])?.trim().to_string())
 }

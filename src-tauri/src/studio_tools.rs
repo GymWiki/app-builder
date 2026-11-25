@@ -210,6 +210,11 @@ pub fn create_snapshot(db: &Db, p: &Project, label: &str, kind: &str) -> AppResu
     let label = label.trim();
     let label = if label.is_empty() { "Snapshot" } else { label };
     let version = db.project_get(&p.id)?.version;
+    // Lekcontrole: een momentopname legt alles vast in git, dus daar mag geen geheim in zitten.
+    let leaks = crate::leak::scan(&dir, &crate::scrub::known_values());
+    if !leaks.is_empty() {
+        return Ok(json!({ "created": false, "blocked": "leak", "leaks": leaks, "commit": gitops::head(&dir).unwrap_or_default() }));
+    }
     match gitops::snapshot(&dir, label)? {
         Some(commit) => {
             db.snapshot_insert(&p.id, &commit, label, kind, &version)?;
@@ -384,7 +389,28 @@ mod tests {
         assert_eq!(gitops::last_commit_subject(&d).unwrap(), "Nieuwe knop");
         let st = project_status(&db, &p).unwrap();
         assert_eq!(st["git"]["changedFiles"], 0);
-        assert_eq!(st["checklist"]["total"], 8);
-        assert_eq!(get_checklist(&db, &p).unwrap()["items"].as_array().unwrap().len(), 10);
+        assert_eq!(st["checklist"]["total"], 9);
+        assert_eq!(get_checklist(&db, &p).unwrap()["items"].as_array().unwrap().len(), 11);
+    }
+
+    #[test]
+    fn a_snapshot_is_blocked_while_a_secret_is_in_the_files_and_works_again_after_the_fix() {
+        if crate::proc::find("git").is_none() {
+            return;
+        }
+        let d = tmp();
+        std::fs::write(d.join("lib/main.dart"), "a").unwrap();
+        git_init(&d);
+        let (db, p) = setup(&d);
+        let before = gitops::head(&d).unwrap();
+        std::fs::write(d.join("lib/config.dart"), "const t = 'ghp_abcdefghijklmnopqrstuvwxyz0123456789';\n").unwrap();
+        let r = create_snapshot(&db, &p, "x", "auto").unwrap();
+        assert_eq!((r["created"].as_bool(), r["blocked"].as_str()), (Some(false), Some("leak")));
+        assert_eq!(r["leaks"][0]["file"], "lib/config.dart");
+        assert!(!r.to_string().contains("ghp_abc"), "the report never contains the value");
+        assert_eq!(gitops::head(&d).unwrap(), before, "nothing was committed");
+        assert!(db.snapshots_list(&p.id).unwrap().iter().all(|s| s.commit != "x"));
+        std::fs::write(d.join("lib/config.dart"), "const t = String.fromEnvironment('T');\n").unwrap();
+        assert_eq!(create_snapshot(&db, &p, "fixed", "auto").unwrap()["created"], true);
     }
 }

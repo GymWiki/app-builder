@@ -1,9 +1,34 @@
+import type { TFunction } from "i18next";
 import { AlertCircle, CheckCircle2, Circle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import type { ChecklistItemState, Evaluation } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+type T = TFunction;
+
+/** `secret:<integratie>.<veld>` en `leaks:<n>` krijgen een leesbare tekst; de rest komt uit de vertalingen. */
+function missingText(item: string, m: string, t: T): string {
+  if (m.startsWith("secret:")) {
+    const [integration, field] = m.slice(7).split(".");
+    return t("sec.publish.secretMissing", {
+      integration: t(`integrations.${integration}.name`),
+      field: t(`integrations.${integration}.fields.${field}.label`),
+    });
+  }
+  if (m.startsWith("secret_problem:"))
+    return t("sec.publish.secretProblem", { integration: t(`integrations.${m.slice(15)}.name`) });
+  if (m.startsWith("leaks:")) return t("sec.publish.leaksMissing", { n: m.slice(6) });
+  return t(`sec.publish.items.${item}.missing.${m}`, { defaultValue: m });
+}
+
+function nextLabel(next: string, t: T): string {
+  if (next.startsWith("secrets:")) return t("sec.publish.actions.secrets");
+  if (next.startsWith("integrations:")) return t("sec.publish.actions.integrations");
+  if (next === "leaks") return t("sec.publish.actions.leaks");
+  return t(`sec.publish.actions.${next.replace(":", "_")}`, { defaultValue: t("sec.publish.goTo") });
+}
 
 /** Eén punt: titel, wat er mist en de volgende actie. */
 function Item({ it, onNext }: { it: ChecklistItemState; onNext: (n: string) => void }) {
@@ -28,13 +53,13 @@ function Item({ it, onNext }: { it: ChecklistItemState; onNext: (n: string) => v
           {!done && it.missing.length > 0 && (
             <ul className="t-small mt-2 list-disc space-y-0.5 pl-5">
               {it.missing.map((m) => (
-                <li key={m}>{t(`sec.publish.items.${it.key}.missing.${m}`, { defaultValue: m })}</li>
+                <li key={m}>{missingText(it.key, m, t)}</li>
               ))}
             </ul>
           )}
           {!done && it.next && (
             <Button size="xs" variant="outline" className="mt-2.5" onClick={() => onNext(it.next!)}>
-              {t(`sec.publish.actions.${it.next.replace(":", "_")}`, { defaultValue: t("sec.publish.goTo") })}
+              {nextLabel(it.next, t)}
             </Button>
           )}
         </div>

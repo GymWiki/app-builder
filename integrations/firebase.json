@@ -1,0 +1,55 @@
+{
+  "id": "firebase",
+  "naam": "integrations.firebase.name",
+  "categorie": "database",
+  "beschrijving": "integrations.firebase.desc",
+  "icoon": "flame",
+  "scope": "project",
+  "velden": [
+    {
+      "id": "google_services_json",
+      "label": "integrations.firebase.fields.google_services_json.label",
+      "type": "file",
+      "geheim": false,
+      "verplicht": true,
+      "scope": "project",
+      "validatie": {
+        "bestandstype": ["json"],
+        "json": ["project_info"]
+      },
+      "hulptekst": "integrations.firebase.fields.google_services_json.help",
+      "guideId": null,
+      "afgeleid": ["project_info.project_id"]
+    },
+    {
+      "id": "google_service_info_plist",
+      "label": "integrations.firebase.fields.google_service_info_plist.label",
+      "type": "file",
+      "geheim": false,
+      "verplicht": false,
+      "scope": "project",
+      "validatie": {
+        "bestandstype": ["plist"]
+      },
+      "hulptekst": "integrations.firebase.fields.google_service_info_plist.help",
+      "guideId": null
+    },
+    {
+      "id": "service_account",
+      "label": "integrations.firebase.fields.service_account.label",
+      "type": "file",
+      "geheim": true,
+      "verplicht": false,
+      "scope": "project",
+      "validatie": {
+        "bestandstype": ["json"],
+        "json": ["type=service_account", "client_email", "private_key"]
+      },
+      "hulptekst": "integrations.firebase.fields.service_account.help",
+      "guideId": null,
+      "afgeleid": ["client_email", "project_id"]
+    }
+  ],
+  "testVerbinding": "firebase_local",
+  "checklistItems": ["data_auth"]
+}

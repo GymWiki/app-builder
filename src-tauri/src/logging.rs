@@ -22,7 +22,12 @@ fn is_secret_key(word: &str) -> bool {
 }
 
 /// Maskeert API-sleutels, tokens en `key=value`-paren met gevoelige namen.
+/// Eerst de bekende geheime waarden uit de kluis (scrubber), daarna gangbare sleutelpatronen.
 pub fn redact(input: &str) -> String {
+    redact_patterns(&crate::scrub::replace_known(input))
+}
+
+fn redact_patterns(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut mask_next = false;
     for (i, part) in input.split(' ').enumerate() {

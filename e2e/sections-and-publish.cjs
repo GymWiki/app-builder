@@ -89,10 +89,13 @@ const ok = (c, m) => {
   await menu("Data & login").click();
   await p.getByRole("radio", { name: /Supabase/ }).click();
   await p.locator("#sb-ref").fill("abcdefghij");
-  await p.locator("#sb-token").fill("sbp_super_secret_token");
+  await p.locator("#sb-token").fill("sbp_supersecrettoken0123456789abc");
   await p.getByRole("button", { name: "Save token" }).click();
   await p.getByText("✓ Saved in the keychain").waitFor();
-  ok(!(await p.content()).includes("sbp_super_secret_token"), "token value is gone from the page after saving");
+  ok(
+    !(await p.content()).includes("sbp_supersecrettoken0123456789abc"),
+    "token value is gone from the page after saving",
+  );
   await p.getByLabel("Email and password").check();
   await p.getByLabel("The app lets people delete their account").waitFor();
   ok(true, "account deletion is asked when there are accounts");
@@ -103,7 +106,7 @@ const ok = (c, m) => {
 
   // Publish gate
   await menu("Publish").click();
-  await p.getByText(/of 8 required items done/).waitFor();
+  await p.getByText(/of 9 required items done/).waitFor();
   const publishBtn = p.getByRole("button", { name: /^Publish/ }).first();
   ok(await publishBtn.isDisabled(), "top bar Publish stays disabled while items are open");
   ok(await p.getByText("Run the test").first().isVisible(), "AI test item says what to do");
@@ -173,7 +176,9 @@ const ok = (c, m) => {
   await p.getByText("Back this file up").waitFor();
   await p.getByRole("button", { name: "Let Claude set this up" }).click();
   await p.getByText("✓ Set up").waitFor({ timeout: 15000 });
-  await p.locator("#play-key").fill('{"client_email":"x@y.iam.gserviceaccount.com","private_key":"SECRET_KEY_VALUE"}');
+  await p
+    .locator("#play-key")
+    .fill('{"type":"service_account","client_email":"x@y.iam.gserviceaccount.com","private_key":"SECRET_KEY_VALUE"}');
   await p.getByRole("button", { name: "Save key" }).click();
   await p.getByText("✓ Saved in the keychain").waitFor();
   ok(!(await p.content()).includes("SECRET_KEY_VALUE"), "service account key is gone from the page after saving");
@@ -198,13 +203,13 @@ const ok = (c, m) => {
     .waitFor()
     .catch(() => {});
   await p.getByRole("tab", { name: "Checklist" }).click();
-  await p.getByText("8 of 8 required items done").waitFor({ timeout: 8000 });
+  await p.getByText("9 of 9 required items done").waitFor({ timeout: 8000 });
   ok(
     await p
       .getByRole("button", { name: /^Publish/ })
       .first()
       .isEnabled(),
-    "top bar Publish enables when all 8 required items are green",
+    "top bar Publish enables when all 9 required items are green",
   );
   await p.screenshot({ path: `${S}/59-green.png` });
   await p.getByRole("tab", { name: "Release" }).click();
@@ -222,6 +227,6 @@ const ok = (c, m) => {
   ok(errs.length === 0, "no console errors " + errs.join(" | ").slice(0, 300));
   await b.close();
 })().catch((e) => {
-  console.error("FAIL", e.message.split("\n")[0]);
+  console.error("FAIL", e.message.split("\n").slice(0, 4).join(" / "));
   process.exit(1);
 });

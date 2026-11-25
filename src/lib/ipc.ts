@@ -27,6 +27,7 @@ import type {
   TemplateId,
   ToolStatus,
 } from "./types";
+import type { IntegrationOverview, IntegrationStatus, Leak, TestOutcome } from "./integrations";
 
 export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -146,6 +147,35 @@ export const api = {
 
   profileInfo: (projectId: string) => call<ProfileInfo>("profile_info", { projectId }),
   profileApply: (projectId: string) => call<void>("profile_apply", { projectId }),
+  integrationList: (projectId: string) => call<IntegrationOverview>("integration_list", { projectId }),
+  integrationSetEnabled: (projectId: string, id: string, enabled: boolean, deleteSecrets: boolean) =>
+    call<IntegrationStatus[]>("integration_set_enabled", { projectId, id, enabled, deleteSecrets }),
+  secretFieldSetText: (projectId: string, integration: string, field: string, value: string) =>
+    call<void>("secret_field_set_text", { projectId, integration, field, value }),
+  secretFieldSetFile: (projectId: string, integration: string, field: string, fileName: string, dataB64: string) =>
+    call<{ derived: Record<string, string> }>("secret_field_set_file", {
+      projectId,
+      integration,
+      field,
+      fileName,
+      dataB64,
+    }),
+  secretFieldDelete: (projectId: string, integration: string, field: string) =>
+    call<void>("secret_field_delete", { projectId, integration, field }),
+  secretFieldReveal: (projectId: string, integration: string, field: string) =>
+    call<string>("secret_field_reveal", { projectId, integration, field }),
+  secretTest: (projectId: string, integration: string) => call<TestOutcome>("secret_test", { projectId, integration }),
+  vaultExport: (projectId: string, passphrase: string) => call<string>("vault_export", { projectId, passphrase }),
+  vaultImport: (projectId: string, passphrase: string, dataB64: string) =>
+    call<number>("vault_import", { projectId, passphrase, dataB64 }),
+  vaultExportFile: (projectId: string, passphrase: string, path: string) =>
+    call<void>("vault_export_file", { projectId, passphrase, path }),
+  vaultImportFile: (projectId: string, passphrase: string, path: string) =>
+    call<number>("vault_import_file", { projectId, passphrase, path }),
+  leaksScan: (projectId: string) => call<Leak[]>("leaks_scan", { projectId }),
+  leakMoveToVault: (projectId: string, file: string) =>
+    call<[string, string]>("leak_move_to_vault", { projectId, file }),
+  leakFixPrompt: (file: string, line: number, kind: string) => call<string>("leak_fix_prompt", { file, line, kind }),
   runMetrics: (projectId: string) => call<RunsSummary>("run_metrics", { projectId }),
 
   projectsList: (query?: string) => call<Project[]>("projects_list", { query: query || null }),

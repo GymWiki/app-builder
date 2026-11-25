@@ -42,8 +42,8 @@ pub fn find_keytool(flutter: Option<&Path>) -> Option<PathBuf> {
     guesses.iter().map(PathBuf::from).find(|p| p.is_file())
 }
 
-pub fn keystore_path(data_dir: &Path, project_id: &str) -> PathBuf {
-    data_dir.join("keystores").join(project_id).join("upload-keystore.jks")
+pub fn has_keystore(project_id: &str) -> bool {
+    crate::vault::global().has(project_id, "android_signing", "keystore")
 }
 
 fn clean(s: &str, fallback: &str) -> String {
@@ -57,17 +57,17 @@ pub fn dname(name: &str, org: &str, country: &str) -> String {
     format!("CN={}, O={}, C={}", clean(name, "App owner"), clean(org, "Studio"), if c.len() == 2 { c } else { "NL".into() })
 }
 
-/// Maakt de keystore en bewaart het wachtwoord in de keychain. Bestaat hij al, dan gebeurt er niets
-/// (een keystore overschrijven zou het updaten van de gepubliceerde app onmogelijk maken).
-pub fn create_keystore(keytool: &Path, data_dir: &Path, project_id: &str, dname: &str) -> AppResult<PathBuf> {
-    let path = keystore_path(data_dir, project_id);
-    if path.exists() {
-        return Err(AppError::PathExists(path.display().to_string()));
+/// Maakt de keystore met `keytool`, zet hem versleuteld in de kluis (met wachtwoord en alias) en wist de losse bestanden.
+/// Bestaat er al een keystore, dan gebeurt er niets (overschrijven zou het updaten van de gepubliceerde app onmogelijk maken).
+pub fn create_keystore(keytool: &Path, data_dir: &Path, project_id: &str, dname: &str) -> AppResult<()> {
+    let vault = crate::vault::global();
+    if vault.has(project_id, "android_signing", "keystore") {
+        return Err(AppError::PathExists("keystore".into()));
     }
-    std::fs::create_dir_all(path.parent().unwrap())?;
+    let tmp = data_dir.join("tmp").join(uuid::Uuid::new_v4().simple().to_string());
+    std::fs::create_dir_all(&tmp)?;
+    let path = tmp.join("upload-keystore.jks");
     let password = keychain::random_password();
-    // Eerst in de keychain: lukt dat niet, dan maken we de keystore niet aan.
-    keychain::set(project_id, "android_keystore_password", &password)?;
     let mut cmd = proc::command(keytool);
     cmd.env("STUDIO_KS_PW", &password).args([
         "-genkeypair",
@@ -90,13 +90,26 @@ pub fn create_keystore(keytool: &Path, data_dir: &Path, project_id: &str, dname:
         "-dname",
         dname,
     ]);
-    let out = cmd.output().map_err(|e| AppError::CommandFailed(format!("keytool: {e}")))?;
-    if !out.status.success() {
-        let _ = keychain::delete(project_id, "android_keystore_password");
-        let _ = std::fs::remove_file(&path);
-        return Err(AppError::CommandFailed(format!("keytool: {}", crate::logging::redact(String::from_utf8_lossy(&out.stderr).trim()))));
+    let out = cmd.output().map_err(|e| AppError::CommandFailed(format!("keytool: {e}")));
+    let result = (|| {
+        let out = out?;
+        if !out.status.success() {
+            return Err(AppError::CommandFailed(format!("keytool: {}", crate::logging::redact(String::from_utf8_lossy(&out.stderr).trim()))));
+        }
+        let bytes = std::fs::read(&path)?;
+        // Eerst het wachtwoord (en alias), dan het bestand; mislukt iets, dan ruimen we alles op.
+        vault.set_text(project_id, "android_signing", "keystore_password", &password)?;
+        vault.set_text(project_id, "android_signing", "alias", ALIAS)?;
+        vault.set_file(project_id, "android_signing", "keystore", "upload-keystore.jks", &bytes)?;
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&tmp);
+    if result.is_err() {
+        for f in ["keystore", "keystore_password", "alias"] {
+            let _ = vault.delete(project_id, "android_signing", f);
+        }
     }
-    Ok(path)
+    result
 }
 
 pub fn gradle_configured(project_dir: &Path) -> bool {
@@ -106,19 +119,24 @@ pub fn gradle_configured(project_dir: &Path) -> bool {
         .any(|t| t.contains("STUDIO_KEYSTORE_PATH") && t.contains("signingConfig"))
 }
 
-/// Omgevingsvariabelen voor een release-build. Het wachtwoord komt uit de keychain.
-pub fn build_env(project_id: &str, data_dir: &Path) -> AppResult<Vec<(String, String)>> {
-    let path = keystore_path(data_dir, project_id);
-    if !path.is_file() {
+/// Omgevingsvariabelen voor een release-build. Alles komt uit de kluis; het ontsleutelde keystore-bestand bestaat
+/// alleen zolang het resultaat in leven is.
+pub fn build_env(project_id: &str) -> AppResult<crate::vault::EnvBundle> {
+    let v = crate::vault::global();
+    if !v.has(project_id, "android_signing", "keystore") {
         return Err(AppError::NotFound("keystore".into()));
     }
-    let pw = keychain::get(project_id, "android_keystore_password")?.ok_or_else(|| AppError::NotFound("keystore password in the keychain".into()))?;
-    Ok(vec![
-        ("STUDIO_KEYSTORE_PATH".into(), path.to_string_lossy().into_owned()),
-        ("STUDIO_KEYSTORE_PASSWORD".into(), pw.clone()),
-        ("STUDIO_KEY_ALIAS".into(), ALIAS.into()),
-        ("STUDIO_KEY_PASSWORD".into(), pw),
-    ])
+    if !v.has(project_id, "android_signing", "keystore_password") {
+        return Err(AppError::NotFound("keystore password".into()));
+    }
+    let mut b = v.env_for(project_id, &["android_signing"], "build")?;
+    // PKCS12: het sleutelwachtwoord is hetzelfde als het keystore-wachtwoord, tenzij er een eigen is ingesteld.
+    if !b.vars.iter().any(|(k, _)| k == "STUDIO_KEY_PASSWORD") {
+        if let Some(pw) = b.vars.iter().find(|(k, _)| k == "STUDIO_KEYSTORE_PASSWORD").map(|(_, v)| v.clone()) {
+            b.vars.push(("STUDIO_KEY_PASSWORD".into(), pw));
+        }
+    }
+    Ok(b)
 }
 
 /// Opdracht aan Claude om Gradle zo in te stellen dat de keystore uit de omgeving komt (geen wachtwoorden in bestanden).
@@ -155,24 +173,30 @@ mod tests {
     }
 
     #[test]
-    fn real_keytool_creates_a_keystore_and_never_overwrites() {
+    fn real_keytool_creates_a_keystore_in_the_vault_and_never_overwrites() {
         let Some(keytool) = proc::find("keytool") else { return };
         let data = std::env::temp_dir().join(format!("studio-ks-{}", uuid::Uuid::new_v4()));
         let id = format!("t{}", uuid::Uuid::new_v4().simple());
-        if keychain::set(&id, "android_keystore_password", "probe").is_err() {
-            return; // geen keychain beschikbaar op deze machine
-        }
-        let _ = keychain::delete(&id, "android_keystore_password");
-        let path = create_keystore(&keytool, &data, &id, &dname("Test User", "Test", "NL")).unwrap();
-        assert!(path.is_file() && std::fs::metadata(&path).unwrap().len() > 500);
-        let env = build_env(&id, &data).unwrap();
-        let pw = env.iter().find(|(k, _)| k == "STUDIO_KEYSTORE_PASSWORD").unwrap().1.clone();
+        create_keystore(&keytool, &data, &id, &dname("Test User", "Test", "NL")).unwrap();
+        assert!(has_keystore(&id));
+        assert!(!data.join("tmp").read_dir().map(|mut d| d.next().is_some()).unwrap_or(false), "no loose keystore or password file left");
+        let (path, pw) = {
+            let b = build_env(&id).unwrap();
+            let get = |k: &str| b.vars.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone()).unwrap();
+            assert_eq!((get("STUDIO_KEY_ALIAS").as_str(), get("STUDIO_KEY_PASSWORD").len()), ("upload", 40));
+            let path = std::path::PathBuf::from(get("STUDIO_KEYSTORE_PATH"));
+            let pw = get("STUDIO_KEYSTORE_PASSWORD");
+            // keytool bevestigt dat het ontsleutelde bestand en het wachtwoord kloppen
+            let o = proc::run(&keytool, &["-list", "-keystore", &path.to_string_lossy(), "-storepass:env", "STUDIO_PW_CHECK"], None, Duration::from_secs(20));
+            let _ = o;
+            let mut c = proc::command(&keytool);
+            c.env("STUDIO_PW_CHECK", &pw).args(["-list", "-keystore", &path.to_string_lossy(), "-storepass:env", "STUDIO_PW_CHECK"]);
+            let out = c.output().unwrap();
+            assert!(out.status.success() && String::from_utf8_lossy(&out.stdout).contains("upload"));
+            (path, pw)
+        };
+        assert!(!path.exists(), "the decrypted keystore is removed after the build");
         assert_eq!(pw.len(), 40);
-        // het wachtwoord staat in niets wat op schijf in de projectmap komt; keytool bevestigt dat het klopt
-        let o = proc::run(&keytool, &["-list", "-keystore", &path.to_string_lossy(), "-storepass", &pw], None, Duration::from_secs(20)).unwrap();
-        assert!(o.ok() && o.stdout.contains("upload"));
         assert!(matches!(create_keystore(&keytool, &data, &id, "CN=x"), Err(AppError::PathExists(_))));
-        keychain::delete(&id, "android_keystore_password").unwrap();
-        assert!(build_env(&id, &data).is_err());
     }
 }

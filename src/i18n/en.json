@@ -146,6 +146,14 @@
       "publish": {
         "name": "Publish",
         "desc": "A guided checklist to Google Play and the App Store."
+      },
+      "integrations": {
+        "name": "Integrations",
+        "desc": "Switch on the services your app uses: stores, database, and more."
+      },
+      "secrets": {
+        "name": "Secrets",
+        "desc": "Keys and passwords, kept safely on this computer. Claude never sees them."
       }
     },
     "device": {
@@ -412,6 +420,10 @@
     "unsupported": {
       "title": "Not available yet",
       "fix": "This part is planned for a later version of Studio. Everything else keeps working."
+    },
+    "rejected": {
+      "title": "That value was not accepted",
+      "fix": "This value was not accepted. Check it and try again."
     }
   },
   "design": {
@@ -530,7 +542,8 @@
       "repaired": "Fixed a small problem automatically.",
       "checks_ok": "Everything still works.",
       "rolled_back": "That change did not work out, so I went back to the previous version. Nothing is lost.",
-      "scope_reverted": "A change outside this task was undone to keep the rest of the app safe."
+      "scope_reverted": "A change outside this task was undone to keep the rest of the app safe.",
+      "leak_blocked": "Saving a version was paused: a secret was found in your files. See Secrets."
     }
   },
   "preview": {
@@ -898,6 +911,11 @@
             "sharing": "Sharing",
             "microphone": "Microphone"
           }
+        },
+        "no_leaks": {
+          "title": "No secrets in your files",
+          "desc": "Keys and passwords must never be saved inside your app's files.",
+          "missing": {}
         }
       },
       "actions": {
@@ -910,7 +928,10 @@
         "publish_test": "Open test run",
         "publish_listing": "Open store page",
         "publish_signing": "Open accounts",
-        "publish_confirm": "Open release"
+        "publish_confirm": "Open release",
+        "secrets": "Add secrets",
+        "integrations": "Open integrations",
+        "leaks": "Fix this"
       },
       "test": {
         "title": "AI test run",
@@ -1096,6 +1117,195 @@
         "log": "Log",
         "needFastlane": "Install Fastlane first (see Accounts).",
         "needKey": "Add your Google Play key first (see Accounts)."
+      },
+      "secretMissing": "Secrets missing: {{integration}} › {{field}}",
+      "leaksMissing": "{{n}} secret(s) found in your files",
+      "secretProblem": "{{integration}}: a key has expired or no longer works"
+    },
+    "integrations": {
+      "title": "Integrations",
+      "intro": "Switch on what your app needs. Studio then asks for the keys it needs, and keeps them safe.",
+      "categories": {
+        "stores": "App stores and signing",
+        "database": "Database and login",
+        "services": "Other services"
+      },
+      "switchLabel": "{{name}} on or off",
+      "turnedOn": "{{name}} is on.",
+      "status": {
+        "off": "Off",
+        "complete": "On and complete",
+        "warning": "On, needs attention",
+        "incomplete": "On, some secrets missing",
+        "missing": "On, secrets missing"
+      },
+      "addSecrets": "Add secrets",
+      "openSecrets": "Open secrets",
+      "noSecretsNeeded": "No secrets needed.",
+      "off": {
+        "title": "Switch off {{name}}?",
+        "body": "You can keep the saved secrets in case you switch it on again, or delete them from this computer.",
+        "globalNote": "Secrets that belong to your account (not just this app) stay in place either way, because other apps may use them.",
+        "keep": "Switch off and keep the secrets",
+        "delete": "Switch off and delete this app's secrets"
+      },
+      "needs": {
+        "title": "{{name}} needs more",
+        "body": "{{name}} works together with: {{deps}}. Switch that on as well?",
+        "both": "Switch on both",
+        "only": "Only {{name}}"
+      }
+    },
+    "secrets": {
+      "title": "Secrets",
+      "intro": "Everything here stays on this computer, in a safe place. Claude and the chat never see the values.",
+      "publicVsSecret": "Some values are public and some are secret. Public values (like a web address) may be in your app. Secret values (like a password or key file) must never be: anyone could use them. Studio keeps both in its own safe, and checks your files so secrets never end up in your app or online.",
+      "guideSoon": "Instructions coming soon",
+      "scope": {
+        "global": "For all your apps",
+        "project": "For this app only",
+        "globalShort": "All your apps",
+        "projectShort": "This app only"
+      },
+      "secret": "secret",
+      "public": "public",
+      "optional": "(optional)",
+      "valueSaved": "A value is saved",
+      "show": "Show",
+      "hide": "Hide ({{s}}s)",
+      "copy": "Copy",
+      "copied": "Copied. Paste it where you need it.",
+      "replace": "Replace",
+      "delete": "Delete",
+      "save": "Save",
+      "saved": "{{name}} saved.",
+      "savedFileWho": "{{name}} saved ({{who}}).",
+      "deleted": "{{name}} deleted.",
+      "fileSaved": "File saved: {{name}}",
+      "choose": "Choose…",
+      "dropLabel": "Drop zone for {{name}}",
+      "dropHere": "Drop the file here ({{types}}) or browse for it.",
+      "browse": "Browse…",
+      "derived": {
+        "client_email": "account",
+        "project_id": "project"
+      },
+      "generate": {
+        "button": "Create it for me",
+        "intro": "Studio creates a signing key and fills in the passwords for you. You only need a name.",
+        "owner": "Your name",
+        "org": "Company or app name (optional)",
+        "create": "Create signing key",
+        "done": "Signing key created and saved.",
+        "defaultOwner": "App owner"
+      },
+      "confirm": {
+        "showTitle": "Show this value?",
+        "showBody": "Make sure nobody is looking at your screen. {{name}} is hidden again after {{s}} seconds.",
+        "copyTitle": "Copy this value?",
+        "copyBody": "{{name}} will be placed on your clipboard. Paste it only where it belongs.",
+        "replaceTitle": "Replace {{name}}?",
+        "replaceBody": "The old value is removed and cannot be brought back.",
+        "replaceKeystore": "The old signing key is removed and cannot be brought back. Without it you can no longer update your published app. Only continue if you have a backup.",
+        "deleteTitle": "Delete {{name}}?",
+        "deleteBody": "The value is removed from this computer and cannot be brought back.",
+        "deleteKeystore": "Without this signing key you can no longer update your published app. Only delete it if you have a backup."
+      },
+      "errors": {
+        "empty": "This field is empty. Type or paste the value, then press Save.",
+        "multiline": "This must be a single line. Check that you copied only the value.",
+        "too_short": "That looks too short (at least {{detail}} characters). Copy the whole value again.",
+        "not_an_option": "Pick one of the options in the list.",
+        "pattern": "That does not look right. Copy the value again from the website, without extra spaces, and try once more.",
+        "secret_in_public_field": "This is the SECRET key, which must never be inside an app. Put it in the \"Secret key\" field, and use the publishable key here.",
+        "file_type": "This is not the right type of file. Choose a file of type {{detail}}.",
+        "content": "This file does not contain what we expect. Download it again from the service and choose that file.",
+        "json_invalid": "This file cannot be read as a key file. Download it again, and do not open or edit it first.",
+        "json_missing": "This key file is missing a part ({{detail}}). Create a new key and download it again.",
+        "json_wrong": "This is not the right kind of key file ({{detail}}). Check that you downloaded a service account key.",
+        "too_large": "This file is too large to be a key file (at most 512 KB). Choose the original file you downloaded.",
+        "not_text": "This file cannot be read here. Choose the original file you downloaded.",
+        "passphrase_short": "Use a passphrase of at least {{detail}} characters.",
+        "backup_unreadable": "The backup could not be opened. Check the passphrase and that this is the right file.",
+        "vault_has_value": "Studio already has a value for this ({{detail}}). Delete that one first if you want to replace it.",
+        "generic": "This value was not accepted. Check it and try again."
+      },
+      "state": {
+        "complete": "Complete",
+        "completeTested": "Complete and working",
+        "failed": "Needs attention: last test failed",
+        "expires": "Needs attention: expires soon",
+        "incomplete": "Incomplete",
+        "missing": "Missing"
+      },
+      "test": "Test connection",
+      "testing": "Testing…",
+      "notTested": "Not tested yet.",
+      "lastTested": "tested {{when}}",
+      "testResult": {
+        "ok": "Connection works.",
+        "checked_locally": "The details look right. (A live check with the service follows in a later version.)",
+        "invalid_credentials": "The service says these details are not valid. Check the key and replace it.",
+        "forbidden": "The service refuses this key. Check its permissions and try again.",
+        "unreachable": "Could not reach the service. Check your internet connection and the web address.",
+        "incomplete": "Fill in all required fields first.",
+        "file_invalid": "A saved file is no longer valid. Replace it.",
+        "not_found": "The service did not find this. Check the web address or ID.",
+        "rate_limited": "The service asks you to wait. Try again in a minute.",
+        "unexpected": "The service gave an unexpected answer. Try again later."
+      },
+      "lastUsed": "Last used",
+      "never": "not yet",
+      "usedBy": {
+        "label": "Used by",
+        "build": "building the app",
+        "upload": "uploading to the store",
+        "test": "testing the connection"
+      },
+      "expired": "This key has expired. Create a new one and replace it here.",
+      "expiresIn": "This key expires in {{count}} day(s). Create a new one before then.",
+      "empty": {
+        "title": "No secrets needed yet",
+        "body": "Secrets appear here for each integration you switch on. Switch on what your app needs first.",
+        "action": "Go to integrations"
+      },
+      "backup": {
+        "title": "Back-up",
+        "why": "Make an encrypted back-up, especially of your Android signing key. If that key is lost, nobody can recover it and you can never update your published app again. Keep the file and the passphrase in two different safe places.",
+        "export": "Make a back-up",
+        "import": "Restore a back-up",
+        "exportHelp": "Choose a passphrase you can remember. Without it the back-up cannot be opened, and we cannot recover it for you.",
+        "importHelp": "Choose the back-up file and enter its passphrase.",
+        "file": "Back-up file",
+        "passphrase": "Passphrase",
+        "repeat": "Repeat passphrase",
+        "mismatch": "The two passphrases are not the same.",
+        "doExport": "Save back-up file",
+        "doImport": "Restore",
+        "exported": "Back-up saved. Keep it safe.",
+        "imported": "{{n}} value(s) restored.",
+        "choose": "Choose back-up file…"
+      }
+    },
+    "leaks": {
+      "title": "A secret was found in your files",
+      "body": "Studio paused saving versions and publishing, because a secret in your files could end up online or inside your app. Fix it below, then replace the key with a new one if it was already saved before.",
+      "line": "line {{n}}",
+      "tracked": "This was already saved in your history. Create a new key and replace it.",
+      "move": "Move to the safe",
+      "moved": "Moved to the safe and removed from your files.",
+      "askClaude": "Ask Claude to remove it",
+      "confirmTitle": "Move this file to the safe?",
+      "confirmBody": "{{file}} will be stored safely in Studio and removed from your project folder.",
+      "kind": {
+        "known_secret": "One of your saved secrets is written in this file.",
+        "private_key": "A private key is written in this file.",
+        "token": "A secret key or token is written in this file.",
+        "service_role_key": "A Supabase secret (service_role) key is written here. It must never be inside an app.",
+        "secret_file": "A key file is stored in the project folder.",
+        "service_account_file": "A service account key file is stored in the project folder.",
+        "env_file": "An .env file with secrets is in the project folder.",
+        "secret_in_app_assets": "A secret file is listed as part of the app, so it would ship inside the app."
       }
     }
   },
@@ -1130,6 +1340,130 @@
         "cost": "Total cost: ${{cost}}",
         "denied": "Edits outside scope refused: {{n}}",
         "none": "No runs yet."
+      }
+    }
+  },
+  "integrations": {
+    "apple": {
+      "name": "Apple (App Store)",
+      "desc": "Lets Studio upload your iPhone app to App Store Connect.",
+      "fields": {
+        "issuer_id": {
+          "label": "Issuer ID",
+          "help": "The long ID shown at the top of the App Store Connect API page (Users and Access, Integrations). It looks like 69a6de7e-…."
+        },
+        "key_id": {
+          "label": "Key ID",
+          "help": "The 10-character ID next to your key in the same table."
+        },
+        "team_id": {
+          "label": "Team ID",
+          "help": "10 characters, shown in your Apple Developer account under Membership details."
+        },
+        "private_key": {
+          "label": "API key file (.p8)",
+          "help": "Apple lets you download this file only once. Store it here right away; if it is lost you must create a new key."
+        }
+      }
+    },
+    "google_play": {
+      "name": "Google Play",
+      "desc": "Lets Studio upload your Android app to Google Play as a draft.",
+      "fields": {
+        "service_account": {
+          "label": "Service account key (JSON)",
+          "help": "Create a service account in Google Cloud, add a JSON key, then invite its email address in Play Console under Users and permissions."
+        }
+      }
+    },
+    "android_signing": {
+      "name": "Android signing",
+      "desc": "The key that proves updates of your app come from you.",
+      "fields": {
+        "keystore": {
+          "label": "Upload keystore",
+          "help": "Studio can create this for you. Make a backup: if the keystore is lost, you can no longer update your published app."
+        },
+        "alias": {
+          "label": "Key alias",
+          "help": "The name of the key inside the keystore. Studio uses \"upload\" when it creates the keystore."
+        },
+        "keystore_password": {
+          "label": "Keystore password",
+          "help": "Studio fills this in when it creates the keystore."
+        },
+        "key_password": {
+          "label": "Key password",
+          "help": "Only needed if it differs from the keystore password."
+        }
+      }
+    },
+    "supabase": {
+      "name": "Supabase",
+      "desc": "An online database and login for your app.",
+      "fields": {
+        "url": {
+          "label": "Project URL",
+          "help": "Found in Supabase under Project Settings, Data API. It looks like https://xxxx.supabase.co."
+        },
+        "publishable_key": {
+          "label": "Publishable key (public)",
+          "help": "Safe to put in the app. Starts with sb_publishable_ (older projects: the anon key)."
+        },
+        "secret_key": {
+          "label": "Secret key",
+          "help": "Full access to your data. Never goes in the app. Starts with sb_secret_ (older projects: the service_role key). Only add it if you need it."
+        },
+        "access_token": {
+          "label": "Personal access token",
+          "help": "Lets Claude set up tables for you through Supabase. Create it under Account, Access Tokens. Starts with sbp_."
+        }
+      }
+    },
+    "firebase": {
+      "name": "Firebase",
+      "desc": "Google's online database and login for your app.",
+      "fields": {
+        "google_services_json": {
+          "label": "google-services.json (Android)",
+          "help": "Download it from Firebase, Project settings, Your apps. It is not secret, but Studio keeps it with the rest."
+        },
+        "google_service_info_plist": {
+          "label": "GoogleService-Info.plist (iPhone)",
+          "help": "Needed for the iPhone version. Not secret."
+        },
+        "service_account": {
+          "label": "Service account key (JSON)",
+          "help": "Only for server-side tasks. Full access: keep it private."
+        }
+      }
+    },
+    "local_db": {
+      "name": "Local database",
+      "desc": "Data stays on the phone. No account and no secrets needed."
+    },
+    "github": {
+      "name": "GitHub",
+      "desc": "Optional: lets Studio back up your project to GitHub.",
+      "fields": {
+        "token": {
+          "label": "Access token",
+          "help": "Create a fine-grained token in GitHub under Settings, Developer settings. Give it access to your project's repository only."
+        }
+      }
+    },
+    "vercel": {
+      "name": "Vercel",
+      "desc": "Optional: lets Studio put a web version of your app online.",
+      "fields": {
+        "token": {
+          "label": "Access token",
+          "help": "Create it in Vercel under Account Settings, Tokens."
+        },
+        "team_id": {
+          "label": "Team ID",
+          "help": "Only if the project belongs to a team. Starts with team_."
+        }
       }
     }
   }

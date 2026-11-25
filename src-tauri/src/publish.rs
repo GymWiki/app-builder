@@ -3,7 +3,7 @@
 //! testtrack als **concept** (draft); naar productie publiceren doet de gebruiker zelf in de Play Console.
 
 use crate::error::{AppError, AppResult};
-use crate::{keychain, proc};
+use crate::proc;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -21,7 +21,6 @@ pub struct UploadRequest<'a> {
     pub package: &'a str,
     pub artifact: &'a Path,
     pub track: &'a str,
-    pub work_dir: &'a Path,
     pub fastlane: &'a Path,
 }
 
@@ -71,21 +70,14 @@ impl StorePublisher for PlayPublisher {
     }
 
     fn upload(&self, req: &UploadRequest, on_line: &mut dyn FnMut(&str)) -> AppResult<()> {
-        let json = keychain::get(req.project_id, "play_service_account_json")?.ok_or_else(|| AppError::NotFound("Google Play service account key".into()))?;
         let track = play_track(req.track)?;
-        // De sleutel staat alleen tijdens de upload als tijdelijk bestand op schijf (alleen eigenaar) en wordt daarna verwijderd.
-        std::fs::create_dir_all(req.work_dir)?;
-        let key_path = req.work_dir.join(format!("play-key-{}.json", uuid::Uuid::new_v4()));
-        std::fs::write(&key_path, json)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))?;
-        }
-        let args = fastlane_args(req.package, req.artifact, track, &key_path);
+        // De sleutel staat alleen tijdens de upload als ontsleuteld tijdelijk bestand op schijf (alleen eigenaar); het
+        // bestand verdwijnt zodra `key` wordt weggegooid.
+        let key = crate::vault::global().materialize(req.project_id, "google_play", "service_account", "upload")?.ok_or_else(|| AppError::NotFound("Google Play service account key".into()))?;
+        let args = fastlane_args(req.package, req.artifact, track, key.path());
         let argv: Vec<&str> = args.iter().map(String::as_str).collect();
         let res = proc::run_streaming(req.fastlane, &argv, None, &[], Duration::from_secs(900), on_line);
-        let _ = std::fs::remove_file(&key_path);
+        drop(key);
         match res? {
             Some(0) => Ok(()),
             _ => Err(AppError::CommandFailed("fastlane supply failed; see the upload log".into())),
@@ -157,8 +149,8 @@ mod tests {
     #[test]
     fn upload_writes_the_key_only_during_the_run() {
         let id = format!("t{}", uuid::Uuid::new_v4().simple());
-        if keychain::set(&id, "play_service_account_json", "{\"type\":\"service_account\"}").is_err() {
-            return; // geen keychain op deze machine
+        if crate::keychain::set(&id, "play_service_account_json", r#"{"type":"service_account","client_email":"bot@p.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nPUBLISHTESTKEY0123456789\n-----END PRIVATE KEY-----\n"}"#).is_err() {
+            return;
         }
         let d = std::env::temp_dir().join(format!("studio-up-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&d).unwrap();
@@ -167,15 +159,16 @@ mod tests {
         script(&fake, "echo \"$@\" > \"$(dirname \"$0\")/args.txt\"\nkey=$(echo \"$@\" | sed 's/.*--json_key \\([^ ]*\\).*/\\1/')\n[ -f \"$key\" ] && echo key-existed > \"$(dirname \"$0\")/seen.txt\"\necho uploading\n");
         let aab = d.join("a.aab");
         std::fs::write(&aab, "x").unwrap();
-        let work = d.join("work");
         let mut lines = vec![];
-        let req = UploadRequest { project_id: &id, package: "nl.x.y", artifact: &aab, track: "internal", work_dir: &work, fastlane: &fake };
+        let req = UploadRequest { project_id: &id, package: "nl.x.y", artifact: &aab, track: "internal", fastlane: &fake };
         PlayPublisher.upload(&req, &mut |l| lines.push(l.to_string())).unwrap();
         assert_eq!(std::fs::read_to_string(d.join("seen.txt")).unwrap().trim(), "key-existed");
-        assert!(std::fs::read_dir(&work).unwrap().next().is_none(), "key file must be deleted afterwards");
+        let args = std::fs::read_to_string(d.join("args.txt")).unwrap();
+        let key_path = args.split("--json_key ").nth(1).unwrap().split(' ').next().unwrap().trim().to_string();
+        assert!(!std::path::Path::new(&key_path).exists(), "the decrypted key file must be deleted afterwards");
         assert!(std::fs::read_to_string(d.join("args.txt")).unwrap().contains("--release_status draft"));
         // zonder sleutel in de keychain: nette fout
-        keychain::delete(&id, "play_service_account_json").unwrap();
+        crate::keychain::delete(&id, "play_service_account_json").unwrap();
         assert!(matches!(PlayPublisher.upload(&req, &mut |_| {}), Err(AppError::NotFound(_))));
     }
 }

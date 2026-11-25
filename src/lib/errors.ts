@@ -29,6 +29,14 @@ export interface FriendlyError {
 /** Vertaalt elke fout naar gewone taal, mét een oplossing (nooit alleen "er ging iets mis"). */
 export function friendlyError(e: unknown, t: TFunction): FriendlyError {
   const err = toAppError(e);
+  // Een afgewezen waarde (kluis): `message` is de redencode ("pattern", "too_short:6"); de uitleg bevat altijd een volgende stap.
+  if (err.code === "rejected") {
+    const [reason = "", ...rest] = err.message.split(":");
+    return {
+      title: t("errors.rejected.title"),
+      fix: t(`sec.secrets.errors.${reason}`, { detail: rest.join(":"), defaultValue: t("sec.secrets.errors.generic") }),
+    };
+  }
   const known = [
     "db",
     "io",

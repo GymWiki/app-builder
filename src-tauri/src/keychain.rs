@@ -1,51 +1,44 @@
-//! Geheimen (API-sleutels, wachtwoorden van keystores) staan alleen in de OS-keychain
-//! (Windows Credential Manager, macOS Keychain, Linux keyutils). Waarden gaan nooit terug naar
-//! de UI, nooit naar logs en nooit in projectbestanden: de frontend kan alleen zetten,
-//! controleren of iets bestaat en verwijderen.
+//! Verbinding tussen de oude, vaste geheimnamen en de kluis (`vault.rs`). Waarden gaan nooit terug naar de UI, nooit naar
+//! logs en nooit in projectbestanden. Nieuwe code gebruikt de kluis rechtstreeks; deze functies bestaan zodat de
+//! signing- en publicatiecode en de Data-pagina dezelfde opslag delen als de Geheimen-pagina.
 
 use crate::error::{AppError, AppResult};
+use crate::vault;
 
-const SERVICE: &str = "app.studio.desktop";
-
-/// Vaste lijst namen; de UI kan geen willekeurige keychain-items aanraken.
-pub const NAMES: &[&str] = &[
-    "supabase_token",
-    "android_keystore_password",
-    "play_service_account_json",
-];
-
-fn entry(project_id: &str, name: &str) -> AppResult<keyring::Entry> {
-    if !NAMES.contains(&name) {
-        return Err(AppError::Invalid(format!("unknown secret {name}")));
+/// (integratie, veld, is een bestand)
+fn map(name: &str) -> AppResult<(&'static str, &'static str, bool)> {
+    match name {
+        "supabase_token" => Ok(("supabase", "access_token", false)),
+        "android_keystore_password" => Ok(("android_signing", "keystore_password", false)),
+        "play_service_account_json" => Ok(("google_play", "service_account", true)),
+        other => Err(AppError::Invalid(format!("unknown secret {other}"))),
     }
-    if project_id.is_empty() || !project_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        return Err(AppError::Invalid("invalid project id".into()));
-    }
-    keyring::Entry::new(SERVICE, &format!("{project_id}:{name}")).map_err(|e| AppError::Keychain(e.to_string()))
 }
 
 pub fn set(project_id: &str, name: &str, value: &str) -> AppResult<()> {
-    entry(project_id, name)?.set_password(value).map_err(|e| AppError::Keychain(e.to_string()))
+    let (i, f, file) = map(name)?;
+    let v = vault::global();
+    if file {
+        v.set_file(project_id, i, f, "service-account.json", value.as_bytes()).map(|_| ())
+    } else {
+        v.set_text(project_id, i, f, value)
+    }
 }
 
 /// Alleen voor intern gebruik (bv. een build); nooit als command beschikbaar.
 pub fn get(project_id: &str, name: &str) -> AppResult<Option<String>> {
-    match entry(project_id, name)?.get_password() {
-        Ok(v) => Ok(Some(v)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(AppError::Keychain(e.to_string())),
-    }
+    let (i, f, _) = map(name)?;
+    vault::global().get_text(project_id, i, f)
 }
 
 pub fn has(project_id: &str, name: &str) -> AppResult<bool> {
-    Ok(get(project_id, name)?.is_some())
+    let (i, f, _) = map(name)?;
+    Ok(vault::global().has(project_id, i, f))
 }
 
 pub fn delete(project_id: &str, name: &str) -> AppResult<()> {
-    match entry(project_id, name)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(AppError::Keychain(e.to_string())),
-    }
+    let (i, f, _) = map(name)?;
+    vault::global().delete(project_id, i, f)
 }
 
 /// Willekeurig wachtwoord voor een nieuwe keystore (zonder tekens die shells of gradle storen).
@@ -60,8 +53,8 @@ mod tests {
     #[test]
     fn rejects_unknown_names_and_ids() {
         assert!(matches!(set("abc", "evil_name", "x"), Err(AppError::Invalid(_))));
-        assert!(matches!(set("../x", "supabase_token", "x"), Err(AppError::Invalid(_))));
-        assert!(matches!(set("", "supabase_token", "x"), Err(AppError::Invalid(_))));
+        assert!(matches!(set("../x", "supabase_token", "sbp_aaaaaaaaaaaaaaaaaaaaaaaa"), Err(AppError::Invalid(_))));
+        assert!(matches!(set("", "supabase_token", "sbp_aaaaaaaaaaaaaaaaaaaaaaaa"), Err(AppError::Invalid(_))));
     }
 
     #[test]
@@ -70,17 +63,5 @@ mod tests {
         assert_eq!(p.len(), 40);
         assert!(p.chars().all(|c| c.is_ascii_alphanumeric()));
         assert_ne!(p, random_password());
-    }
-
-    /// Echte keychain nodig (op Windows/macOS altijd; op Linux met keyutils). Niet overal beschikbaar.
-    #[test]
-    #[ignore]
-    fn real_keychain_roundtrip() {
-        let id = format!("test-{}", uuid::Uuid::new_v4());
-        assert!(!has(&id, "supabase_token").unwrap());
-        set(&id, "supabase_token", "s3cret").unwrap();
-        assert_eq!(get(&id, "supabase_token").unwrap().as_deref(), Some("s3cret"));
-        delete(&id, "supabase_token").unwrap();
-        assert!(!has(&id, "supabase_token").unwrap());
     }
 }

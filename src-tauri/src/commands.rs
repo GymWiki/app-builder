@@ -257,6 +257,7 @@ pub fn project_delete(app: AppHandle, state: State<'_, AppState>, id: String, de
     if delete_files {
         projects::delete_project_files(&projects_dir(&app, &state)?, &PathBuf::from(&project.path))?;
     }
+    crate::vault::global().delete_project(&id);
     state.db.project_delete_record(&id)?;
     log::info!("project removed: {} (files deleted: {delete_files})", project.name);
     Ok(())
@@ -626,13 +627,14 @@ fn gather_facts(state: &AppState, p: &Project, dir: &std::path::Path) -> crate::
         screenshots: count_screenshots(dir),
         privacy_docs: dir.join("legal/privacy-policy.md").is_file() && dir.join("legal/terms.md").is_file(),
         changelog: std::fs::read_to_string(dir.join("CHANGELOG.md")).map(|t| t.trim().len() > 20).unwrap_or(false),
-        keystore: crate::signing::keystore_path(&state.data_dir, &p.id).is_file(),
         signing_configured: crate::signing::gradle_configured(dir),
         test_passed_fingerprint: last.strip_prefix("passed:").map(str::to_string),
         test_ever_ran: !last.is_empty(),
         test_failed_last: last.starts_with("failed:"),
         current_fingerprint: current,
         native_features: crate::testrun::native_features(&pubspec),
+        missing_secrets: crate::vault::global().missing_secrets(&p.id),
+        leaks: crate::leak::scan(dir, &crate::scrub::known_values()).len(),
     }
 }
 
@@ -835,11 +837,11 @@ pub struct SigningStatus {
 #[tauri::command]
 pub fn signing_status(state: State<'_, AppState>, project_id: String) -> AppResult<SigningStatus> {
     let (_, dir) = project_and_dir(&state, &project_id)?;
-    let path = crate::signing::keystore_path(&state.data_dir, &project_id);
+    let has = crate::signing::has_keystore(&project_id);
     Ok(SigningStatus {
         keytool: crate::signing::find_keytool(None).is_some(),
-        keystore: path.is_file(),
-        keystore_path: path.is_file().then(|| path.display().to_string()),
+        keystore: has,
+        keystore_path: None,
         gradle_configured: crate::signing::gradle_configured(&dir),
         play_key: crate::keychain::has(&project_id, "play_service_account_json").unwrap_or(false),
         fastlane: proc::find("fastlane").is_some(),
@@ -853,8 +855,8 @@ pub async fn signing_create_keystore(state: State<'_, AppState>, project_id: Str
     let data_dir = state.data_dir.clone();
     blocking(move || {
         let keytool = crate::signing::find_keytool(flutter.as_deref()).ok_or_else(|| AppError::ToolMissing("keytool".into()))?;
-        let p = crate::signing::create_keystore(&keytool, &data_dir, &project_id, &crate::signing::dname(&owner, &organisation, &country))?;
-        Ok(p.display().to_string())
+        crate::signing::create_keystore(&keytool, &data_dir, &project_id, &crate::signing::dname(&owner, &organisation, &country))?;
+        Ok("vault".to_string())
     })
     .await
 }
@@ -889,24 +891,24 @@ pub async fn publish_android(app: AppHandle, state: State<'_, AppState>, project
                 let _ = h.emit("job-log", JobLine { project_id: id.clone(), job: job.into(), line: line.into() });
             }
         };
-        let env = crate::signing::build_env(&project_id, &st.data_dir)?;
+        let env = crate::signing::build_env(&project_id)?;
         let package = crate::platform::read_settings(&dir).android_application_id.unwrap_or_else(|| p.bundle_id.clone());
         let publisher = PlayPublisher;
         log::info!("publishing {} to {}", p.name, publisher.id());
 
         job_state(&handle, &project_id, "build", "running");
-        let aab = match publisher.build(&flutter, &dir, &env, &mut emit_line("build")) {
+        let aab = match publisher.build(&flutter, &dir, &env.vars, &mut emit_line("build")) {
             Ok(a) => a,
             Err(e) => {
                 job_state(&handle, &project_id, "build", "failed");
                 return Err(e);
             }
         };
+        drop(env); // het ontsleutelde keystore-bestand is na de build niet meer nodig
         job_state(&handle, &project_id, "build", "done");
 
         job_state(&handle, &project_id, "upload", "running");
-        let work = st.data_dir.join("upload");
-        let req = UploadRequest { project_id: &project_id, package: &package, artifact: &aab, track: &track, work_dir: &work, fastlane: &fastlane };
+        let req = UploadRequest { project_id: &project_id, package: &package, artifact: &aab, track: &track, fastlane: &fastlane };
         if let Err(e) = publisher.upload(&req, &mut emit_line("upload")) {
             job_state(&handle, &project_id, "upload", "failed");
             return Err(e);
@@ -934,7 +936,7 @@ pub fn publish_ios() -> AppResult<()> {
     let p = AppStorePublisher;
     let _ = p.id();
     let work = std::path::Path::new(".");
-    let req = UploadRequest { project_id: "", package: "", artifact: work, track: "", work_dir: work, fastlane: work };
+    let req = UploadRequest { project_id: "", package: "", artifact: work, track: "", fastlane: work };
     p.upload(&req, &mut |_| {})
 }
 
@@ -961,6 +963,9 @@ pub fn spawn_profile(app: &AppHandle, project_id: &str, dir: PathBuf, force: boo
     std::thread::spawn(move || {
         let st = app.state::<AppState>();
         let Ok(p) = st.db.project_get(&id) else { return };
+        // Hygiëne: geheimbestanden en .env komen nooit in git.
+        let _ = crate::leak::ensure_gitignore(&dir);
+        crate::vault::global().migrate_legacy(&id);
         let version = st.db.profile_version(&id).unwrap_or(0);
         let needs_files = force || version < crate::profile::CURRENT;
         let needs_plugin = !crate::profile::plugin_enabled(&dir);
@@ -1038,4 +1043,170 @@ pub fn profile_apply(app: AppHandle, state: State<'_, AppState>, project_id: Str
     let (_, dir) = project_and_dir(&state, &project_id)?;
     spawn_profile(&app, &project_id, dir, true);
     Ok(())
+}
+
+
+// ───────────── integraties en geheimen (fase 10) ─────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrationOverview {
+    manifests: Vec<crate::manifest::Manifest>,
+    statuses: Vec<crate::vault::IntegrationStatus>,
+}
+
+#[tauri::command]
+pub fn integration_list(state: State<'_, AppState>, project_id: String) -> AppResult<IntegrationOverview> {
+    state.db.project_get(&project_id)?;
+    Ok(IntegrationOverview { manifests: crate::manifest::all().to_vec(), statuses: crate::vault::global().statuses(&project_id)? })
+}
+
+/// Zet een integratie aan of uit. Bij uitzetten kiest de gebruiker: geheimen bewaren of verwijderen (projectwaarden; globale
+/// waarden zoals een Apple-account horen ook bij andere projecten en blijven staan).
+#[tauri::command]
+pub fn integration_set_enabled(state: State<'_, AppState>, project_id: String, id: String, enabled: bool, delete_secrets: bool) -> AppResult<Vec<crate::vault::IntegrationStatus>> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let m = crate::manifest::get(&id).ok_or_else(|| AppError::NotFound(format!("integration {id}")))?;
+    let v = crate::vault::global();
+    if enabled {
+        let _ = crate::leak::ensure_gitignore(&dir);
+    } else if delete_secrets {
+        v.delete_integration(&project_id, &m.id)?;
+    }
+    state.db.integration_set_enabled(&project_id, &id, enabled)?;
+    v.statuses(&project_id)
+}
+
+#[tauri::command]
+pub fn secret_field_set_text(state: State<'_, AppState>, project_id: String, integration: String, field: String, value: String) -> AppResult<()> {
+    state.db.project_get(&project_id)?;
+    crate::vault::global().set_text(&project_id, &integration, &field, &value)
+}
+
+#[derive(Serialize)]
+pub struct FileStored {
+    derived: std::collections::BTreeMap<String, String>,
+}
+
+#[tauri::command]
+pub fn secret_field_set_file(state: State<'_, AppState>, project_id: String, integration: String, field: String, file_name: String, data_b64: String) -> AppResult<FileStored> {
+    use base64::Engine;
+    state.db.project_get(&project_id)?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data_b64.trim()).map_err(|_| AppError::Invalid("the file could not be read".into()))?;
+    let derived = crate::vault::global().set_file(&project_id, &integration, &field, &file_name, &bytes)?;
+    Ok(FileStored { derived })
+}
+
+#[tauri::command]
+pub fn secret_field_delete(state: State<'_, AppState>, project_id: String, integration: String, field: String) -> AppResult<()> {
+    state.db.project_get(&project_id)?;
+    crate::vault::global().delete(&project_id, &integration, &field)
+}
+
+/// Toont een waarde aan de gebruiker zelf (na bevestiging in de UI). Alleen tekstvelden; bestanden worden nooit getoond.
+/// Dit is bewust GEEN MCP-tool: Claude kan dit niet aanroepen.
+#[tauri::command]
+pub fn secret_field_reveal(state: State<'_, AppState>, project_id: String, integration: String, field: String) -> AppResult<String> {
+    state.db.project_get(&project_id)?;
+    let m = crate::manifest::get(&integration).ok_or_else(|| AppError::NotFound(integration.clone()))?;
+    if m.field(&field).map(|f| f.kind) == Some(crate::manifest::FieldKind::File) {
+        return Err(AppError::Invalid("files are never shown".into()));
+    }
+    crate::vault::global().get_text(&project_id, &integration, &field)?.ok_or_else(|| AppError::NotFound("value".into()))
+}
+
+#[tauri::command]
+pub async fn secret_test(state: State<'_, AppState>, project_id: String, integration: String) -> AppResult<crate::connect::TestOutcome> {
+    state.db.project_get(&project_id)?;
+    let m = crate::manifest::get(&integration).ok_or_else(|| AppError::NotFound(integration.clone()))?;
+    blocking(move || crate::connect::run_and_record(crate::vault::global(), &crate::connect::CurlHttp, &project_id, m)).await
+}
+
+/// Versleutelde back-up als base64 (de UI bewaart het bestand).
+#[tauri::command]
+pub async fn vault_export(state: State<'_, AppState>, project_id: String, passphrase: String) -> AppResult<String> {
+    use base64::Engine;
+    state.db.project_get(&project_id)?;
+    blocking(move || Ok(base64::engine::general_purpose::STANDARD.encode(crate::vault::global().export(&project_id, &passphrase)?))).await
+}
+
+#[tauri::command]
+pub async fn vault_import(state: State<'_, AppState>, project_id: String, passphrase: String, data_b64: String) -> AppResult<usize> {
+    use base64::Engine;
+    state.db.project_get(&project_id)?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data_b64.trim()).map_err(|_| AppError::Rejected { code: "backup_unreadable".into(), detail: None })?;
+    blocking(move || crate::vault::global().import(&project_id, &passphrase, &bytes)).await
+}
+
+fn backup_path(path: &str) -> AppResult<PathBuf> {
+    // Het pad komt uit het opslaan/openen-venster van het besturingssysteem; we staan alleen back-upbestanden toe.
+    if !path.ends_with(".studiovault") {
+        return Err(AppError::Invalid("a back-up file ends in .studiovault".into()));
+    }
+    Ok(PathBuf::from(path))
+}
+
+/// Schrijft de versleutelde back-up naar een bestand dat de gebruiker in het opslaan-venster koos.
+#[tauri::command]
+pub async fn vault_export_file(state: State<'_, AppState>, project_id: String, passphrase: String, path: String) -> AppResult<()> {
+    state.db.project_get(&project_id)?;
+    let path = backup_path(&path)?;
+    blocking(move || {
+        let bytes = crate::vault::global().export(&project_id, &passphrase)?;
+        std::fs::write(path, bytes)?;
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn vault_import_file(state: State<'_, AppState>, project_id: String, passphrase: String, path: String) -> AppResult<usize> {
+    state.db.project_get(&project_id)?;
+    let path = backup_path(&path)?;
+    blocking(move || crate::vault::global().import(&project_id, &passphrase, &std::fs::read(path)?)).await
+}
+
+#[tauri::command]
+pub fn leaks_scan(state: State<'_, AppState>, project_id: String) -> AppResult<Vec<crate::leak::Leak>> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    Ok(crate::leak::scan(&dir, &crate::scrub::known_values()))
+}
+
+/// Verplaatst een geheim bestand uit het project naar de kluis en verwijdert het uit het project (de UI vraagt bevestiging).
+#[tauri::command]
+pub fn leak_move_to_vault(state: State<'_, AppState>, project_id: String, file: String) -> AppResult<(String, String)> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let leaks = crate::leak::scan(&dir, &crate::scrub::known_values());
+    let leak = leaks.iter().find(|l| l.file == file && l.movable).ok_or_else(|| AppError::Invalid("this file cannot be moved automatically".into()))?;
+    let name = file.rsplit('/').next().unwrap_or(&file).to_lowercase();
+    let ext = name.rsplit_once('.').map(|(_, e)| e.to_string()).unwrap_or_default();
+    let (integration, field) = match ext.as_str() {
+        "p8" => ("apple", "private_key"),
+        "jks" | "keystore" | "p12" | "pfx" => ("android_signing", "keystore"),
+        _ => ("google_play", "service_account"),
+    };
+    let v = crate::vault::global();
+    if v.has(&project_id, integration, field) {
+        return Err(AppError::Rejected { code: "vault_has_value".into(), detail: Some(format!("{integration}.{field}")) });
+    }
+    let bytes = std::fs::read(dir.join(&leak.file))?;
+    v.set_file(&project_id, integration, field, &name, &bytes)?;
+    std::fs::remove_file(dir.join(&leak.file))?;
+    Ok((integration.into(), field.into()))
+}
+
+/// Opdracht aan Claude om een vastgelegd geheim uit de code te halen. Bevat bewust geen waarde.
+#[tauri::command]
+pub fn leak_fix_prompt(file: String, line: u32, kind: String) -> AppResult<String> {
+    let what = match kind.as_str() {
+        "service_role_key" => "a Supabase secret (service_role) key",
+        "private_key" => "a private key",
+        _ => "a secret key or password",
+    };
+    Ok(format!(
+        "Studio found {what} written in {file}{} . Remove it from the code. If the app really needs that capability, \
+         move the work to a place the app does not ship (never into the app), or read a PUBLIC value from a dart-define or the Studio vault instead. \
+         Do not print the value, do not copy it anywhere else, and tell the user in plain language that the key must be replaced with a new one because it was exposed.",
+        if line > 0 { format!(" (around line {line})") } else { String::new() }
+    ))
 }

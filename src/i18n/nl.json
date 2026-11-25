@@ -146,6 +146,14 @@
       "publish": {
         "name": "Publiceren",
         "desc": "Een begeleide checklist naar Google Play en de App Store."
+      },
+      "integrations": {
+        "name": "Integraties",
+        "desc": "Zet de diensten aan die je app gebruikt: winkels, database en meer."
+      },
+      "secrets": {
+        "name": "Geheimen",
+        "desc": "Sleutels en wachtwoorden, veilig bewaard op deze computer. Claude ziet ze nooit."
       }
     },
     "device": {
@@ -412,6 +420,10 @@
     "unsupported": {
       "title": "Nog niet beschikbaar",
       "fix": "Dit onderdeel staat gepland voor een latere versie van Studio. Al het andere blijft gewoon werken."
+    },
+    "rejected": {
+      "title": "Die waarde is niet geaccepteerd",
+      "fix": "Deze waarde is niet geaccepteerd. Controleer hem en probeer het opnieuw."
     }
   },
   "design": {
@@ -530,7 +542,8 @@
       "repaired": "Een klein probleem automatisch hersteld.",
       "checks_ok": "Alles werkt nog.",
       "rolled_back": "Die aanpassing werkte niet, dus ik ben teruggegaan naar de vorige versie. Er gaat niets verloren.",
-      "scope_reverted": "Een aanpassing buiten deze taak is teruggedraaid om de rest van de app veilig te houden."
+      "scope_reverted": "Een aanpassing buiten deze taak is teruggedraaid om de rest van de app veilig te houden.",
+      "leak_blocked": "Het opslaan van een versie is gepauzeerd: er is een geheim gevonden in je bestanden. Zie Geheimen."
     }
   },
   "preview": {
@@ -898,6 +911,11 @@
             "sharing": "Delen",
             "microphone": "Microfoon"
           }
+        },
+        "no_leaks": {
+          "title": "Geen geheimen in je bestanden",
+          "desc": "Sleutels en wachtwoorden mogen nooit in de bestanden van je app staan.",
+          "missing": {}
         }
       },
       "actions": {
@@ -910,7 +928,10 @@
         "publish_test": "Testrun openen",
         "publish_listing": "Winkelpagina openen",
         "publish_signing": "Accounts openen",
-        "publish_confirm": "Release openen"
+        "publish_confirm": "Release openen",
+        "secrets": "Geheimen toevoegen",
+        "integrations": "Open integraties",
+        "leaks": "Los dit op"
       },
       "test": {
         "title": "AI-testrun",
@@ -1096,6 +1117,195 @@
         "log": "Log",
         "needFastlane": "Installeer eerst Fastlane (zie Accounts).",
         "needKey": "Voeg eerst je Google Play-sleutel toe (zie Accounts)."
+      },
+      "secretMissing": "Geheimen ontbreken: {{integration}} › {{field}}",
+      "leaksMissing": "{{n}} geheim(en) gevonden in je bestanden",
+      "secretProblem": "{{integration}}: een sleutel is verlopen of werkt niet meer"
+    },
+    "integrations": {
+      "title": "Integraties",
+      "intro": "Zet aan wat je app nodig heeft. Studio vraagt dan om de sleutels die nodig zijn en bewaart ze veilig.",
+      "categories": {
+        "stores": "App-winkels en ondertekening",
+        "database": "Database en inloggen",
+        "services": "Overige diensten"
+      },
+      "switchLabel": "{{name}} aan of uit",
+      "turnedOn": "{{name}} staat aan.",
+      "status": {
+        "off": "Uit",
+        "complete": "Aan en compleet",
+        "warning": "Aan, aandacht nodig",
+        "incomplete": "Aan, enkele geheimen ontbreken",
+        "missing": "Aan, geheimen ontbreken"
+      },
+      "addSecrets": "Geheimen toevoegen",
+      "openSecrets": "Geheimen openen",
+      "noSecretsNeeded": "Geen geheimen nodig.",
+      "off": {
+        "title": "{{name}} uitzetten?",
+        "body": "Je kunt de opgeslagen geheimen bewaren voor als je het weer aanzet, of ze van deze computer verwijderen.",
+        "globalNote": "Geheimen die bij je account horen (niet alleen bij deze app) blijven in beide gevallen staan, omdat andere apps ze kunnen gebruiken.",
+        "keep": "Uitzetten en geheimen bewaren",
+        "delete": "Uitzetten en de geheimen van deze app verwijderen"
+      },
+      "needs": {
+        "title": "{{name}} heeft meer nodig",
+        "body": "{{name}} werkt samen met: {{deps}}. Dat ook aanzetten?",
+        "both": "Beide aanzetten",
+        "only": "Alleen {{name}}"
+      }
+    },
+    "secrets": {
+      "title": "Geheimen",
+      "intro": "Alles hier blijft op deze computer, op een veilige plek. Claude en de chat zien de waarden nooit.",
+      "publicVsSecret": "Sommige waarden zijn publiek en andere geheim. Publieke waarden (zoals een webadres) mogen in je app staan. Geheime waarden (zoals een wachtwoord of sleutelbestand) nooit: iedereen kan ze gebruiken. Studio bewaart beide in een eigen kluis en controleert je bestanden, zodat geheimen nooit in je app of online terechtkomen.",
+      "guideSoon": "Instructie volgt",
+      "scope": {
+        "global": "Voor al je apps",
+        "project": "Alleen voor deze app",
+        "globalShort": "Al je apps",
+        "projectShort": "Alleen deze app"
+      },
+      "secret": "geheim",
+      "public": "publiek",
+      "optional": "(optioneel)",
+      "valueSaved": "Er is een waarde opgeslagen",
+      "show": "Tonen",
+      "hide": "Verbergen ({{s}}s)",
+      "copy": "Kopiëren",
+      "copied": "Gekopieerd. Plak het waar je het nodig hebt.",
+      "replace": "Vervangen",
+      "delete": "Verwijderen",
+      "save": "Opslaan",
+      "saved": "{{name}} opgeslagen.",
+      "savedFileWho": "{{name}} opgeslagen ({{who}}).",
+      "deleted": "{{name}} verwijderd.",
+      "fileSaved": "Bestand opgeslagen: {{name}}",
+      "choose": "Kies…",
+      "dropLabel": "Neerzetvak voor {{name}}",
+      "dropHere": "Zet het bestand hier neer ({{types}}) of zoek het op.",
+      "browse": "Bladeren…",
+      "derived": {
+        "client_email": "account",
+        "project_id": "project"
+      },
+      "generate": {
+        "button": "Maak het voor mij",
+        "intro": "Studio maakt een ondertekeningssleutel en vult de wachtwoorden voor je in. Je hebt alleen een naam nodig.",
+        "owner": "Je naam",
+        "org": "Bedrijf of appnaam (optioneel)",
+        "create": "Ondertekeningssleutel maken",
+        "done": "Ondertekeningssleutel gemaakt en opgeslagen.",
+        "defaultOwner": "App-eigenaar"
+      },
+      "confirm": {
+        "showTitle": "Deze waarde tonen?",
+        "showBody": "Zorg dat niemand over je schouder meekijkt. {{name}} wordt na {{s}} seconden weer verborgen.",
+        "copyTitle": "Deze waarde kopiëren?",
+        "copyBody": "{{name}} wordt op je klembord gezet. Plak het alleen waar het hoort.",
+        "replaceTitle": "{{name}} vervangen?",
+        "replaceBody": "De oude waarde wordt verwijderd en komt niet terug.",
+        "replaceKeystore": "De oude ondertekeningssleutel wordt verwijderd en komt niet terug. Zonder die sleutel kun je je gepubliceerde app niet meer bijwerken. Ga alleen door als je een back-up hebt.",
+        "deleteTitle": "{{name}} verwijderen?",
+        "deleteBody": "De waarde wordt van deze computer verwijderd en komt niet terug.",
+        "deleteKeystore": "Zonder deze ondertekeningssleutel kun je je gepubliceerde app niet meer bijwerken. Verwijder hem alleen als je een back-up hebt."
+      },
+      "errors": {
+        "empty": "Dit veld is leeg. Typ of plak de waarde en druk op Opslaan.",
+        "multiline": "Dit moet op één regel staan. Controleer of je alleen de waarde hebt gekopieerd.",
+        "too_short": "Dit lijkt te kort (minstens {{detail}} tekens). Kopieer de hele waarde opnieuw.",
+        "not_an_option": "Kies een van de opties uit de lijst.",
+        "pattern": "Dit lijkt niet te kloppen. Kopieer de waarde opnieuw van de website, zonder extra spaties, en probeer het nog eens.",
+        "secret_in_public_field": "Dit is de GEHEIME sleutel, die nooit in een app mag staan. Zet hem in het veld \"Geheime sleutel\" en gebruik hier de publishable key.",
+        "file_type": "Dit is niet het juiste soort bestand. Kies een bestand van het type {{detail}}.",
+        "content": "Dit bestand bevat niet wat we verwachten. Download het opnieuw bij de dienst en kies dat bestand.",
+        "json_invalid": "Dit bestand is niet te lezen als sleutelbestand. Download het opnieuw en open of bewerk het niet eerst.",
+        "json_missing": "In dit sleutelbestand ontbreekt een onderdeel ({{detail}}). Maak een nieuwe sleutel en download hem opnieuw.",
+        "json_wrong": "Dit is niet het juiste soort sleutelbestand ({{detail}}). Controleer of je een service-accountsleutel hebt gedownload.",
+        "too_large": "Dit bestand is te groot voor een sleutelbestand (maximaal 512 KB). Kies het originele bestand dat je hebt gedownload.",
+        "not_text": "Dit bestand is hier niet te lezen. Kies het originele bestand dat je hebt gedownload.",
+        "passphrase_short": "Gebruik een wachtzin van minstens {{detail}} tekens.",
+        "backup_unreadable": "De back-up kon niet worden geopend. Controleer de wachtzin en of dit het juiste bestand is.",
+        "vault_has_value": "Studio heeft hier al een waarde voor ({{detail}}). Verwijder die eerst als je hem wilt vervangen.",
+        "generic": "Deze waarde is niet geaccepteerd. Controleer hem en probeer het opnieuw."
+      },
+      "state": {
+        "complete": "Compleet",
+        "completeTested": "Compleet en werkend",
+        "failed": "Aandacht nodig: laatste test mislukt",
+        "expires": "Aandacht nodig: verloopt binnenkort",
+        "incomplete": "Onvolledig",
+        "missing": "Ontbreekt"
+      },
+      "test": "Test verbinding",
+      "testing": "Bezig met testen…",
+      "notTested": "Nog niet getest.",
+      "lastTested": "getest {{when}}",
+      "testResult": {
+        "ok": "De verbinding werkt.",
+        "checked_locally": "De gegevens zien er goed uit. (Een echte controle bij de dienst volgt in een latere versie.)",
+        "invalid_credentials": "De dienst zegt dat deze gegevens niet kloppen. Controleer de sleutel en vervang hem.",
+        "forbidden": "De dienst weigert deze sleutel. Controleer de rechten en probeer het opnieuw.",
+        "unreachable": "Kon de dienst niet bereiken. Controleer je internetverbinding en het webadres.",
+        "incomplete": "Vul eerst alle verplichte velden in.",
+        "file_invalid": "Een opgeslagen bestand is niet meer geldig. Vervang het.",
+        "not_found": "De dienst vond dit niet. Controleer het webadres of de ID.",
+        "rate_limited": "De dienst vraagt je even te wachten. Probeer het over een minuut opnieuw.",
+        "unexpected": "De dienst gaf een onverwacht antwoord. Probeer het later opnieuw."
+      },
+      "lastUsed": "Laatst gebruikt",
+      "never": "nog niet",
+      "usedBy": {
+        "label": "Gebruikt door",
+        "build": "de app bouwen",
+        "upload": "uploaden naar de winkel",
+        "test": "de verbinding testen"
+      },
+      "expired": "Deze sleutel is verlopen. Maak een nieuwe en vervang hem hier.",
+      "expiresIn": "Deze sleutel verloopt over {{count}} dag(en). Maak vóór die tijd een nieuwe.",
+      "empty": {
+        "title": "Nog geen geheimen nodig",
+        "body": "Hier verschijnen geheimen voor elke integratie die je aanzet. Zet eerst aan wat je app nodig heeft.",
+        "action": "Naar integraties"
+      },
+      "backup": {
+        "title": "Back-up",
+        "why": "Maak een versleutelde back-up, vooral van je Android-ondertekeningssleutel. Raak je die sleutel kwijt, dan kan niemand hem terughalen en kun je je gepubliceerde app nooit meer bijwerken. Bewaar het bestand en de wachtzin op twee verschillende veilige plekken.",
+        "export": "Back-up maken",
+        "import": "Back-up terugzetten",
+        "exportHelp": "Kies een wachtzin die je kunt onthouden. Zonder wachtzin is de back-up niet te openen en kunnen wij hem niet voor je herstellen.",
+        "importHelp": "Kies het back-upbestand en vul de wachtzin in.",
+        "file": "Back-upbestand",
+        "passphrase": "Wachtzin",
+        "repeat": "Herhaal wachtzin",
+        "mismatch": "De twee wachtzinnen zijn niet gelijk.",
+        "doExport": "Back-upbestand opslaan",
+        "doImport": "Terugzetten",
+        "exported": "Back-up opgeslagen. Bewaar hem goed.",
+        "imported": "{{n}} waarde(n) teruggezet.",
+        "choose": "Back-upbestand kiezen…"
+      }
+    },
+    "leaks": {
+      "title": "Er is een geheim gevonden in je bestanden",
+      "body": "Studio heeft het opslaan van versies en het publiceren gepauzeerd, omdat een geheim in je bestanden online of in je app kan belanden. Los het hieronder op en vervang de sleutel door een nieuwe als hij al eerder is opgeslagen.",
+      "line": "regel {{n}}",
+      "tracked": "Dit stond al in je geschiedenis. Maak een nieuwe sleutel en vervang hem.",
+      "move": "Naar de kluis verplaatsen",
+      "moved": "Naar de kluis verplaatst en uit je bestanden gehaald.",
+      "askClaude": "Vraag Claude het te verwijderen",
+      "confirmTitle": "Dit bestand naar de kluis verplaatsen?",
+      "confirmBody": "{{file}} wordt veilig in Studio bewaard en uit je projectmap gehaald.",
+      "kind": {
+        "known_secret": "Een van je opgeslagen geheimen staat in dit bestand.",
+        "private_key": "Een privésleutel staat in dit bestand.",
+        "token": "Een geheime sleutel of token staat in dit bestand.",
+        "service_role_key": "Hier staat een geheime Supabase-sleutel (service_role). Die mag nooit in een app staan.",
+        "secret_file": "Een sleutelbestand staat in de projectmap.",
+        "service_account_file": "Een service-accountsleutel staat in de projectmap.",
+        "env_file": "Een .env-bestand met geheimen staat in de projectmap.",
+        "secret_in_app_assets": "Een geheim bestand staat als onderdeel van de app in de lijst en zou dus in de app terechtkomen."
       }
     }
   },
@@ -1130,6 +1340,130 @@
         "cost": "Totale kosten: ${{cost}}",
         "denied": "Bewerkingen buiten bereik geweigerd: {{n}}",
         "none": "Nog geen runs."
+      }
+    }
+  },
+  "integrations": {
+    "apple": {
+      "name": "Apple (App Store)",
+      "desc": "Hiermee kan Studio je iPhone-app naar App Store Connect sturen.",
+      "fields": {
+        "issuer_id": {
+          "label": "Issuer ID",
+          "help": "Het lange ID bovenaan de App Store Connect API-pagina (Gebruikers en toegang, Integraties). Het ziet eruit als 69a6de7e-…."
+        },
+        "key_id": {
+          "label": "Key ID",
+          "help": "De 10 tekens lange ID naast je sleutel in dezelfde tabel."
+        },
+        "team_id": {
+          "label": "Team ID",
+          "help": "10 tekens, te vinden in je Apple Developer-account onder Lidmaatschapsgegevens."
+        },
+        "private_key": {
+          "label": "API-sleutelbestand (.p8)",
+          "help": "Apple laat je dit bestand maar één keer downloaden. Zet het hier meteen neer; raak je het kwijt, dan moet je een nieuwe sleutel maken."
+        }
+      }
+    },
+    "google_play": {
+      "name": "Google Play",
+      "desc": "Hiermee kan Studio je Android-app als concept naar Google Play sturen.",
+      "fields": {
+        "service_account": {
+          "label": "Servicekoppelingssleutel (JSON)",
+          "help": "Maak in Google Cloud een serviceaccount, voeg een JSON-sleutel toe en nodig het e-mailadres daarvan uit in Play Console onder Gebruikers en rechten."
+        }
+      }
+    },
+    "android_signing": {
+      "name": "Android-ondertekening",
+      "desc": "De sleutel die bewijst dat updates van je app echt van jou komen.",
+      "fields": {
+        "keystore": {
+          "label": "Upload-keystore",
+          "help": "Studio kan dit voor je aanmaken. Maak een back-up: raak je de keystore kwijt, dan kun je je gepubliceerde app niet meer bijwerken."
+        },
+        "alias": {
+          "label": "Sleutelalias",
+          "help": "De naam van de sleutel in de keystore. Studio gebruikt \"upload\" als het de keystore aanmaakt."
+        },
+        "keystore_password": {
+          "label": "Keystore-wachtwoord",
+          "help": "Studio vult dit in als het de keystore aanmaakt."
+        },
+        "key_password": {
+          "label": "Sleutelwachtwoord",
+          "help": "Alleen nodig als het afwijkt van het keystore-wachtwoord."
+        }
+      }
+    },
+    "supabase": {
+      "name": "Supabase",
+      "desc": "Een online database en inlog voor je app.",
+      "fields": {
+        "url": {
+          "label": "Project-URL",
+          "help": "Te vinden in Supabase onder Project Settings, Data API. Het ziet eruit als https://xxxx.supabase.co."
+        },
+        "publishable_key": {
+          "label": "Publishable key (publiek)",
+          "help": "Mag in de app. Begint met sb_publishable_ (oudere projecten: de anon-sleutel)."
+        },
+        "secret_key": {
+          "label": "Geheime sleutel",
+          "help": "Volledige toegang tot je gegevens. Komt nooit in de app. Begint met sb_secret_ (oudere projecten: de service_role-sleutel). Voeg het alleen toe als je het nodig hebt."
+        },
+        "access_token": {
+          "label": "Persoonlijk toegangstoken",
+          "help": "Laat Claude via Supabase tabellen voor je opzetten. Maak het aan onder Account, Access Tokens. Begint met sbp_."
+        }
+      }
+    },
+    "firebase": {
+      "name": "Firebase",
+      "desc": "Google's online database en inlog voor je app.",
+      "fields": {
+        "google_services_json": {
+          "label": "google-services.json (Android)",
+          "help": "Download het uit Firebase, Projectinstellingen, Je apps. Het is niet geheim, maar Studio bewaart het bij de rest."
+        },
+        "google_service_info_plist": {
+          "label": "GoogleService-Info.plist (iPhone)",
+          "help": "Nodig voor de iPhone-versie. Niet geheim."
+        },
+        "service_account": {
+          "label": "Servicekoppelingssleutel (JSON)",
+          "help": "Alleen voor taken op een server. Volledige toegang: houd het privé."
+        }
+      }
+    },
+    "local_db": {
+      "name": "Lokale database",
+      "desc": "Gegevens blijven op de telefoon. Geen account en geen geheimen nodig."
+    },
+    "github": {
+      "name": "GitHub",
+      "desc": "Optioneel: laat Studio een back-up van je project naar GitHub zetten.",
+      "fields": {
+        "token": {
+          "label": "Toegangstoken",
+          "help": "Maak in GitHub een fine-grained token onder Settings, Developer settings. Geef het alleen toegang tot de repository van je project."
+        }
+      }
+    },
+    "vercel": {
+      "name": "Vercel",
+      "desc": "Optioneel: laat Studio een webversie van je app online zetten.",
+      "fields": {
+        "token": {
+          "label": "Toegangstoken",
+          "help": "Maak het aan in Vercel onder Account Settings, Tokens."
+        },
+        "team_id": {
+          "label": "Team-ID",
+          "help": "Alleen als het project bij een team hoort. Begint met team_."
+        }
       }
     }
   }

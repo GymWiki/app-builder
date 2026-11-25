@@ -33,6 +33,9 @@ pub enum AppError {
     Keychain(String),
     #[error("not supported yet: {0}")]
     Unsupported(String),
+    /// Een waarde die de validatie van een integratieveld niet haalt. `code` (en eventueel `detail`) vertaalt de UI.
+    #[error("rejected: {code}")]
+    Rejected { code: String, detail: Option<String> },
 }
 
 impl AppError {
@@ -51,6 +54,7 @@ impl AppError {
             AppError::Pty(_) => "pty",
             AppError::Keychain(_) => "keychain",
             AppError::Unsupported(_) => "unsupported",
+            AppError::Rejected { .. } => "rejected",
         }
     }
 }
@@ -59,7 +63,15 @@ impl Serialize for AppError {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         let mut st = s.serialize_struct("AppError", 2)?;
         st.serialize_field("code", self.code())?;
-        st.serialize_field("message", &crate::logging::redact(&self.to_string()))?;
+        // Bij een afgewezen waarde is `message` de redencode ("pattern" of "too_short:6"), geen tekst met de waarde.
+        let message = match self {
+            AppError::Rejected { code, detail } => match detail {
+                Some(d) => format!("{code}:{d}"),
+                None => code.clone(),
+            },
+            other => crate::logging::redact(&other.to_string()),
+        };
+        st.serialize_field("message", &message)?;
         st.end()
     }
 }

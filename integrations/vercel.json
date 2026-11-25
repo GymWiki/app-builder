@@ -1,0 +1,40 @@
+{
+  "id": "vercel",
+  "naam": "integrations.vercel.name",
+  "categorie": "services",
+  "beschrijving": "integrations.vercel.desc",
+  "icoon": "triangle",
+  "scope": "global",
+  "velden": [
+    {
+      "id": "token",
+      "label": "integrations.vercel.fields.token.label",
+      "type": "password",
+      "geheim": true,
+      "verplicht": true,
+      "scope": "global",
+      "validatie": {
+        "minLengte": 20
+      },
+      "hulptekst": "integrations.vercel.fields.token.help",
+      "guideId": null,
+      "envVar": "STUDIO_VERCEL_TOKEN"
+    },
+    {
+      "id": "team_id",
+      "label": "integrations.vercel.fields.team_id.label",
+      "type": "text",
+      "geheim": false,
+      "verplicht": false,
+      "scope": "global",
+      "validatie": {
+        "regex": "^team_[A-Za-z0-9]+$"
+      },
+      "hulptekst": "integrations.vercel.fields.team_id.help",
+      "guideId": null,
+      "envVar": "STUDIO_VERCEL_TEAM_ID"
+    }
+  ],
+  "testVerbinding": "vercel",
+  "checklistItems": []
+}

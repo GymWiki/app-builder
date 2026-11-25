@@ -13,7 +13,6 @@ pub struct Facts {
     pub screenshots: usize,
     pub privacy_docs: bool,
     pub changelog: bool,
-    pub keystore: bool,
     pub signing_configured: bool,
     /// Vingerafdruk waarop de testrun voor het laatst slaagde (None = nooit geslaagd).
     pub test_passed_fingerprint: Option<String>,
@@ -23,6 +22,20 @@ pub struct Facts {
     pub current_fingerprint: String,
     /// Native functies die in de code zijn herkend (camera, push, …); die moeten handmatig getest.
     pub native_features: Vec<String>,
+    /// Verplichte geheimen die nog ontbreken (uit de kluis); per checklistpunt een knop naar het juiste kopje.
+    pub missing_secrets: Vec<crate::vault::MissingSecret>,
+    /// Aantal geheimen dat in de projectbestanden is gevonden (lekcontrole).
+    pub leaks: usize,
+}
+
+/// Ontbrekende geheimen van een checklistpunt als `secret:<integratie>.<veld>`; de eerste bepaalt waar de knop naartoe gaat.
+fn secret_items(f: &Facts, key: &str, miss: &mut Vec<String>) -> Option<String> {
+    let mut next = None;
+    for m in f.missing_secrets.iter().filter(|m| m.items.iter().any(|i| i == key)) {
+        miss.push(if m.field.is_empty() { format!("secret_problem:{}", m.integration) } else { format!("secret:{}.{}", m.integration, m.field) });
+        next.get_or_insert_with(|| format!("{}:{}", if m.enabled { "secrets" } else { "integrations" }, m.integration));
+    }
+    next
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -84,7 +97,13 @@ pub fn evaluate(m: &Meta, f: &Facts) -> Evaluation {
     if has_accounts && !m.legal.account_deletion {
         miss.push("account_deletion");
     }
-    items.push(item("data_auth", true, miss, "data"));
+    let mut miss: Vec<String> = miss.into_iter().map(String::from).collect();
+    let secret_next = secret_items(f, "data_auth", &mut miss);
+    let mut it = item("data_auth", true, vec![], "data");
+    it.status = if miss.is_empty() { "done" } else { "todo" }.into();
+    it.next = (!miss.is_empty()).then(|| if miss.iter().all(|m| m.starts_with("secret:")) { secret_next.clone().unwrap_or_else(|| "data".into()) } else { "data".into() });
+    it.missing = miss;
+    items.push(it);
 
     // 3. juridisch
     let mut miss = vec![];
@@ -140,18 +159,21 @@ pub fn evaluate(m: &Meta, f: &Facts) -> Evaluation {
     }
     items.push(item("store_listing", true, miss, "publish:listing"));
 
-    // 6. accounts en signing (Android eerst)
-    let mut miss = vec![];
-    if !f.keystore {
-        miss.push("keystore");
-    }
+    // 6. accounts en signing (Android eerst). De geheimen komen uit de kluis; er wordt nooit iets dubbel gevraagd.
+    let mut miss: Vec<String> = vec![];
+    let secret_next = secret_items(f, "accounts_signing", &mut miss);
+    let has_secret_gap = !miss.is_empty();
     if !f.signing_configured {
-        miss.push("gradle");
+        miss.push("gradle".into());
     }
     if !m.publishing.play_account_ready {
-        miss.push("play_account");
+        miss.push("play_account".into());
     }
-    items.push(item("accounts_signing", true, miss, "publish:signing"));
+    let mut it = item("accounts_signing", true, vec![], "publish:signing");
+    it.status = if miss.is_empty() { "done" } else { "todo" }.into();
+    it.next = (!miss.is_empty()).then(|| if has_secret_gap { secret_next.clone().unwrap_or_else(|| "publish:signing".into()) } else { "publish:signing".into() });
+    it.missing = miss;
+    items.push(it);
 
     // 7. versie en changelog
     let mut miss = vec![];
@@ -163,6 +185,15 @@ pub fn evaluate(m: &Meta, f: &Facts) -> Evaluation {
     }
     let next = if miss.contains(&"changelog") { "versions" } else { "settings" };
     items.push(item("version_changelog", true, miss, next));
+
+    // 7b. geen geheimen in de projectbestanden
+    let mut it = item("no_leaks", true, vec![], "leaks");
+    if f.leaks > 0 {
+        it.status = "failed".into();
+        it.missing = vec![format!("leaks:{}", f.leaks)];
+        it.next = Some("leaks".into());
+    }
+    items.push(it);
 
     // 8. laatste bevestiging: pas geldig als al het andere groen is
     let others_done = items.iter().all(|i| i.status == "done");
@@ -223,7 +254,6 @@ mod tests {
             screenshots: 3,
             privacy_docs: true,
             changelog: true,
-            keystore: true,
             signing_configured: true,
             test_passed_fingerprint: Some("abc".into()),
             current_fingerprint: "abc".into(),
@@ -231,6 +261,10 @@ mod tests {
             ..Default::default()
         };
         (m, f)
+    }
+
+    fn ms(integration: &str, field: &str, enabled: bool) -> crate::vault::MissingSecret {
+        crate::vault::MissingSecret { integration: integration.into(), field: field.into(), enabled, items: vec!["accounts_signing".into()] }
     }
 
     fn get<'a>(e: &'a Evaluation, k: &str) -> &'a ItemState {
@@ -241,8 +275,8 @@ mod tests {
     fn a_fresh_project_is_blocked_and_every_item_says_what_is_missing() {
         let e = evaluate(&Meta::default(), &Facts { version: "1.0.0".into(), bundle_id: "com.example.demo".into(), ..Default::default() });
         assert!(!e.can_publish);
-        assert_eq!((e.done, e.total), (0, 8));
-        for i in e.items.iter().filter(|i| i.blocking) {
+        assert_eq!((e.done, e.total), (1, 9), "only the leak check is green on an empty project");
+        for i in e.items.iter().filter(|i| i.blocking && i.status != "done") {
             assert!(!i.missing.is_empty() && i.next.is_some(), "{} must explain what is missing", i.key);
         }
         assert_eq!(get(&e, "app_basics").missing, ["bundle_id", "icon"]);
@@ -255,7 +289,7 @@ mod tests {
         let (m, f) = ready();
         let e = evaluate(&m, &f);
         assert!(e.can_publish, "{:?}", e.items.iter().filter(|i| i.status != "done").collect::<Vec<_>>());
-        assert_eq!((e.done, e.total), (8, 8));
+        assert_eq!((e.done, e.total), (9, 9));
     }
 
     #[test]
@@ -267,7 +301,8 @@ mod tests {
             ("legal", Box::new(|m, _| m.legal.terms_url.clear())),
             ("ai_test_run", Box::new(|_, f| f.test_passed_fingerprint = None)),
             ("store_listing", Box::new(|_, f| f.screenshots = 1)),
-            ("accounts_signing", Box::new(|_, f| f.keystore = false)),
+            ("accounts_signing", Box::new(|_, f| f.missing_secrets = vec![ms("android_signing", "keystore", true)])),
+            ("no_leaks", Box::new(|_, f| f.leaks = 2)),
             ("version_changelog", Box::new(|_, f| f.changelog = false)),
         ];
         for (key, tweak) in tweaks {
@@ -333,7 +368,7 @@ mod tests {
         assert!(!get(&e, "native_manual").blocking && !get(&e, "device_test").blocking);
         m.publishing.manual_checks.insert("camera".into(), true);
         assert_eq!(get(&evaluate(&m, &f), "native_manual").missing, ["push"]);
-        assert_eq!(evaluate(&m, &f).total, 8, "advisory items are not counted in X/8");
+        assert_eq!(evaluate(&m, &f).total, 9, "advisory items are not counted in X/9");
     }
 
     #[test]
@@ -352,5 +387,57 @@ mod tests {
         assert_eq!(get(&evaluate(&m, &f), "store_listing").missing, ["play_console"]);
         m.questionnaire.uses_location = None;
         assert_eq!(get(&evaluate(&m, &f), "store_listing").missing, ["questionnaire"]);
+    }
+
+    #[test]
+    fn missing_secrets_point_to_the_right_heading_and_are_never_asked_twice() {
+        let (m, mut f) = ready();
+        f.missing_secrets = vec![ms("android_signing", "keystore", true), ms("android_signing", "keystore_password", true), ms("google_play", "service_account", false)];
+        let e = evaluate(&m, &f);
+        let it = get(&e, "accounts_signing");
+        assert_eq!(it.missing, ["secret:android_signing.keystore", "secret:android_signing.keystore_password", "secret:google_play.service_account"]);
+        assert_eq!(it.next.as_deref(), Some("secrets:android_signing"), "the first gap decides where the button goes");
+        assert!(!it.missing.iter().any(|x| x == "keystore"), "the old duplicate key is gone");
+        // Staat de integratie uit, dan wijst de knop naar het integratie-overzicht.
+        f.missing_secrets = vec![ms("google_play", "service_account", false)];
+        assert_eq!(get(&evaluate(&m, &f), "accounts_signing").next.as_deref(), Some("integrations:google_play"));
+        // Andere punten blijven onaangetast.
+        assert_eq!(get(&evaluate(&m, &f), "data_auth").status, "done");
+    }
+
+    #[test]
+    fn secrets_for_the_data_integration_land_on_the_data_item() {
+        let (m, mut f) = ready();
+        f.missing_secrets = vec![crate::vault::MissingSecret { integration: "supabase".into(), field: "url".into(), enabled: true, items: vec!["data_auth".into()] }];
+        let e = evaluate(&m, &f);
+        assert_eq!(get(&e, "data_auth").missing, ["secret:supabase.url"]);
+        assert_eq!(get(&e, "data_auth").next.as_deref(), Some("secrets:supabase"));
+        assert!(!e.can_publish);
+        // Ontbreekt ook iets anders, dan gaat de knop naar de Data-pagina.
+        let (mut m2, f2) = (m, f);
+        m2.data.provider.clear();
+        assert_eq!(get(&evaluate(&m2, &f2), "data_auth").next.as_deref(), Some("data"));
+    }
+
+    #[test]
+    fn a_leak_blocks_publishing_and_says_how_many() {
+        let (m, mut f) = ready();
+        f.leaks = 3;
+        let e = evaluate(&m, &f);
+        assert!(!e.can_publish);
+        let it = get(&e, "no_leaks");
+        assert_eq!((it.status.as_str(), it.missing.clone(), it.next.as_deref()), ("failed", vec!["leaks:3".to_string()], Some("leaks")));
+        assert!(it.blocking);
+    }
+
+    #[test]
+    fn an_expired_or_invalid_key_shows_up_in_the_checklist_as_a_problem() {
+        let (m, mut f) = ready();
+        f.missing_secrets = vec![ms("apple", "", true)];
+        let e = evaluate(&m, &f);
+        let it = get(&e, "accounts_signing");
+        assert_eq!(it.missing, ["secret_problem:apple"]);
+        assert_eq!(it.next.as_deref(), Some("secrets:apple"));
+        assert!(!e.can_publish);
     }
 }
