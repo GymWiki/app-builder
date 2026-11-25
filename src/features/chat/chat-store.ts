@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { api, onEvent } from "@/lib/ipc";
-import type { ChatEvent, PermissionDecision, PermissionRequest } from "@/lib/types";
+import type { ChatEvent, PermissionDecision, PermissionRequest, Purpose } from "@/lib/types";
 import { applyEvent, finishRunning, replay, type Item } from "./chat-model";
 
 interface ProjectChat {
@@ -14,7 +14,7 @@ interface ChatState {
   byProject: Record<string, ProjectChat>;
   permissions: PermissionRequest[];
   load: (projectId: string) => Promise<void>;
-  send: (projectId: string, text: string, context: string | null, language: string) => Promise<void>;
+  send: (projectId: string, text: string, context: string | null, language: string, purpose?: Purpose) => Promise<void>;
   cancel: (projectId: string) => Promise<void>;
   newSession: (projectId: string) => Promise<void>;
   respond: (id: string, decision: PermissionDecision) => Promise<void>;
@@ -43,10 +43,10 @@ export const useChat = create<ChatState>((set) => {
       }));
     },
 
-    async send(projectId, text, context, language) {
+    async send(projectId, text, context, language, purpose) {
       patch(projectId, () => ({ running: true, startedAt: Date.now() }));
       try {
-        await api.chatSend(projectId, text, context, language);
+        await api.chatSend(projectId, text, context, language, purpose);
       } catch (e) {
         patch(projectId, () => ({ running: false, startedAt: null }));
         throw e;

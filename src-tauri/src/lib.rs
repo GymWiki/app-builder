@@ -6,6 +6,8 @@ mod connect;
 mod db;
 mod engine;
 mod error;
+#[cfg(test)]
+mod evals;
 mod gitops;
 mod install;
 mod index;
@@ -20,6 +22,7 @@ mod logging;
 mod mcp;
 mod manifest;
 mod meta;
+mod modelsel;
 mod permissions;
 mod platform;
 mod profile;
@@ -120,6 +123,8 @@ pub fn run() {
                 }),
             });
             let chat = Arc::new(chat::ChatManager::new(Arc::new(engine::claude::ClaudeEngine::new())));
+            // Modelnamen, klassen en gewichten: een bestand in de app-datamap gaat voor het ingebouwde (bij te werken zonder app-update).
+            chat.set_config(modelsel::EngineConfig::load(&dir, "claude"));
             log::info!("Studio {} started on {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS);
             // Bestaande projecten met een ouder profiel stil bijwerken (nooit bestanden van de gebruiker overschrijven).
             let handle = app.handle().clone();

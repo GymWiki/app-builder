@@ -155,6 +155,42 @@ Gecontroleerd tegen de actuele documentatie (web, november 2026); afwijkingen va
 
 **Wat niet echt is geverifieerd.** (1) De OS-keychain op Windows en macOS: hier draait Linux met een sandbox waarin de keyutils-keychain niet werkt; alle tests gebruiken een geheugen-keychain en de ontsleutelde-bestandsketen is daarmee getest, de ignored test `real_keychain_roundtrip_with_an_encrypted_file` hoort op een echte machine te draaien. (2) "Test verbinding" is echt voor Supabase (`/auth/v1/health`), GitHub en Vercel, maar de uitkomst "ongeldig" is hier niet live gezien: de sandbox-proxy zet zelf geldige GitHub-gegevens in het verzoek, dus een nep-token gaf 200. Het succespad en het lezen van de einddatum zijn wel live gezien; de foutpaden zijn getest met een nep-HTTP. Apple, Google Play en Firebase worden alleen lokaal gecontroleerd (de echte aanroep vraagt een ondertekend token en volgt later). (3) Slepen en neerzetten: het venster heeft `dragDropEnabled: false` nodig, anders onderschept Windows de HTML5-gebeurtenissen; getest in een browser, niet in de echte shell. (4) Back-up opslaan en openen gebruikt in de desktop-app het opslaan/openen-venster van het besturingssysteem (een blob-download werkt niet overal in een webview); de browser-demo gebruikt een gewone download.
 
+## Fase 11a: automatische modelkeuze (alleen Claude Code, meerdere modellen)
+
+**Bronnen en regels.** Modelnamen staan nergens in de code: `engines/claude.json` (ingebouwd) of een bestand `engines/claude.json` in de app-datamap (gaat voor, is bij te werken zonder app-update; een kapot bestand valt terug op het ingebouwde). Gecontroleerd met `claude --help` (v2.1.332): `--model <model>` met aliassen `fable`, `opus`, `sonnet` in de helptekst; `haiku` staat niet in de tekst maar werkt (gemeten), daarom controleert Studio een alias die niet genoemd wordt één keer met een minimale aanroep en onthoudt dat. Kent de CLI de vlag niet, dan wordt er geen model gekozen en geldt de standaard van de CLI. `--permission-mode plan` bestaat (voor het plannen). Een modelnaam mag nooit op een vlag lijken. Gebruiksvoorwaarden: het blijft de officiële `claude` CLI als subproces, ingelogd door de gebruiker; er verandert niets aan wat er wordt gelezen of doorgegeven.
+
+**Klasse uit goedkope signalen (geen tokens).** Score = gewicht van het scope-niveau (klein 0, scherm 1, gedeeld 3, project 4) + zwaarste soort taak (tekst/stijl 0, nieuw scherm/feature 1, datamodel/navigatie/bugs 2, auth/database/refactor 3) + bestanden in het bereik + lange verzoeken (1 punt per 200 tekens, max 2) + 2 als de vorige poging op dit scherm mislukte − 1 bij een bekend patroon (projectskill bestaat). Drempels: ≥1 normaal, ≥3 complex. Alles staat als data in het JSON-bestand.
+
+**Mapping en regels.** trivial → lichtste, normal → middenklasse, complex → sterkste (configureerbaar). Kleine hulptaken (classificatie, changelog, store-tekst) altijd het lichtste; release-werk (juridische teksten, ondertekening) nooit onder de ondergrens `floors.release` (mid), ook niet door de statistiek. Een handmatige keuze bestaat alleen in de ontwikkelaarsmodus (`model_override`: automatisch, een niveau of een eigen modelnaam) en telt niet mee voor de statistiek.
+
+**Opschalen en bijstellen.** Mislukt de controle (`flutter analyze`/tests), dan gebruiken de reparatiebeurten één niveau zwaarder, maximaal één opschaling per taak en nooit bij een handmatige keuze. Na `downgrade.minClean` (5) keer meteen goed in een klasse probeert Studio één niveau lichter; een mislukking op dat lichtere niveau blokkeert het opnieuw verlagen voor twee vensters. Plannen met een sterk model en uitvoeren met een lichter model (plan-modus) is gebouwd en getest met een nep-CLI, maar staat **uit**: het moet eerst netto goedkoper blijken en de evaluatie had geen taak waar het lichtere model faalde.
+
+**Evaluatieset.** `evals/tasks.json` (13 vaste opdrachten op het scoreboard-sjabloon, klein tot complex, drie met een echte test of ingebouwde bug) en `evals/last-report.md`/`last-results.jsonl` (de laatste echte run). Elke run gaat door de échte keten met een schone sessie, echte Flutter en de echte CLI, en slaagt als Studio de wijziging bewaart (analyze en rooktest) én de taakcontroles kloppen. Twee fouten in mijn eigen meting zijn gevonden en verholpen: (1) sessies werden hergebruikt waardoor een model eerdere taken onthield en de kosten opliepen, (2) twee controles waren onterecht streng (een map moest "tournament" heten; een YAML-bestand werd niet gelezen). Kosten komen uit het resultaat van de CLI (`total_cost_usd`, tegen lijstprijs) en tokens zijn invoer + uitvoer + cache.
+
+## Per class and model
+
+| class   | model  | runs | success | clean first time | avg cost | avg tokens | avg time |
+| ------- | ------ | ---- | ------- | ---------------- | -------- | ---------- | -------- |
+| complex | haiku  | 6    | 100%    | 100%             | $0.012   | 477k       | 58s      |
+| complex | opus   | 6    | 100%    | 100%             | $0.292   | 393k       | 67s      |
+| complex | sonnet | 6    | 100%    | 100%             | $0.130   | 285k       | 45s      |
+| normal  | haiku  | 5    | 100%    | 100%             | $0.013   | 631k       | 59s      |
+| normal  | opus   | 5    | 100%    | 100%             | $0.352   | 396k       | 81s      |
+| normal  | sonnet | 5    | 100%    | 100%             | $0.122   | 272k       | 40s      |
+| trivial | haiku  | 2    | 100%    | 100%             | $0.006   | 305k       | 26s      |
+| trivial | opus   | 2    | 100%    | 100%             | $0.148   | 188k       | 26s      |
+| trivial | sonnet | 2    | 100%    | 100%             | $0.074   | 211k       | 24s      |
+
+## Automatic choice versus fixed models (same tasks)
+
+| strategy         | tasks | success | total cost | total tokens |
+| ---------------- | ----- | ------- | ---------- | ------------ |
+| always-lightest  | 13    | 100%    | $0.15      | 6625k        |
+| always-strongest | 13    | 100%    | $3.81      | 4718k        |
+| auto             | 13    | 100%    | $2.38      | 4331k        |
+
+**Wat dit wel en niet zegt.** Alle 39 runs slaagden, op elk model. De set onderscheidt de modellen dus niet op slagingskans; hij laat vooral het kostenverschil zien: lichtste ≈ 1/25 van het sterkste per taak. De huidige mapping (auto) kost 38% minder dan altijd het sterkste, met dezelfde uitkomst. De controles zijn structureel (aanwezigheid, analyze, rooktest, twee echte tests), geen oordeel over ontwerpkwaliteit, en het sjabloon is klein. Daarom is de mapping **niet** naar het lichtste model geschoven: dat zou kwaliteit op een bewijs baseren dat er niet is. De ingebouwde statistiek doet dat voorzichtig en per klasse, met terugval. Afwijkingen gevonden door de set: Studio zag een toernooi met rondes en standen als "normaal" (nu: lange verzoeken tellen zwaarder), "een tweede scherm" als kleine tweak (nu: gedeeld niveau, want router en core veranderen mee), en een eenvoudige tooltip en een kleine bug als zwaarder dan nodig (veilige kant, kost alleen geld).
+
 ## Preview-uitvoer (echt gemeten, Flutter 3.50.1, `flutter run -d web-server`)
 
 - Succes: `Performing hot restart...` (bezig) en daarna dezelfde regel met `123ms` (klaar); er is geen "Reloaded N of M libraries" op web.

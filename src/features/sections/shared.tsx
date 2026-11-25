@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useChat } from "@/features/chat/chat-store";
 import { cn } from "@/lib/utils";
-import type { Applied } from "@/lib/types";
+import type { Applied, Purpose } from "@/lib/types";
 import { toastError } from "@/lib/toast";
 import { toast } from "sonner";
 
@@ -14,10 +14,10 @@ export const inputCls =
 export function useAsk(projectId: string) {
   const { t, i18n } = useTranslation();
   const running = useChat((s) => s.byProject[projectId]?.running ?? false);
-  const ask = (prompt: string) => {
+  const ask = (prompt: string, purpose?: Purpose) => {
     void useChat
       .getState()
-      .send(projectId, prompt, null, i18n.language.slice(0, 2))
+      .send(projectId, prompt, null, i18n.language.slice(0, 2), purpose)
       .then(() => toast.success(t("chat.title")))
       .catch((e) => toastError(e, t));
   };
@@ -29,11 +29,14 @@ export function AskButton({
   prompt,
   label,
   variant = "default",
+  purpose,
 }: {
   projectId: string;
   prompt: string;
   label?: string;
   variant?: "default" | "outline" | "secondary";
+  /** helper = kleine hulptaak (lichtste model), release = hoort bij publiceren (ondergrens). Alleen intern; de gebruiker ziet het niet. */
+  purpose?: Purpose;
 }) {
   const { t } = useTranslation();
   const { ask, busy } = useAsk(projectId);
@@ -43,7 +46,7 @@ export function AskButton({
       variant={variant}
       disabled={busy}
       title={busy ? t("sec.common.askBusy") : undefined}
-      onClick={() => ask(prompt)}
+      onClick={() => ask(prompt, purpose)}
     >
       <Sparkles /> {label ?? t("sec.common.ask")}
     </Button>

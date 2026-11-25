@@ -143,6 +143,17 @@ const MIGRATIONS: &[&str] = &[
     INSERT INTO checklist_items(id, project_id, key, blocking)
     SELECT lower(hex(randomblob(16))), id, 'no_leaks', 1 FROM projects;
     "#,
+    // v8 — modelkeuze per run (fase 11): klasse, niveau, model, engine, doel, opschaling en tokens
+    r#"
+    ALTER TABLE runs ADD COLUMN class     TEXT    NOT NULL DEFAULT '';
+    ALTER TABLE runs ADD COLUMN tier      TEXT    NOT NULL DEFAULT '';
+    ALTER TABLE runs ADD COLUMN model     TEXT    NOT NULL DEFAULT '';
+    ALTER TABLE runs ADD COLUMN engine    TEXT    NOT NULL DEFAULT 'claude-code';
+    ALTER TABLE runs ADD COLUMN purpose   TEXT    NOT NULL DEFAULT 'work';
+    ALTER TABLE runs ADD COLUMN escalated INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE runs ADD COLUMN tokens    INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE runs ADD COLUMN planned   INTEGER NOT NULL DEFAULT 0;
+    "#,
 ];
 
 /// De verplichte (blokkerende) checklistpunten. Volgorde = weergavevolgorde.
@@ -246,11 +257,55 @@ pub struct RunRecord {
     pub cost_usd: f64,
     pub turns: i64,
     pub ai_questions: i64,
+    /// Moeilijkheidsklasse (trivial | normal | complex) en gekozen niveau/model (fase 11).
+    pub class: String,
+    pub tier: String,
+    pub model: String,
+    pub engine: String,
+    /// work | helper | release | override (een override telt niet mee voor de statistiek)
+    pub purpose: String,
+    pub escalated: bool,
+    pub tokens: i64,
+    pub planned: bool,
+}
+
+/// Cijfers per klasse of per model.
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupStats {
+    pub runs: usize,
+    pub ok: usize,
+    pub clean: usize,
+    pub escalated: usize,
+    pub cost_usd: f64,
+    pub tokens: i64,
+}
+
+impl GroupStats {
+    fn add(&mut self, r: &RunRecord) {
+        self.runs += 1;
+        self.ok += (r.ok && !r.rolled_back) as usize;
+        self.clean += r.is_clean() as usize;
+        self.escalated += r.escalated as usize;
+        self.cost_usd += r.cost_usd;
+        self.tokens += r.tokens;
+    }
+}
+
+impl RunRecord {
+    /// Meteen goed: geslaagd zonder reparatie, opschaling of terugdraaien.
+    pub fn is_clean(&self) -> bool {
+        self.ok && !self.rolled_back && self.issues_before == 0 && self.repairs == 0 && !self.escalated
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RunsSummary {
+    /// De nieuwste run zelf (voor tests en het ontwikkelaarspaneel).
+    pub last: Option<RunRecord>,
+    pub by_class: std::collections::BTreeMap<String, GroupStats>,
+    pub by_model: std::collections::BTreeMap<String, GroupStats>,
     pub runs: usize,
     /// Aantal runs per niveau (small, screen, shared, project) aan het begin.
     pub by_level: std::collections::BTreeMap<String, usize>,
@@ -267,7 +322,7 @@ pub struct RunsSummary {
 
 impl RunsSummary {
     pub fn from_runs(rows: &[RunRecord]) -> Self {
-        let mut s = RunsSummary { runs: rows.len(), ..Default::default() };
+        let mut s = RunsSummary { runs: rows.len(), last: rows.first().cloned(), ..Default::default() };
         for r in rows {
             *s.by_level.entry(r.level.clone()).or_default() += 1;
             s.expanded += (r.expansions > 0) as usize;
@@ -279,6 +334,12 @@ impl RunsSummary {
             s.denied_edits += r.denied_edits;
             s.avg_duration_ms += r.duration_ms;
             s.avg_files_changed += r.files_changed as f64;
+            if !r.class.is_empty() {
+                s.by_class.entry(r.class.clone()).or_default().add(r);
+            }
+            if !r.model.is_empty() {
+                s.by_model.entry(r.model.clone()).or_default().add(r);
+            }
         }
         if !rows.is_empty() {
             s.avg_duration_ms /= rows.len() as i64;
@@ -579,45 +640,75 @@ impl Db {
     pub fn run_insert(&self, project_id: &str, r: &RunRecord) -> AppResult<()> {
         self.lock().execute(
             "INSERT INTO runs(project_id, level, final_level, screen, why, expansions, denied_edits, files_changed, issues_before, repairs,
-                              rolled_back, ok, duration_ms, cost_usd, turns, ai_questions)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
+                              rolled_back, ok, duration_ms, cost_usd, turns, ai_questions, class, tier, model, engine, purpose, escalated, tokens, planned)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)",
             params![
                 project_id, r.level, r.final_level, r.screen, r.why, r.expansions, r.denied_edits, r.files_changed, r.issues_before, r.repairs,
-                r.rolled_back, r.ok, r.duration_ms, r.cost_usd, r.turns, r.ai_questions
+                r.rolled_back, r.ok, r.duration_ms, r.cost_usd, r.turns, r.ai_questions, r.class, r.tier, r.model, r.engine, r.purpose, r.escalated, r.tokens, r.planned
             ],
         )?;
         Ok(())
     }
 
+    fn run_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<RunRecord> {
+        Ok(RunRecord {
+            level: r.get(0)?,
+            final_level: r.get(1)?,
+            screen: r.get(2)?,
+            why: r.get(3)?,
+            expansions: r.get(4)?,
+            denied_edits: r.get(5)?,
+            files_changed: r.get(6)?,
+            issues_before: r.get(7)?,
+            repairs: r.get(8)?,
+            rolled_back: r.get(9)?,
+            ok: r.get(10)?,
+            duration_ms: r.get(11)?,
+            cost_usd: r.get(12)?,
+            turns: r.get(13)?,
+            ai_questions: r.get(14)?,
+            class: r.get(15)?,
+            tier: r.get(16)?,
+            model: r.get(17)?,
+            engine: r.get(18)?,
+            purpose: r.get(19)?,
+            escalated: r.get(20)?,
+            tokens: r.get(21)?,
+            planned: r.get(22)?,
+        })
+    }
+
+    const RUN_COLS: &'static str = "level, final_level, screen, why, expansions, denied_edits, files_changed, issues_before, repairs, rolled_back, ok,
+        duration_ms, cost_usd, turns, ai_questions, class, tier, model, engine, purpose, escalated, tokens, planned";
+
     /// Samenvatting van de laatste `limit` runs van een project (alles als getallen, voor het ontwikkelaarspaneel).
     pub fn runs_summary(&self, project_id: &str, limit: i64) -> AppResult<RunsSummary> {
         let conn = self.lock();
-        let mut st = conn.prepare(
-            "SELECT level, final_level, screen, why, expansions, denied_edits, files_changed, issues_before, repairs, rolled_back, ok,
-                    duration_ms, cost_usd, turns, ai_questions FROM runs WHERE project_id = ?1 ORDER BY id DESC LIMIT ?2",
-        )?;
-        let rows: Vec<RunRecord> = st
-            .query_map(params![project_id, limit], |r| {
-                Ok(RunRecord {
-                    level: r.get(0)?,
-                    final_level: r.get(1)?,
-                    screen: r.get(2)?,
-                    why: r.get(3)?,
-                    expansions: r.get(4)?,
-                    denied_edits: r.get(5)?,
-                    files_changed: r.get(6)?,
-                    issues_before: r.get(7)?,
-                    repairs: r.get(8)?,
-                    rolled_back: r.get(9)?,
-                    ok: r.get(10)?,
-                    duration_ms: r.get(11)?,
-                    cost_usd: r.get(12)?,
-                    turns: r.get(13)?,
-                    ai_questions: r.get(14)?,
-                })
-            })?
-            .collect::<Result<_, _>>()?;
+        let mut st = conn.prepare(&format!("SELECT {} FROM runs WHERE project_id = ?1 ORDER BY id DESC LIMIT ?2", Self::RUN_COLS))?;
+        let rows: Vec<RunRecord> = st.query_map(params![project_id, limit], Self::run_row)?.collect::<Result<_, _>>()?;
         Ok(RunsSummary::from_runs(&rows))
+    }
+
+    /// De laatste runs van één klasse over alle projecten (nieuwste eerst), voor het bijstellen van de modelkeuze. Alleen gewone
+    /// opdrachten: hulptaken, release-werk en handmatige overrides zeggen niets over de juiste keuze.
+    pub fn class_history(&self, class: &str, limit: i64) -> AppResult<Vec<(String, bool)>> {
+        let conn = self.lock();
+        let mut st = conn.prepare(&format!("SELECT {} FROM runs WHERE class = ?1 AND purpose = 'work' AND tier != '' ORDER BY id DESC LIMIT ?2", Self::RUN_COLS))?;
+        let rows: Vec<RunRecord> = st.query_map(params![class, limit], Self::run_row)?.collect::<Result<_, _>>()?;
+        Ok(rows.into_iter().map(|r| (r.tier.clone(), r.is_clean())).collect())
+    }
+
+    /// Is de vorige run op dit scherm mislukt (teruggedraaid of niet geslaagd)? Dan telt "vorige poging faalde" mee.
+    pub fn last_run_failed(&self, project_id: &str, screen: &str) -> AppResult<bool> {
+        Ok(self
+            .lock()
+            .query_row(
+                "SELECT rolled_back, ok FROM runs WHERE project_id = ?1 AND screen = ?2 AND purpose != 'override' ORDER BY id DESC LIMIT 1",
+                params![project_id, screen],
+                |r| Ok(r.get::<_, bool>(0)? || !r.get::<_, bool>(1)?),
+            )
+            .optional()?
+            .unwrap_or(false))
     }
 
     // ── integraties en geheimen (alleen metadata) ──

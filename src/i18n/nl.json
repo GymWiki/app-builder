@@ -543,7 +543,9 @@
       "checks_ok": "Alles werkt nog.",
       "rolled_back": "Die aanpassing werkte niet, dus ik ben teruggegaan naar de vorige versie. Er gaat niets verloren.",
       "scope_reverted": "Een aanpassing buiten deze taak is teruggedraaid om de rest van de app veilig te houden.",
-      "leak_blocked": "Het opslaan van een versie is gepauzeerd: er is een geheim gevonden in je bestanden. Zie Geheimen."
+      "leak_blocked": "Het opslaan van een versie is gepauzeerd: er is een geheim gevonden in je bestanden. Zie Geheimen.",
+      "model": "klasse {{cls}} · niveau {{tier}} · model {{model}} · {{reason}}",
+      "model_escalated": "opgeschaald naar {{model}} na een mislukte controle"
     }
   },
   "preview": {
@@ -1340,6 +1342,18 @@
         "cost": "Totale kosten: ${{cost}}",
         "denied": "Bewerkingen buiten bereik geweigerd: {{n}}",
         "none": "Nog geen runs."
+      },
+      "models": {
+        "title": "Modelkeuze",
+        "override": "Model voor de volgende taken",
+        "auto": "Automatisch (aanbevolen)",
+        "light": "Altijd het lichtste",
+        "mid": "Altijd de middenklasse",
+        "strong": "Altijd het sterkste",
+        "help": "Alleen in de ontwikkelaarsmodus. Automatisch kiest het goedkoopste model dat de taak aankan; een handmatige keuze telt niet mee in de statistiek.",
+        "byClass": "Per klasse",
+        "byModel": "Per model",
+        "row": "{{name}}: {{runs}} runs, {{pct}}% geslaagd, {{clean}} meteen goed, {{esc}} opgeschaald, ${{cost}}, {{tokens}} tokens"
       }
     }
   },

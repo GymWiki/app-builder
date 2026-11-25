@@ -138,6 +138,7 @@ export function VersionsView({ project }: { project: Project }) {
         )}
         <AskButton
           projectId={id}
+          purpose="helper"
           prompt={t("sec.versions.changelogPrompt", {
             version: project.version,
             changes: lines.map((l) => `- ${l}`).join("\n") || "-",

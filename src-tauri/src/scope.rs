@@ -74,7 +74,7 @@ const PROJECT_WORDS: &[&str] = &[
 const SHARED_WORDS: &[&str] = &[
     "theme", "thema", "everywhere", "overal", "shared", "gedeeld", "package", "dependency", "pubspec", "font", "lettertype", "logo", "app icon", "app-icoon", "model",
     "in every", "in alle", "all buttons", "alle knoppen", "app bar", "appbar", "dark mode", "donker thema", "language", "taal", "translation", "vertaling", "new screen", "nieuw scherm",
-    "extra scherm", "another screen",
+    "extra scherm", "another screen", "second screen", "third screen", "tweede scherm", "derde scherm", "new page", "nieuwe pagina", "add a page", "add a screen", "voeg een scherm",
 ];
 const SMALL_WORDS: &[&str] = &[
     "color", "colour", "kleur", "text", "tekst", "label", "bigger", "smaller", "larger", "groter", "kleiner", "spacing", "margin", "padding", "rename", "hernoem", "title", "titel",
@@ -403,6 +403,15 @@ mod tests {
         assert_eq!((d.level, d.screen.as_deref(), d.why), (Level::Small, Some("SettingsScreen"), Why::Keyword));
         let d = decide(&i, "pas de home pagina aan", None, None, &mut no_ai);
         assert_eq!(d.screen.as_deref(), Some("HomeScreen"));
+    }
+
+    #[test]
+    fn asking_for_another_screen_means_shared_work_because_the_router_and_core_change_too() {
+        // De evaluatie liet zien dat "a second screen ... icon button ... labelled" als een kleine tweak werd gezien.
+        let i = idx();
+        let d = decide(&i, "Add a second screen called Settings with a switch labelled 'Sound effects', reachable from an icon button in the top bar of the home screen.", None, None, &mut no_ai);
+        assert_eq!(d.level, Level::Shared, "{d:?}");
+        assert_eq!(decide(&i, "voeg een tweede scherm toe voor instellingen", None, None, &mut no_ai).level, Level::Shared);
     }
 
     #[test]

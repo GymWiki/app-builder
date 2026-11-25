@@ -61,6 +61,66 @@ impl Default for ClaudeEngine {
     }
 }
 
+type ProbeCache = Mutex<Option<HashMap<(PathBuf, String), bool>>>;
+static PROBED: ProbeCache = Mutex::new(None);
+
+/// Aliassen die `claude --help` bij `--model` noemt ('fable', 'opus', ...). Staat de vlag niet in de tekst: lege lijst.
+pub fn parse_model_aliases(help: &str) -> Vec<String> {
+    let Some(start) = help.find("--model <model>") else { return vec![] };
+    let rest = &help[start + "--model <model>".len()..];
+    // De beschrijving loopt tot de volgende optie (regel die met een streepje begint).
+    let end = rest.lines().skip(1).scan(0usize, |off, l| {
+        let here = *off;
+        *off += l.len() + 1;
+        Some((here, l))
+    }).find(|(_, l)| l.trim_start().starts_with('-')).map(|(o, _)| o + rest.lines().next().map(|f| f.len() + 1).unwrap_or(0)).unwrap_or(rest.len());
+    let para = &rest[..end.min(rest.len())];
+    let mut out = vec![];
+    let mut it = para.split('\'');
+    it.next();
+    for (i, chunk) in it.enumerate() {
+        if i % 2 == 0 && !chunk.is_empty() && chunk.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_') {
+            out.push(chunk.to_string());
+        }
+    }
+    out
+}
+
+/// Eén korte vraag zonder gereedschap en zonder sessie (classificatie, modelcontrole).
+fn oneshot(program: &Path, help: &str, prompt: &str, model: Option<&str>, timeout: Duration) -> Option<String> {
+    let mut args: Vec<&str> = vec!["-p", "--output-format", "text"];
+    // Alleen vlaggen die de CLI echt kent; zonder gereedschap en zonder sessie.
+    if let Some(m) = model.filter(|m| !m.starts_with('-')) {
+        if help.contains("--model") {
+            args.extend(["--model", m]);
+        }
+    }
+    for (flag, val) in [("--tools", Some("")), ("--no-session-persistence", None)] {
+        if help.contains(flag) {
+            args.push(flag);
+            args.extend(val);
+        }
+    }
+    let mut cmd = proc::command(program);
+    cmd.args(&args).stdin(Stdio::piped());
+    let mut child = cmd.spawn().ok()?;
+    if let Some(mut s) = child.stdin.take() {
+        let _ = s.write_all(prompt.as_bytes());
+    }
+    let mut out = child.stdout.take()?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = out.read_to_string(&mut text);
+        let _ = tx.send(text);
+    });
+    let answer = rx.recv_timeout(timeout).ok();
+    let ok = child.try_wait().ok().flatten().map(|s| s.success());
+    let _ = child.kill();
+    let _ = child.wait();
+    answer.filter(|t| !t.trim().is_empty() && ok != Some(false))
+}
+
 static HELP: Mutex<Option<HashMap<PathBuf, String>>> = Mutex::new(None);
 
 /// `claude --help` (per programma één keer bewaard) om flags te controleren in plaats van aan te nemen.
@@ -127,7 +187,7 @@ pub fn build_args(help: &str, req: &TurnRequest, isolate_user_settings: bool) ->
         "stream-json".into(),
         "--verbose".into(),
         "--permission-mode".into(),
-        "acceptEdits".into(),
+        if req.plan_only { "plan".into() } else { "acceptEdits".into() },
         "--mcp-config".into(),
         req.mcp_config.to_string_lossy().into_owned(),
         "--allowedTools".into(),
@@ -153,6 +213,13 @@ pub fn build_args(help: &str, req: &TurnRequest, isolate_user_settings: bool) ->
         a.push("--permission-prompt-tool".into());
         a.push(PERMISSION_TOOL.into());
     }
+    // Het model alleen meegeven als de CLI de vlag kent; de naam komt uit de configuratie (nooit hardcoded) en mag nooit op een vlag lijken.
+    if let Some(m) = req.model.as_ref().filter(|m| !m.starts_with('-') && !m.trim().is_empty()) {
+        if help.contains("--model") {
+            a.push("--model".into());
+            a.push(m.clone());
+        }
+    }
     if let Some(f) = req.settings.as_ref().filter(|_| help.contains("--settings")) {
         a.push("--settings".into());
         a.push(f.to_string_lossy().into_owned());
@@ -169,34 +236,33 @@ impl AiEngine for ClaudeEngine {
         "claude-code"
     }
 
-    fn classify(&self, question: &str) -> Option<String> {
+    fn classify(&self, question: &str, model: Option<&str>) -> Option<String> {
         let program = self.program().ok()?;
         let help = help_text(&program);
-        let mut args: Vec<&str> = vec!["-p", "--output-format", "text"];
-        // Alleen vlaggen die de CLI echt kent; zonder gereedschap, zonder sessie en met het goedkoopste model.
-        for (flag, val) in [("--model", Some("haiku")), ("--tools", Some("")), ("--no-session-persistence", None)] {
-            if help.contains(flag) {
-                args.push(flag);
-                args.extend(val);
-            }
+        oneshot(&program, &help, question, model, Duration::from_secs(60))
+    }
+
+    fn model_available(&self, alias: &str) -> bool {
+        let Ok(program) = self.program() else { return false };
+        let help = help_text(&program);
+        // Kent de CLI de vlag niet, dan kan er geen model gekozen worden: de standaard van de CLI geldt.
+        if !help.contains("--model") {
+            return false;
         }
-        let mut cmd = proc::command(&program);
-        cmd.args(&args).stdin(Stdio::piped());
-        let mut child = cmd.spawn().ok()?;
-        if let Some(mut s) = child.stdin.take() {
-            let _ = s.write_all(question.as_bytes());
+        if parse_model_aliases(&help).iter().any(|a| a == alias) {
+            return true;
         }
-        let mut out = child.stdout.take()?;
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let mut text = String::new();
-            let _ = out.read_to_string(&mut text);
-            let _ = tx.send(text);
-        });
-        let answer = rx.recv_timeout(Duration::from_secs(60)).ok();
-        let _ = child.kill();
-        let _ = child.wait();
-        answer.filter(|t| !t.trim().is_empty())
+        // Niet in de helptekst genoemd (die noemt maar een paar aliassen): één minimale aanroep bewijst het, en dat onthouden we.
+        let mut cache = PROBED.lock().unwrap_or_else(|e| e.into_inner());
+        let map = cache.get_or_insert_with(HashMap::new);
+        let key = (program.clone(), alias.to_string());
+        if let Some(v) = map.get(&key) {
+            return *v;
+        }
+        drop(cache);
+        let ok = oneshot(&program, &help, "Reply with the single word ok.", Some(alias), Duration::from_secs(90)).is_some();
+        PROBED.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(key, ok);
+        ok
     }
 
     fn run_turn(&self, req: &TurnRequest, run: &RunHandle, on_event: &mut dyn FnMut(ChatEvent)) -> AppResult<TurnOutcome> {
@@ -278,7 +344,33 @@ mod tests {
             mcp_config: "/tmp/mcp.json".into(),
             language: "nl".into(),
             settings: None,
+            model: None,
+            plan_only: false,
         }
+    }
+
+    const REAL_HELP: &str = "  --fallback-model <model>              Models to fall back to when the main\n                                        model is busy or unavailable\n  --model <model>                       Model for the current session. Use an\n                                        alias for the latest model (e.g.\n                                        'fable', 'opus', or 'sonnet') or a\n                                        model's full name.\n  -n, --name <name>                     Set a display name for this session\n";
+
+    #[test]
+    fn reads_the_model_aliases_from_the_cli_help_and_nothing_else() {
+        assert_eq!(parse_model_aliases(REAL_HELP), ["fable", "opus", "sonnet"], "the apostrophe in \"model's\" is not an alias");
+        assert!(parse_model_aliases("--output-format").is_empty());
+    }
+
+    #[test]
+    fn passes_the_model_only_when_the_cli_has_the_flag_and_the_name_is_safe() {
+        let help = format!("{HELP} --model");
+        let mut r = req(None);
+        r.model = Some("sonnet".into());
+        assert!(build_args(&help, &r, false).unwrap().join(" ").contains("--model sonnet"));
+        assert!(!build_args(HELP, &r, false).unwrap().iter().any(|a| a == "--model"), "no flag in the help: no flag passed");
+        r.model = Some("--dangerously-skip-permissions".into());
+        assert!(!build_args(&help, &r, false).unwrap().iter().any(|a| a.contains("dangerously")), "a model name can never be a flag");
+        r.model = None;
+        assert!(!build_args(&help, &r, false).unwrap().iter().any(|a| a == "--model"));
+        r.plan_only = true;
+        let a = build_args(&help, &r, false).unwrap().join(" ");
+        assert!(a.contains("--permission-mode plan") && !a.contains("acceptEdits"));
     }
 
     #[test]

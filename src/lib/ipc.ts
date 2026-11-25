@@ -27,6 +27,7 @@ import type {
   TemplateId,
   ToolStatus,
 } from "./types";
+import type { Purpose } from "./types";
 import type { IntegrationOverview, IntegrationStatus, Leak, TestOutcome } from "./integrations";
 
 export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -76,8 +77,8 @@ export const api = {
   ptyResize: (id: string, cols: number, rows: number) => call<void>("pty_resize", { id, cols, rows }),
   ptyKill: (id: string) => call<void>("pty_kill", { id }),
 
-  chatSend: (projectId: string, text: string, context: string | null, language: string) =>
-    call<void>("chat_send", { projectId, text, context, language }),
+  chatSend: (projectId: string, text: string, context: string | null, language: string, purpose?: Purpose) =>
+    call<void>("chat_send", { projectId, text, context, language, purpose: purpose ?? null }),
   chatCancel: (projectId: string) => call<void>("chat_cancel", { projectId }),
   chatRunning: (projectId: string) => call<boolean>("chat_running", { projectId }),
   chatHistory: (projectId: string) => call<ChatEvent[]>("chat_history", { projectId }),

@@ -26,7 +26,7 @@ pub struct AppState {
     pub jobs: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
-const SETTING_KEYS: [&str; 4] = ["projects_dir", "setup_completed", "org", "dev_mode"];
+const SETTING_KEYS: [&str; 5] = ["projects_dir", "setup_completed", "org", "dev_mode", "model_override"];
 const DEFAULT_ORG: &str = "com.example";
 
 fn default_projects_dir(app: &AppHandle) -> PathBuf {
@@ -272,9 +272,11 @@ pub fn chat_send(
     text: String,
     context: Option<String>,
     language: String,
+    purpose: Option<String>,
 ) -> AppResult<()> {
     state.db.project_get(&project_id)?;
-    state.chat.send(state.chat_ctx.clone(), project_id, text, context, language)
+    // `helper` en `release` komen alleen van de knoppen van Studio zelf; de modelkeuze gebruikt ze voor de ondergrens.
+    state.chat.send(state.chat_ctx.clone(), project_id, text, context, language, crate::modelsel::Purpose::parse(purpose.as_deref()))
 }
 
 #[tauri::command]

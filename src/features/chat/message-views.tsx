@@ -126,6 +126,18 @@ export function SnapshotChip({ item }: { item: Extract<Item, { kind: "snapshot" 
 export function StatusLine({ item }: { item: Extract<Item, { kind: "status" }> }) {
   const { t } = useTranslation();
   const dev = useSettings().data?.dev_mode === "true";
+  // Modelkeuze en opschaling zijn alleen voor de ontwikkelaarsmodus: de gewone gebruiker ziet er niets van.
+  if (item.code === "model" || item.code === "model_escalated") {
+    if (!dev) return null;
+    const [cls, tier, model, reason] = (item.detail ?? "").split("|");
+    return (
+      <p role="status" className="text-muted-foreground t-small text-center font-mono">
+        {item.code === "model"
+          ? t("chat.status.model", { cls, tier, model: model || "—", reason })
+          : t("chat.status.model_escalated", { model: item.detail })}
+      </p>
+    );
+  }
   const [level, screen] = (item.detail ?? "").split("|");
   const name = (screen ?? "").replace(/(Screen|Page)$/, "");
   const code = item.code === "scope" && !name ? "scope_app" : item.code;

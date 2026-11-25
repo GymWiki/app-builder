@@ -44,6 +44,10 @@ const ok = (c, m) => {
   ok(await p.getByText("Working on Home").isVisible(), "scope shown as a plain sentence for the chosen screen");
   ok(await p.getByText("Everything still works.").isVisible(), "check result shown as a plain sentence");
   ok(
+    (await p.getByText(/trivial|tier|haiku|sonnet|opus/i).count()) === 0,
+    "no model, class or tier talk in the normal interface",
+  );
+  ok(
     !(await p
       .getByText(/small|breid_bereik_uit/)
       .first()

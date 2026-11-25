@@ -48,6 +48,9 @@ pub enum ChatEvent {
         cost_usd: Option<f64>,
         #[serde(default)]
         turns: Option<u32>,
+        /// Totaal aantal tokens van de beurt (invoer, uitvoer en cache) waar de CLI dat meldt.
+        #[serde(default)]
+        tokens: Option<u64>,
     },
     /// Een statusregel van Studio zelf (werkgebied gekozen, gerepareerd, teruggedraaid, ...). De UI vertaalt `code`.
     Status { code: String, detail: Option<String> },
@@ -65,6 +68,10 @@ pub struct TurnRequest {
     pub language: String,
     /// Extra instellingen voor alleen deze run (bv. het werkgebied), als bestand.
     pub settings: Option<PathBuf>,
+    /// Alias of naam van het model voor deze beurt (`None` = de standaard van de CLI).
+    pub model: Option<String>,
+    /// Alleen een plan maken, niets bewerken (plan-modus van de CLI).
+    pub plan_only: bool,
 }
 
 pub struct TurnOutcome {
@@ -94,8 +101,12 @@ pub trait AiEngine: Send + Sync {
     fn id(&self) -> &'static str;
     /// Voert één beurt uit en meldt gebeurtenissen via `on_event`.
     /// Eén korte vraag zonder gereedschap of project (goedkoop model). `None` als de engine dat niet kan.
-    fn classify(&self, _question: &str) -> Option<String> {
+    fn classify(&self, _question: &str, _model: Option<&str>) -> Option<String> {
         None
+    }
+    /// Kent de CLI dit model (alias)? Zo komen modelnamen uit de CLI en de configuratie, niet uit de code.
+    fn model_available(&self, _alias: &str) -> bool {
+        true
     }
     fn run_turn(&self, req: &TurnRequest, run: &RunHandle, on_event: &mut dyn FnMut(ChatEvent)) -> AppResult<TurnOutcome>;
 }

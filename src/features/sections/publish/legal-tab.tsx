@@ -38,6 +38,7 @@ export function LegalTab({
         <div className="flex flex-wrap items-center gap-3">
           <AskButton
             projectId={projectId}
+            purpose="release"
             prompt={t("sec.publish.legal.generatePrompt")}
             label={t("sec.publish.legal.generate")}
           />

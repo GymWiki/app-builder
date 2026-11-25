@@ -1,8 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Card } from "@/components/ds/card";
 import { Button } from "@/components/ui/button";
-import { qk } from "@/hooks";
+import { qk, useSettings } from "@/hooks";
 import { api } from "@/lib/ipc";
 import { toastError } from "@/lib/toast";
 import type { Project } from "@/lib/types";
@@ -35,6 +35,26 @@ function Metrics({ projectId }: { projectId: string }) {
         {t("profile.dev.metrics.avg", { s: (m.avgDurationMs / 1000).toFixed(1), files: m.avgFilesChanged.toFixed(1) })}
       </li>
       <li>{t("profile.dev.metrics.cost", { cost: m.totalCostUsd.toFixed(2) })}</li>
+      {(["byClass", "byModel"] as const).map((g) => (
+        <li key={g} className="pt-1">
+          <p className="font-sans font-medium">{t(`profile.dev.models.${g}`)}</p>
+          <ul>
+            {Object.entries(m[g] ?? {}).map(([name, st]) => (
+              <li key={name}>
+                {t("profile.dev.models.row", {
+                  name,
+                  runs: st.runs,
+                  pct: st.runs ? Math.round((st.ok / st.runs) * 100) : 0,
+                  clean: st.clean,
+                  esc: st.escalated,
+                  cost: st.costUsd.toFixed(2),
+                  tokens: st.tokens,
+                })}
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
     </ul>
   );
 }
@@ -74,7 +94,39 @@ function Info({ project }: { project: Project }) {
   );
 }
 
-/** Verborgen ontwikkelaarsmodus: technische toestand van het projectprofiel. */
+function ModelOverride() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const settings = useSettings();
+  const value = settings.data?.model_override || "auto";
+  return (
+    <div className="space-y-1 border-t pt-3">
+      <label htmlFor="model-override" className="t-body block font-medium">
+        {t("profile.dev.models.override")}
+      </label>
+      <select
+        id="model-override"
+        value={value}
+        onChange={(e) =>
+          void api
+            .settingsSet("model_override", e.target.value)
+            .then(() => qc.invalidateQueries({ queryKey: qk.settings }))
+            .catch((err) => toastError(err, t))
+        }
+        className="bg-card h-9 rounded-md border px-2 text-sm"
+      >
+        {["auto", "light", "mid", "strong"].map((o) => (
+          <option key={o} value={o}>
+            {t(`profile.dev.models.${o}`)}
+          </option>
+        ))}
+      </select>
+      <p className="t-small text-muted-foreground">{t("profile.dev.models.help")}</p>
+    </div>
+  );
+}
+
+/** Verborgen ontwikkelaarsmodus: technische toestand van het projectprofiel en de modelkeuze. */
 export function DevPanel() {
   const { t } = useTranslation();
   const projects = useQuery({ queryKey: qk.projects(""), queryFn: () => api.projectsList("") });
@@ -82,6 +134,7 @@ export function DevPanel() {
     <Card className="space-y-2 p-6">
       <h2 className="t-heading">{t("profile.dev.title")}</h2>
       <p className="t-small text-muted-foreground">{t("profile.dev.on")}</p>
+      <ModelOverride />
       <ul className="divide-y">
         {(projects.data ?? []).map((p) => (
           <Info key={p.id} project={p} />

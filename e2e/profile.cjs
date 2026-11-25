@@ -23,7 +23,25 @@ const ok = (c, m) => {
   const line = p.getByText(/^Studio 0\.1\.0 on/);
   for (let i = 0; i < 7; i++) await line.click();
   await p.getByRole("heading", { name: "Developer mode" }).waitFor();
-  ok(await p.getByText("Runs: 12").first().isVisible(), "developer panel shows the run metrics");
+  await p.getByText("Runs: 12").first().waitFor();
+  ok(true, "developer panel shows the run metrics");
+  ok(await p.getByLabel("Model for the next tasks").isVisible(), "developer mode has a manual model choice");
+  ok(
+    await p
+      .getByText(/haiku: 7 runs, 100% succeeded/)
+      .first()
+      .isVisible(),
+    "results per model are listed",
+  );
+  ok(
+    await p
+      .getByText(/complex: 2 runs, 50% succeeded/)
+      .first()
+      .isVisible(),
+    "results per class are listed",
+  );
+  await p.getByLabel("Model for the next tasks").selectOption("strong");
+  await p.waitForTimeout(300);
   ok(
     await p
       .getByText(/small 7, screen 3, shared 1, project 1/)

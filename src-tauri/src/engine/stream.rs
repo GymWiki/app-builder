@@ -77,6 +77,13 @@ fn result_text(content: &Value) -> String {
 }
 
 /// Zet één JSON-regel om in nul of meer genormaliseerde gebeurtenissen.
+/// Invoer + uitvoer + cache uit het `usage`-blok van het resultaat.
+pub fn total_tokens(u: &serde_json::Value) -> Option<u64> {
+    let keys = ["input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"];
+    let parts: Vec<u64> = keys.iter().filter_map(|k| u[k].as_u64()).collect();
+    (!parts.is_empty()).then(|| parts.iter().sum())
+}
+
 pub fn parse_line(line: &str, project_dir: &Path) -> Vec<ChatEvent> {
     let Ok(v) = serde_json::from_str::<Value>(line.trim()) else { return vec![] };
     let kind = v.get("type").and_then(Value::as_str).unwrap_or("");
@@ -159,7 +166,7 @@ pub fn parse_line(line: &str, project_dir: &Path) -> Vec<ChatEvent> {
                 }
                 .to_string()
             });
-            vec![ChatEvent::Done { ok, text, duration_ms: v["duration_ms"].as_u64(), code, cost_usd: v["total_cost_usd"].as_f64(), turns: v["num_turns"].as_u64().map(|n| n as u32) }]
+            vec![ChatEvent::Done { ok, text, duration_ms: v["duration_ms"].as_u64(), code, cost_usd: v["total_cost_usd"].as_f64(), turns: v["num_turns"].as_u64().map(|n| n as u32), tokens: total_tokens(&v["usage"]) }]
         }
         _ => vec![],
     }

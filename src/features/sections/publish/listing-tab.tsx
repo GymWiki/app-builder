@@ -211,6 +211,7 @@ export function ListingTab({
           <Button onClick={() => void save()}>{t("sec.publish.listing.saveListing")}</Button>
           <AskButton
             projectId={projectId}
+            purpose="helper"
             prompt={t("sec.publish.listing.writePrompt")}
             label={t("sec.publish.listing.write")}
             variant="outline"

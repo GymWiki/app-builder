@@ -2,7 +2,7 @@
 
 Een lichtgewicht desktop-app (Tauri 2 + React) waarmee niet-technische mensen een **Flutter-app** (iOS en Android) bouwen door te chatten met hun **eigen Claude Code-installatie**. De gebruiker houdt alle code: een gewone Flutter-projectmap met git. Denk "FlutterFlow, maar alleen AI en veel lichter".
 
-> Status: **Fase 0–10** zijn gebouwd (fundament, projecten + wizard, chat + MCP, live preview, linkermenu, publiceren met checklist-poort en AI-testrun, projectprofiel voor Claude Code, automatisch werkgebied met code-index en controle na elke run, metingen, integraties en een kluis voor geheimen). Android eerst; iOS-publiceren is een ontworpen interface zonder implementatie. Lees _Nog niet geverifieerd_ in DECISIONS.md voordat je erop vertrouwt. Zie [DECISIONS.md](DECISIONS.md) voor gemaakte keuzes en wat nog niet is geverifieerd.
+> Status: **Fase 0–11a** zijn gebouwd (fundament, projecten + wizard, chat + MCP, live preview, linkermenu, publiceren met checklist-poort en AI-testrun, projectprofiel voor Claude Code, automatisch werkgebied met code-index en controle na elke run, metingen, integraties en een kluis voor geheimen, automatische modelkeuze). Android eerst; iOS-publiceren is een ontworpen interface zonder implementatie. Lees _Nog niet geverifieerd_ in DECISIONS.md voordat je erop vertrouwt. Zie [DECISIONS.md](DECISIONS.md) voor gemaakte keuzes en wat nog niet is geverifieerd.
 
 ## Principes
 

@@ -53,7 +53,9 @@ export interface AppInfo {
   minVersions: { git: string; flutter: string; claude: string };
 }
 
-export type Settings = Partial<Record<"projects_dir" | "setup_completed" | "org" | "dev_mode", string>>;
+export type Settings = Partial<
+  Record<"projects_dir" | "setup_completed" | "org" | "dev_mode" | "model_override", string>
+>;
 
 export interface Screen {
   class: string;
@@ -281,4 +283,18 @@ export interface RunsSummary {
   totalCostUsd: number;
   avgFilesChanged: number;
   deniedEdits: number;
+  byClass: Record<string, GroupStats>;
+  byModel: Record<string, GroupStats>;
+}
+
+/** Waar een opdracht voor dient: hulptaken gebruiken altijd het lichtste model, release-werk heeft een ondergrens. */
+export type Purpose = "helper" | "release";
+
+export interface GroupStats {
+  runs: number;
+  ok: number;
+  clean: number;
+  escalated: number;
+  costUsd: number;
+  tokens: number;
 }

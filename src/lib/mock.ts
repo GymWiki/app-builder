@@ -83,6 +83,11 @@ async function mockChat(projectId: string, text: string) {
   runningChats.add(projectId);
   push({ type: "user", text, context: null });
   push({ type: "status", code: "scope", detail: "small|HomeScreen" });
+  push({
+    type: "status",
+    code: "model",
+    detail: "trivial|light|haiku|trivial class|scope small = 0; kind text_change = 0",
+  });
   push({ type: "init", session_id: "mock-session", model: "mock" });
   try {
     if (text.toLowerCase().includes("login")) {
@@ -795,6 +800,16 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
         totalCostUsd: 3.42,
         avgFilesChanged: 2.3,
         deniedEdits: 3,
+        byClass: {
+          trivial: { runs: 7, ok: 7, clean: 7, escalated: 0, costUsd: 0.31, tokens: 410000 },
+          normal: { runs: 3, ok: 3, clean: 2, escalated: 1, costUsd: 1.1, tokens: 990000 },
+          complex: { runs: 2, ok: 1, clean: 0, escalated: 0, costUsd: 2.01, tokens: 1700000 },
+        },
+        byModel: {
+          haiku: { runs: 7, ok: 7, clean: 7, escalated: 0, costUsd: 0.31, tokens: 410000 },
+          sonnet: { runs: 3, ok: 3, clean: 2, escalated: 1, costUsd: 1.1, tokens: 990000 },
+          opus: { runs: 2, ok: 1, clean: 0, escalated: 0, costUsd: 2.01, tokens: 1700000 },
+        },
       };
     case "project_get":
     case "project_open": {

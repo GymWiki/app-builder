@@ -543,7 +543,9 @@
       "checks_ok": "Everything still works.",
       "rolled_back": "That change did not work out, so I went back to the previous version. Nothing is lost.",
       "scope_reverted": "A change outside this task was undone to keep the rest of the app safe.",
-      "leak_blocked": "Saving a version was paused: a secret was found in your files. See Secrets."
+      "leak_blocked": "Saving a version was paused: a secret was found in your files. See Secrets.",
+      "model": "class {{cls}} · tier {{tier}} · model {{model}} · {{reason}}",
+      "model_escalated": "escalated to {{model}} after a failed check"
     }
   },
   "preview": {
@@ -1340,6 +1342,18 @@
         "cost": "Total cost: ${{cost}}",
         "denied": "Edits outside scope refused: {{n}}",
         "none": "No runs yet."
+      },
+      "models": {
+        "title": "Model choice",
+        "override": "Model for the next tasks",
+        "auto": "Automatic (recommended)",
+        "light": "Always the lightest",
+        "mid": "Always the middle one",
+        "strong": "Always the strongest",
+        "help": "Developer mode only. Automatic picks the cheapest model that can handle each task; a manual choice is left out of the statistics.",
+        "byClass": "Per class",
+        "byModel": "Per model",
+        "row": "{{name}}: {{runs}} runs, {{pct}}% succeeded, {{clean}} clean first time, {{esc}} escalated, ${{cost}}, {{tokens}} tokens"
       }
     }
   },

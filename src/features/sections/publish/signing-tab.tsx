@@ -124,6 +124,7 @@ export function SigningTab({
         {!s?.gradleConfigured && gradlePrompt.data && (
           <AskButton
             projectId={projectId}
+            purpose="release"
             prompt={gradlePrompt.data}
             label={t("sec.publish.signing.gradleAsk")}
             variant="outline"

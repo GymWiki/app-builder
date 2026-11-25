@@ -3,6 +3,7 @@
 use crate::db::{Db, RunRecord};
 use crate::gitops;
 use crate::index::CodeIndex;
+use crate::modelsel::{self, EngineConfig, Purpose};
 use crate::proc;
 use crate::quality;
 use crate::scope::{self, RunScope, ScopeRegistry};
@@ -21,6 +22,16 @@ pub type Emit = Arc<dyn Fn(&str, Value) + Send + Sync>;
 pub struct ChatManager {
     engine: Arc<dyn AiEngine>,
     running: Mutex<HashMap<String, Arc<RunHandle>>>,
+    /// Modelkeuze (fase 11): tiers, klassen en gewichten uit `engines/<engine>.json`.
+    config: Mutex<Arc<EngineConfig>>,
+}
+
+/// Wat per beurt verschilt: model, alleen-plannen en of de sessie van het scherm wordt hervat.
+#[derive(Clone, Default)]
+struct TurnOpts {
+    model: Option<String>,
+    plan_only: bool,
+    fresh: bool,
 }
 
 pub struct ChatCtx {
@@ -72,7 +83,16 @@ pub fn mcp_extras(project_id: &str, dir: &std::path::Path) -> Value {
 
 impl ChatManager {
     pub fn new(engine: Arc<dyn AiEngine>) -> Self {
-        Self { engine, running: Mutex::new(HashMap::new()) }
+        Self { engine, running: Mutex::new(HashMap::new()), config: Mutex::new(Arc::new(EngineConfig::embedded())) }
+    }
+
+    /// Nieuwe modelconfiguratie (uit de app-datamap); geldt vanaf de volgende opdracht.
+    pub fn set_config(&self, c: EngineConfig) {
+        *self.config.lock().unwrap_or_else(|e| e.into_inner()) = Arc::new(c);
+    }
+
+    fn config(&self) -> Arc<EngineConfig> {
+        self.config.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn is_running(&self, project_id: &str) -> bool {
@@ -86,7 +106,7 @@ impl ChatManager {
     }
 
     /// Start een beurt op de achtergrond. Per project loopt er maximaal één tegelijk.
-    pub fn send(self: &Arc<Self>, ctx: Arc<ChatCtx>, project_id: String, text: String, context: Option<String>, language: String) -> AppResult<()> {
+    pub fn send(self: &Arc<Self>, ctx: Arc<ChatCtx>, project_id: String, text: String, context: Option<String>, language: String, purpose: Purpose) -> AppResult<()> {
         if text.trim().is_empty() {
             return Err(AppError::Invalid("message is empty".into()));
         }
@@ -100,7 +120,7 @@ impl ChatManager {
         }
         let this = self.clone();
         std::thread::spawn(move || {
-            this.run_flow(&ctx, &project_id, &text, context, &language, &handle);
+            this.run_flow_for(&ctx, &project_id, &text, context, &language, &handle, purpose);
             this.running.lock().unwrap_or_else(|e| e.into_inner()).remove(&project_id);
             (ctx.emit)("chat-finished", json!({ "projectId": project_id }));
         });
@@ -109,8 +129,15 @@ impl ChatManager {
 
     /// De eigenlijke beurt (synchroon; apart zodat tests hem direct kunnen aanroepen). Volgorde: werkgebied kiezen,
     /// momentopname, run, controle met gerichte reparatie, eventueel terugdraaien, metingen.
+    #[cfg(test)]
     pub fn run_flow(&self, ctx: &ChatCtx, project_id: &str, text: &str, context: Option<String>, language: &str, handle: &RunHandle) {
+        self.run_flow_for(ctx, project_id, text, context, language, handle, Purpose::Work)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn run_flow_for(&self, ctx: &ChatCtx, project_id: &str, text: &str, context: Option<String>, language: &str, handle: &RunHandle, purpose: Purpose) {
         let started = Instant::now();
+        let cfg_models = self.config();
         // Wat de gebruiker intikt of selecteert kan een geheim bevatten: dat gaat nooit naar het model (ook niet naar de
         // goedkope classificatievraag) en komt niet in de opgeslagen berichten.
         let text = &crate::scrub::scrub(text);
@@ -143,9 +170,11 @@ impl ChatManager {
         let current_key = format!("scope:{project_id}:screen");
         let current = ctx.db.setting_get(&current_key).ok().flatten();
         let mut ai_questions = 0i64;
+        // Kleine hulptaken (zoals deze classificatie) altijd met het lichtste model; de naam komt uit de configuratie.
+        let helper_alias = cfg_models.tier_index(&cfg_models.helper_tier).and_then(|t| cfg_models.resolve(t, &|m| self.engine.model_available(m)));
         let decision = scope::decide(&index, text, context.as_deref(), current.as_deref(), &mut |q| {
             ai_questions += 1;
-            self.engine.classify(q)
+            self.engine.classify(q, helper_alias.as_deref())
         });
         if let Some(s) = &decision.screen {
             let _ = ctx.db.setting_set(&current_key, s);
@@ -198,6 +227,36 @@ impl ChatManager {
         let why = serde_json::to_value(decision.why).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
         emit_event(Some(&sid), &ChatEvent::Status { code: "scope".into(), detail: Some(format!("{}|{}", decision.level.as_str(), decision.screen.clone().unwrap_or_default())) });
 
+        // 1b. Modelkeuze: moeilijkheidsklasse uit goedkope signalen, daarna het goedkoopste model dat die klasse aankan.
+        let files_in_scope = match (decision.level, decision.screen.as_deref().and_then(|n| index.screen(n))) {
+            (scope::Level::Small, _) => 1,
+            (scope::Level::Screen, Some(e)) => e.own.len(),
+            (scope::Level::Shared, e) => e.map(|e| e.own.len()).unwrap_or(0) + index.files.keys().filter(|f| f.starts_with("lib/core/")).count(),
+            (scope::Level::Project, _) => index.files.len(),
+            _ => index.files.len(),
+        };
+        let previous_failed = decision.screen.as_deref().map(|s| ctx.db.last_run_failed(project_id, s).unwrap_or(false)).unwrap_or(false);
+        let has_skill = |n: &str| dir.join(".claude/skills").join(n).is_dir();
+        let assessment = modelsel::assess(&cfg_models, &modelsel::AssessInput { level: decision.level.as_str(), text, files: files_in_scope, previous_failed, has_skill: &has_skill });
+        let history: Vec<modelsel::HistoryRow> = ctx
+            .db
+            .class_history(assessment.class.as_str(), (cfg_models.downgrade.window * 2) as i64)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(tier, clean)| modelsel::HistoryRow { tier, clean })
+            .collect();
+        // Een handmatige keuze telt alleen in de ontwikkelaarsmodus.
+        let dev = ctx.db.setting_get("dev_mode").ok().flatten().as_deref() == Some("true");
+        let override_value = dev.then(|| ctx.db.setting_get("model_override").ok().flatten()).flatten().filter(|v| !v.is_empty() && v != "auto");
+        let choice = modelsel::choose(&cfg_models, &assessment, purpose, &history, override_value.as_deref());
+        let avail = |m: &str| self.engine.model_available(m);
+        let model = choice.explicit_model.clone().or_else(|| cfg_models.resolve(choice.tier, &avail));
+        let exec_model = model.clone();
+        emit_event(Some(&sid), &ChatEvent::Status { code: "model".into(), detail: Some(format!("{}|{}|{}|{}|{}", assessment.class.as_str(), choice.tier_id, model.clone().unwrap_or_default(), choice.reason, assessment.reasons.join("; "))) });
+        // Escalatie bij falen: één niveau zwaarder, maximaal één keer per taak.
+        let escalated = std::cell::Cell::new(false);
+        let esc_model = if cfg_models.escalation.max_per_task > 0 { cfg_models.escalate(choice.tier).and_then(|t| cfg_models.resolve(t, &avail)) } else { None };
+
         let scope_text = ctx.scopes.with(project_id, |s| s.describe()).unwrap_or_default();
         let prompt = match &context {
             Some(c) if !c.trim().is_empty() => format!("[Studio scope: {scope_text}]\n[Studio context: {c}]\n\n{text}"),
@@ -206,35 +265,63 @@ impl ChatManager {
 
         let mut stats = TurnStats::default();
         let mut resume = session.engine_session_id.clone();
-        let mut turn = |prompt: String, stats: &mut TurnStats| {
-            let req = TurnRequest { project_dir: dir.clone(), prompt: crate::scrub::scrub(&prompt), resume: resume.clone(), mcp_config: cfg.clone(), language: language.to_string(), settings: settings.clone() };
+        let mut turn = |prompt: String, opts: &TurnOpts, stats: &mut TurnStats| -> (bool, String) {
+            let req = TurnRequest {
+                project_dir: dir.clone(),
+                prompt: crate::scrub::scrub(&prompt),
+                resume: if opts.fresh { None } else { resume.clone() },
+                mcp_config: cfg.clone(),
+                language: language.to_string(),
+                settings: settings.clone(),
+                model: opts.model.clone(),
+                plan_only: opts.plan_only,
+            };
             let mut last_ok = None;
+            let mut last_text = String::new();
             let outcome = self.engine.run_turn(&req, handle, &mut |e| {
                 if let ChatEvent::Init { mcp, .. } = &e {
                     for (name, status) in mcp.iter().filter(|(n, s)| n == "dart" && s != "connected" && s != "pending") {
                         log::warn!("MCP server {name} is {status}; continuing without it");
                     }
                 }
-                if let ChatEvent::Done { ok, cost_usd, turns, .. } = &e {
+                if let ChatEvent::Text { text, .. } = &e {
+                    last_text = text.clone();
+                }
+                if let ChatEvent::Done { ok, cost_usd, turns, tokens, .. } = &e {
                     last_ok = Some(*ok);
                     stats.cost += cost_usd.unwrap_or(0.0);
                     stats.turns += turns.unwrap_or(0);
+                    stats.tokens += tokens.unwrap_or(0);
                 }
                 emit_event(Some(&sid), &e);
             });
             match outcome {
                 Ok(o) => {
-                    if let Some(id) = o.engine_session_id {
+                    if let (Some(id), false) = (o.engine_session_id, opts.fresh) {
                         let _ = ctx.db.session_set_engine_id(&sid, &id);
                         resume = Some(id);
                     }
                 }
                 Err(e) => emit_event(Some(&sid), &ChatEvent::Error { code: error_code(&e).into(), message: crate::logging::redact(&e.to_string()) }),
             }
-            last_ok == Some(true) && !handle.is_cancelled()
+            (last_ok == Some(true) && !handle.is_cancelled(), last_text)
         };
 
-        let mut ok = turn(prompt, &mut stats);
+        // Plannen met een sterk model en uitvoeren met een lichter model: alleen voor grote taken en alleen als de configuratie het aanzet.
+        let mut planned = false;
+        let mut prompt = prompt;
+        if modelsel::should_plan(&cfg_models, &assessment, purpose, files_in_scope) && override_value.is_none() {
+            let plan_model = cfg_models.tier_index(&cfg_models.planning.plan_tier).and_then(|t| cfg_models.resolve(t, &avail));
+            let plan_prompt = format!("{prompt}\n\nDo NOT change any files yet. Write a short numbered plan (at most 10 lines): which files change and what happens in each.");
+            let (plan_ok, plan) = turn(plan_prompt, &TurnOpts { model: plan_model, plan_only: true, fresh: true }, &mut stats);
+            if plan_ok && !plan.trim().is_empty() {
+                planned = true;
+                prompt = format!("{prompt}\n\nFollow this plan (made for this task):\n{plan}");
+            }
+        }
+        let run_model = if planned { cfg_models.tier_index(&cfg_models.planning.exec_tier).and_then(|t| cfg_models.resolve(t, &avail)) } else { exec_model.clone() };
+        let main_opts = TurnOpts { model: run_model.clone(), ..Default::default() };
+        let mut ok = turn(prompt, &main_opts, &mut stats).0;
 
         // 3b. Controle van het werkgebied achteraf. Bewerkingen via de editor worden al onderweg getoetst, maar Claude kan
         // ook een shell-commando gebruiken. Wat buiten het gebied is aangepast, draait Studio terug; Claude krijgt één
@@ -255,7 +342,7 @@ impl ChatManager {
                          If the task really needs them, call breid_bereik_uit with a short reason first and then redo exactly those changes with the editor tools; otherwise leave them as they were.",
                         out.join(", ")
                     );
-                    ok = turn(msg, &mut stats);
+                    ok = turn(msg, &main_opts, &mut stats).0;
                     if !ok {
                         break;
                     }
@@ -281,7 +368,18 @@ impl ChatManager {
                     emit_event(Some(&sid), &ChatEvent::Status { code: "repairing".into(), detail: Some(n.to_string()) });
                     let files: Vec<String> = issues.iter().map(|i| i.file.clone()).collect();
                     ctx.scopes.with(project_id, |s| s.allow_files(&files));
-                    turn(quality::repair_prompt(issues, n), &mut stats)
+                    // Eén niveau zwaarder voor de reparaties (maximaal één opschaling per taak), vóór we de gebruiker lastigvallen.
+                    let opts = match &esc_model {
+                        Some(m) if !purpose_is_override(&override_value) => {
+                            if !escalated.get() {
+                                escalated.set(true);
+                                emit_event(Some(&sid), &ChatEvent::Status { code: "model_escalated".into(), detail: Some(m.clone()) });
+                            }
+                            TurnOpts { model: Some(m.clone()), ..Default::default() }
+                        }
+                        _ => main_opts.clone(),
+                    };
+                    turn(quality::repair_prompt(issues, n), &opts, &mut stats).0
                 };
                 let mut rollback = || {
                     if let Ok(Some(c)) = gitops::restore(&dir, base, "Studio: undid the last change (it did not pass the checks)") {
@@ -351,6 +449,14 @@ impl ChatManager {
                 cost_usd: stats.cost,
                 turns: stats.turns as i64,
                 ai_questions,
+                class: assessment.class.as_str().into(),
+                tier: choice.tier_id.clone(),
+                model: model.clone().unwrap_or_default(),
+                engine: self.engine.id().into(),
+                purpose: if override_value.is_some() { "override".into() } else { purpose.as_str().into() },
+                escalated: escalated.get(),
+                tokens: stats.tokens as i64,
+                planned,
             },
         );
     }
@@ -360,6 +466,12 @@ impl ChatManager {
 struct TurnStats {
     cost: f64,
     turns: u32,
+    tokens: u64,
+}
+
+/// Bij een handmatige override schalen we niet automatisch op: de ontwikkelaar bepaalt dan zelf het model.
+fn purpose_is_override(o: &Option<String>) -> bool {
+    o.is_some()
 }
 
 #[cfg(test)]
@@ -420,7 +532,7 @@ mod tests {
         });
         let mgr = Arc::new(ChatManager::new(Arc::new(ClaudeEngine::with_program(fake))));
 
-        mgr.send(ctx.clone(), p.id.clone(), "Maak een knop\nmet twee regels".into(), Some("screen HomeScreen".into()), "nl".into()).unwrap();
+        mgr.send(ctx.clone(), p.id.clone(), "Maak een knop\nmet twee regels".into(), Some("screen HomeScreen".into()), "nl".into(), Purpose::Work).unwrap();
         // Tweede bericht terwijl de eerste nog loopt wordt geweigerd (of is al klaar).
         let deadline = Instant::now() + Duration::from_secs(20);
         while mgr.is_running(&p.id) && Instant::now() < deadline {
@@ -453,14 +565,14 @@ mod tests {
         assert!(db.messages_active(&p.id).unwrap().len() >= 6);
         assert_eq!(crate::gitops::last_commit_subject(&proj).unwrap(), "Claude: Maak een knop met twee regels");
 
-        mgr.send(ctx, p.id.clone(), "nog iets".into(), None, "nl".into()).unwrap();
+        mgr.send(ctx, p.id.clone(), "nog iets".into(), None, "nl".into(), Purpose::Work).unwrap();
         while mgr.is_running(&p.id) && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(50));
         }
         let args = std::fs::read_to_string(root.join("args.txt")).unwrap();
         let turns: Vec<&str> = args.lines().filter(|l| l.contains("stream-json")).collect();
         assert!(turns[1].contains(&format!("--resume {}", s.engine_session_id.unwrap())), "{turns:?}");
-        assert!(mgr.send(Arc::new(ChatCtx { db, mcp: McpInfo { port: 1, token: String::new() }, config_dir: root.join("x"), scopes: Default::default(), checks: false, flutter: None, emit: Arc::new(|_, _| {}) }), p.id, "  ".into(), None, "en".into()).is_err());
+        assert!(mgr.send(Arc::new(ChatCtx { db, mcp: McpInfo { port: 1, token: String::new() }, config_dir: root.join("x"), scopes: Default::default(), checks: false, flutter: None, emit: Arc::new(|_, _| {}) }), p.id, "  ".into(), None, "en".into(), Purpose::Work).is_err());
     }
 
     /// Een echte git-repo met het voorbeeldproject, een nep-claude die steeds iets achter home_screen.dart plakt en een
@@ -477,11 +589,16 @@ mod tests {
         let bin = std::env::temp_dir().join(format!("studio-fakebin-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/claude_stream.jsonl"), bin.join("stream.jsonl")).unwrap();
+        std::fs::write(
+            bin.join("help.txt"),
+            "--output-format --mcp-config --resume --allowedTools --permission-mode --strict-mcp-config --settings (--permission-prompt-tool)\n  --model <model>   Model for the current session. Use an\n                    alias for the latest model (e.g.\n                    'fable', 'opus', or 'sonnet') or a\n                    models full name.\n  -n, --name <name>  Set a display name\n",
+        )
+        .unwrap();
         let claude = bin.join("claude");
         std::fs::write(
             &claude,
             "#!/bin/sh\nd=$(dirname \"$0\")\n\
-             if [ \"$1\" = \"--help\" ]; then echo '--output-format --mcp-config --resume --allowedTools --permission-mode --strict-mcp-config --settings (--permission-prompt-tool)'; exit 0; fi\n\
+             if [ \"$1\" = \"--help\" ]; then cat \"$d/help.txt\"; exit 0; fi\n\
              echo \"$@\" >> \"$d/args.txt\"\ncat >> \"$d/stdin.txt\"\n\
              echo '// edit' >> \"$PWD/lib/features/home/home_screen.dart\"\ncat \"$d/stream.jsonl\"\n",
         )
@@ -527,7 +644,7 @@ mod tests {
             .unwrap()
             .iter()
             .filter_map(|m| serde_json::from_str::<Value>(m).ok())
-            .filter(|v| v["type"] == "status")
+            .filter(|v| v["type"] == "status" && v["code"] != "model")
             .map(|v| format!("{}:{}", v["code"].as_str().unwrap(), v["detail"].as_str().unwrap_or("")))
             .collect()
     }
@@ -566,7 +683,7 @@ mod tests {
         let before = std::fs::read_to_string(proj.join("lib/features/home/home_screen.dart")).unwrap();
         mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
         let st = statuses(&db, &p.id);
-        assert_eq!(st, vec!["scope:small|HomeScreen", "checking:", "repairing:1", "repairing:2", "rolled_back:"], "{st:?}");
+        assert_eq!(st, vec!["scope:small|HomeScreen", "checking:", "repairing:1", "model_escalated:sonnet", "repairing:2", "rolled_back:"], "{st:?}");
         // Eén gewone beurt + precies twee reparaties, de reparaties op dezelfde sessie en met de foutregel erin.
         let args = std::fs::read_to_string(bin.join("args.txt")).unwrap();
         let turns: Vec<&str> = args.lines().filter(|l| l.contains("stream-json")).collect();
@@ -592,7 +709,7 @@ mod tests {
         std::fs::write(
             &claude,
             "#!/bin/sh\nd=$(dirname \"$0\")\n\
-             if [ \"$1\" = \"--help\" ]; then echo '--output-format --mcp-config --resume --allowedTools --permission-mode --strict-mcp-config --settings (--permission-prompt-tool)'; exit 0; fi\n\
+             if [ \"$1\" = \"--help\" ]; then cat \"$d/help.txt\"; exit 0; fi\n\
              echo \"$@\" >> \"$d/args.txt\"\ncat >> \"$d/stdin.txt\"\n\
              echo '// edit' >> \"$PWD/lib/features/home/home_screen.dart\"\necho '// sneaky' >> \"$PWD/lib/core/theme/app_theme.dart\"\ncat \"$d/stream.jsonl\"\n",
         )
@@ -661,6 +778,145 @@ mod tests {
         assert!(!st.iter().any(|s| s.starts_with("rolled_back") || s.starts_with("repairing")), "no rollback without a safe base: {st:?}");
         assert!(std::fs::read_to_string(proj.join("lib/features/home/home_screen.dart")).unwrap().contains("user work"), "the user's own work was not touched");
         assert_eq!(crate::gitops::head(&proj).unwrap(), head, "nothing with a secret was committed");
+    }
+
+    /// Alleen de beurten van het werk zelf (stream-json); de losse classificatie- en modelcontrole-aanroepen tellen niet mee.
+    #[cfg(unix)]
+    fn work_turns(bin: &std::path::Path) -> Vec<String> {
+        std::fs::read_to_string(bin.join("args.txt")).unwrap_or_default().lines().filter(|l| l.contains("stream-json")).map(String::from).collect()
+    }
+
+    #[cfg(unix)]
+    fn last_run(db: &Db, project_id: &str) -> crate::db::RunRecord {
+        // Via de samenvatting per model/klasse; voor één run lezen we de gegroepeerde cijfers niet, maar de rij zelf.
+        let s = db.runs_summary(project_id, 1).unwrap();
+        assert_eq!(s.runs, 1);
+        s.last.expect("the newest run")
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_model_follows_the_difficulty_class_and_comes_from_the_config_and_the_cli() {
+        let (bin, _proj, db, p, ctx, mgr) = scoped_fixture(false);
+        mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+        let t = work_turns(&bin);
+        assert!(t[0].contains("--model haiku"), "a trivial tweak uses the lightest model: {}", t[0]);
+        let r = last_run(&db, &p.id);
+        assert_eq!((r.class.as_str(), r.tier.as_str(), r.model.as_str(), r.purpose.as_str(), r.escalated), ("trivial", "light", "haiku", "work", false));
+        // Een zwaardere opdracht (gedeeld niveau) krijgt het sterkste model; 'opus' staat in de helptekst, dus geen aparte controle.
+        mgr.run_flow(&ctx, &p.id, "change the theme colors everywhere in the app", None, "en", &RunHandle::default());
+        let t = work_turns(&bin);
+        // (een run buiten het scherm van de fake-claude levert ook een vervolgbeurt op; dezelfde modelkeuze geldt daar)
+        assert!(t.last().unwrap().contains("--model opus"), "{:?}", t.last());
+        // De config in de app-datamap gaat voor: andere namen zonder nieuwe app.
+        let mut c = crate::modelsel::EngineConfig::embedded();
+        c.tiers[2].models = vec!["sonnet".into()];
+        mgr.set_config(c);
+        mgr.run_flow(&ctx, &p.id, "change the theme colors everywhere in the app", None, "en", &RunHandle::default());
+        assert!(work_turns(&bin).last().unwrap().contains("--model sonnet"), "{:?}", work_turns(&bin).last());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn helper_tasks_are_always_light_and_release_work_never_drops_below_the_floor() {
+        let (bin, _proj, db, p, ctx, mgr) = scoped_fixture(false);
+        mgr.run_flow_for(&ctx, &p.id, "change the theme colors everywhere in the app and write the changelog", None, "en", &RunHandle::default(), Purpose::Helper);
+        assert!(work_turns(&bin).iter().all(|t| t.contains("--model haiku")), "helper = lightest even for a big text, on every turn");
+        assert_eq!(last_run_purpose(&db, &p.id), "helper");
+        mgr.run_flow_for(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default(), Purpose::Release);
+        assert!(work_turns(&bin).last().unwrap().contains("--model sonnet"), "a trivial release task still gets the release minimum");
+    }
+
+    #[cfg(unix)]
+    fn last_run_purpose(db: &Db, project_id: &str) -> String {
+        db.runs_summary(project_id, 1).unwrap().last.unwrap().purpose
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_manual_choice_only_counts_in_developer_mode_and_stays_out_of_the_statistics() {
+        let (bin, _proj, db, p, ctx, mgr) = scoped_fixture(false);
+        db.setting_set("model_override", "opus").unwrap();
+        mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+        assert!(work_turns(&bin)[0].contains("--model haiku"), "without developer mode the override is ignored");
+        db.setting_set("dev_mode", "true").unwrap();
+        mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+        assert!(work_turns(&bin)[1].contains("--model opus"));
+        assert_eq!(last_run_purpose(&db, &p.id), "override");
+        assert!(db.class_history("trivial", 10).unwrap().len() == 1, "the overridden run does not teach the statistics anything");
+        db.setting_set("model_override", "auto").unwrap();
+        mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+        assert!(work_turns(&bin)[2].contains("--model haiku"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failing_checks_escalate_one_tier_once_and_only_the_repairs_use_the_heavier_model() {
+        let (bin, _proj, db, p, ctx, mgr) = scoped_fixture(true);
+        mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+        let t = work_turns(&bin);
+        assert_eq!(t.len(), 3, "{t:?}");
+        assert!(t[0].contains("--model haiku"), "the first attempt is as light as the class allows");
+        assert!(t[1].contains("--model sonnet") && t[2].contains("--model sonnet"), "repairs go exactly one tier up, never two: {t:?}");
+        let r = last_run(&db, &p.id);
+        assert!(r.escalated && r.rolled_back, "{r:?}");
+        let st = statuses_all(&db, &p.id);
+        assert_eq!(st.iter().filter(|s| s.starts_with("model_escalated:")).count(), 1, "one escalation per task: {st:?}");
+    }
+
+    #[cfg(unix)]
+    fn statuses_all(db: &Db, project_id: &str) -> Vec<String> {
+        db.messages_active(project_id).unwrap().iter().filter_map(|m| serde_json::from_str::<Value>(m).ok()).filter(|v| v["type"] == "status").map(|v| format!("{}:{}", v["code"].as_str().unwrap(), v["detail"].as_str().unwrap_or(""))).collect()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn five_clean_runs_in_a_class_make_studio_try_the_lighter_model_next_time() {
+        let (bin, _proj, db, p, ctx, mgr) = scoped_fixture(false);
+        let clean = |tier: &str| crate::db::RunRecord { class: "normal".into(), tier: tier.into(), model: "x".into(), purpose: "work".into(), ok: true, ..Default::default() };
+        let request = "show the total of all scores on the home screen";
+        mgr.run_flow(&ctx, &p.id, request, None, "en", &RunHandle::default());
+        let first = work_turns(&bin)[0].clone();
+        assert!(first.contains("--model sonnet"), "a normal task starts on the middle model: {first}");
+        for _ in 0..5 {
+            db.run_insert(&p.id, &clean("mid")).unwrap();
+        }
+        mgr.run_flow(&ctx, &p.id, request, None, "en", &RunHandle::default());
+        assert!(work_turns(&bin)[1].contains("--model haiku"), "after five clean runs: one tier lighter");
+        // Een mislukking op het lichtere niveau brengt de klasse weer omhoog.
+        db.run_insert(&p.id, &crate::db::RunRecord { ok: false, rolled_back: true, ..clean("light") }).unwrap();
+        mgr.run_flow(&ctx, &p.id, request, None, "en", &RunHandle::default());
+        assert!(work_turns(&bin)[2].contains("--model sonnet"), "{}", work_turns(&bin)[2]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_previous_run_on_the_same_screen_raises_the_class() {
+        let (bin, _proj, db, p, ctx, mgr) = scoped_fixture(false);
+        db.run_insert(&p.id, &crate::db::RunRecord { screen: "HomeScreen".into(), ok: false, rolled_back: true, purpose: "work".into(), ..Default::default() }).unwrap();
+        mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+        assert!(work_turns(&bin)[0].contains("--model sonnet"), "a trivial tweak after a failure is treated as normal");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_big_task_can_be_planned_by_the_strong_model_and_executed_by_a_lighter_one() {
+        let (bin, _proj, db, p, ctx, mgr) = scoped_fixture(false);
+        let mut c = crate::modelsel::EngineConfig::embedded();
+        c.planning.enabled = true;
+        c.planning.min_files = 1;
+        mgr.set_config(c);
+        mgr.run_flow(&ctx, &p.id, "change the theme colors everywhere in the app", None, "en", &RunHandle::default());
+        let t = work_turns(&bin);
+        assert!(t[0].contains("--permission-mode plan") && t[0].contains("--model opus") && !t[0].contains("--resume"), "plan first, strong model, fresh session: {}", &t[0][..120]);
+        assert!(t[1].contains("--permission-mode acceptEdits") && t[1].contains("--model sonnet"), "then execution with the lighter model");
+        let stdin = std::fs::read_to_string(bin.join("stdin.txt")).unwrap();
+        assert!(stdin.contains("Do NOT change any files yet") && stdin.contains("Follow this plan"), "the plan goes into the execution prompt");
+        assert!(db.runs_summary(&p.id, 1).unwrap().last.unwrap().planned);
+        // Uit (standaard): geen plan-beurt.
+        let (bin2, _p2, _d2, p2, ctx2, mgr2) = scoped_fixture(false);
+        mgr2.run_flow(&ctx2, &p2.id, "change the theme colors everywhere in the app", None, "en", &RunHandle::default());
+        assert!(!work_turns(&bin2)[0].contains("--permission-mode plan"));
     }
 
     #[cfg(unix)]
@@ -776,7 +1032,7 @@ mod tests {
     fn real_classify() {
         let idx = CodeIndex::build(&crate::index::fixture("cls")).unwrap();
         let started = Instant::now();
-        let answer = ClaudeEngine::new().classify(&scope::ai_question(&idx, "the settings page feels cramped, give it more air")).expect("an answer");
+        let answer = ClaudeEngine::new().classify(&scope::ai_question(&idx, "the settings page feels cramped, give it more air"), Some("haiku")).expect("an answer");
         println!("answer after {:?}: {answer}", started.elapsed());
         let (level, screen) = scope::parse_ai(&answer, &idx).expect("a parseable answer");
         println!("level {level:?} screen {screen:?}");
