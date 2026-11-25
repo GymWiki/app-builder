@@ -315,6 +315,6 @@ mod tests {
         let st = project_status(&db, &p).unwrap();
         assert_eq!(st["git"]["changedFiles"], 0);
         assert_eq!(st["checklist"]["total"], 8);
-        assert_eq!(get_checklist(&db, &p).unwrap()["items"].as_array().unwrap().len(), 8);
+        assert_eq!(get_checklist(&db, &p).unwrap()["items"].as_array().unwrap().len(), 10);
     }
 }

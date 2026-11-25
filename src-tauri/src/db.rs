@@ -78,9 +78,15 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_messages_session ON messages(session_id, id);
     "#,
+    // v3 — adviespunten voor bestaande projecten
+    r#"
+    INSERT OR IGNORE INTO checklist_items(id, project_id, key, blocking)
+    SELECT lower(hex(randomblob(16))), p.id, k.key, 0
+    FROM projects p, (SELECT 'device_test' AS key UNION SELECT 'native_manual') k;
+    "#,
 ];
 
-/// De 8 verplichte checklistpunten (zie fase 5). Volgorde = weergavevolgorde.
+/// De verplichte (blokkerende) checklistpunten. Volgorde = weergavevolgorde.
 pub const CHECKLIST_KEYS: [&str; 8] = [
     "app_basics",
     "data_auth",
@@ -91,6 +97,8 @@ pub const CHECKLIST_KEYS: [&str; 8] = [
     "version_changelog",
     "final_confirmation",
 ];
+/// Adviespunten: blokkeren het publiceren niet.
+pub const ADVISORY_KEYS: [&str; 2] = ["device_test", "native_manual"];
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -129,6 +137,17 @@ pub struct NewProject {
 pub struct Session {
     pub id: String,
     pub engine_session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Snapshot {
+    pub id: String,
+    pub commit: String,
+    pub label: String,
+    pub kind: String,
+    pub version: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -243,6 +262,12 @@ impl Db {
                 "INSERT INTO snapshots(id, project_id, git_commit, label, kind, version)
                  VALUES (?1, ?2, ?3, 'Start', 'auto', '1.0.0')",
                 params![uuid::Uuid::new_v4().to_string(), id, commit],
+            )?;
+        }
+        for key in ADVISORY_KEYS {
+            tx.execute(
+                "INSERT INTO checklist_items(id, project_id, key, blocking) VALUES (?1, ?2, ?3, 0)",
+                params![uuid::Uuid::new_v4().to_string(), id, key],
             )?;
         }
         tx.commit()?;
@@ -375,6 +400,30 @@ impl Db {
         Ok(())
     }
 
+    pub fn snapshots_list(&self, project_id: &str) -> AppResult<Vec<Snapshot>> {
+        let conn = self.lock();
+        let mut st = conn.prepare(
+            "SELECT id, git_commit, label, kind, version, created_at FROM snapshots WHERE project_id = ?1 ORDER BY created_at DESC, rowid DESC",
+        )?;
+        let rows = st.query_map([project_id], |r| {
+            Ok(Snapshot { id: r.get(0)?, commit: r.get(1)?, label: r.get(2)?, kind: r.get(3)?, version: r.get(4)?, created_at: r.get(5)? })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn project_set_bundle(&self, id: &str, bundle_id: &str) -> AppResult<()> {
+        self.lock().execute(
+            "UPDATE projects SET bundle_id = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            params![id, bundle_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn project_set_status(&self, id: &str, status: &str) -> AppResult<()> {
+        self.lock().execute("UPDATE projects SET status = ?2 WHERE id = ?1", params![id, status])?;
+        Ok(())
+    }
+
     pub fn checklist_list(&self, project_id: &str) -> AppResult<Vec<ChecklistItem>> {
         let conn = self.lock();
         let mut st = conn.prepare(
@@ -384,6 +433,15 @@ impl Db {
             Ok(ChecklistItem { key: r.get(0)?, blocking: r.get::<_, i64>(1)? != 0, status: r.get(2)?, detail: r.get(3)? })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn checklist_update(&self, project_id: &str, key: &str, status: &str, detail: &str, code_commit: Option<&str>) -> AppResult<()> {
+        self.lock().execute(
+            "UPDATE checklist_items SET status = ?3, detail = ?4, code_commit = COALESCE(?5, code_commit),
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE project_id = ?1 AND key = ?2",
+            params![project_id, key, status, detail, code_commit],
+        )?;
+        Ok(())
     }
 
     pub fn project_exists_at(&self, path: &str) -> AppResult<bool> {
@@ -497,6 +555,24 @@ mod tests {
     }
 
     #[test]
+    fn snapshots_bundle_status_and_checklist_updates() {
+        let db = Db::open_in_memory().unwrap();
+        let p = db.project_insert(&sample("X", "/tmp/a")).unwrap();
+        db.snapshot_insert(&p.id, "c2", "Tweede", "manual", "1.0.0").unwrap();
+        let list = db.snapshots_list(&p.id).unwrap();
+        assert_eq!(list.len(), 2, "creation snapshot + manual");
+        assert_eq!(list[0].label, "Tweede");
+        db.project_set_bundle(&p.id, "nl.x.y").unwrap();
+        db.project_set_status(&p.id, "ready").unwrap();
+        let p = db.project_get(&p.id).unwrap();
+        assert_eq!((p.bundle_id.as_str(), p.status.as_str()), ("nl.x.y", "ready"));
+        assert!(db.project_set_status(&p.id, "weird").is_err(), "status is constrained by the schema");
+        db.checklist_update(&p.id, "legal", "done", "[]", None).unwrap();
+        db.checklist_update(&p.id, "ai_test_run", "done", "[]", Some("fp1")).unwrap();
+        assert_eq!(db.project_get(&p.id).unwrap().checklist_done, 2);
+    }
+
+    #[test]
     fn version_and_checklist() {
         let db = Db::open_in_memory().unwrap();
         let p = db.project_insert(&sample("X", "/tmp/a")).unwrap();
@@ -504,7 +580,8 @@ mod tests {
         let p = db.project_get(&p.id).unwrap();
         assert_eq!((p.version.as_str(), p.build_number), ("1.2.0", 7));
         let items = db.checklist_list(&p.id).unwrap();
-        assert_eq!(items.len(), 8);
+        assert_eq!(items.len(), 10);
+        assert_eq!(items.iter().filter(|i| i.blocking).count(), 8);
         assert_eq!(items[0].key, "app_basics");
     }
 

@@ -21,6 +21,9 @@ pub struct AppState {
     pub chat_ctx: Arc<ChatCtx>,
     pub perms: Arc<Permissions>,
     pub preview: Arc<crate::preview::PreviewManager>,
+    pub data_dir: PathBuf,
+    /// Projecten waarvoor nu een lange taak draait (test, build, upload): één tegelijk.
+    pub jobs: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
 const SETTING_KEYS: [&str; 3] = ["projects_dir", "setup_completed", "org"];
@@ -366,4 +369,565 @@ pub fn preview_reload(state: State<'_, AppState>) -> AppResult<()> {
 pub async fn preview_devices() -> AppResult<Vec<crate::preview::Device>> {
     let flutter = proc::find("flutter").ok_or_else(|| AppError::ToolMissing("flutter".into()))?;
     blocking(move || crate::preview::list_devices(&flutter)).await
+}
+
+// ───────────── hulpjes voor fase 4 en 5 ─────────────
+
+fn project_and_dir(state: &AppState, id: &str) -> AppResult<(Project, PathBuf)> {
+    let p = state.db.project_get(id)?;
+    let dir = PathBuf::from(&p.path);
+    Ok((p, dir))
+}
+
+struct JobGuard<'a> {
+    state: &'a AppState,
+    id: String,
+}
+
+impl Drop for JobGuard<'_> {
+    fn drop(&mut self) {
+        self.state.jobs.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.id);
+    }
+}
+
+fn start_job<'a>(state: &'a AppState, id: &str) -> AppResult<JobGuard<'a>> {
+    if !state.jobs.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string()) {
+        return Err(AppError::Invalid("another task is still running for this project".into()));
+    }
+    Ok(JobGuard { state, id: id.to_string() })
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JobLine {
+    project_id: String,
+    job: String,
+    line: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JobState {
+    project_id: String,
+    job: String,
+    /// running | done | failed
+    status: String,
+}
+
+fn job_state(app: &AppHandle, id: &str, job: &str, status: &str) {
+    let _ = app.emit("job-state", JobState { project_id: id.into(), job: job.into(), status: status.into() });
+}
+
+// ───────────── thema, schermen, instellingen ─────────────
+
+#[tauri::command]
+pub fn theme_get(state: State<'_, AppState>, project_id: String) -> AppResult<serde_json::Value> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    crate::studio_tools::get_theme(&dir)
+}
+
+#[tauri::command]
+pub fn theme_set(state: State<'_, AppState>, project_id: String, seed_color: String) -> AppResult<serde_json::Value> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    crate::studio_tools::set_theme(&dir, &seed_color)
+}
+
+#[tauri::command]
+pub fn screens_graph(state: State<'_, AppState>, project_id: String) -> AppResult<crate::screens::ScreenGraph> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    crate::screens::screen_graph(&dir)
+}
+
+#[tauri::command]
+pub fn platform_get(state: State<'_, AppState>, project_id: String) -> AppResult<crate::platform::PlatformSettings> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    Ok(crate::platform::read_settings(&dir))
+}
+
+#[tauri::command]
+pub fn platform_set_name(state: State<'_, AppState>, project_id: String, name: String) -> AppResult<crate::platform::Applied> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let r = crate::platform::set_app_name(&dir, &name)?;
+    state.db.project_rename(&project_id, name.trim())?;
+    Ok(r)
+}
+
+#[tauri::command]
+pub fn platform_set_bundle(state: State<'_, AppState>, project_id: String, bundle_id: String) -> AppResult<crate::platform::Applied> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let r = crate::platform::set_bundle_id(&dir, &bundle_id)?;
+    state.db.project_set_bundle(&project_id, &bundle_id)?;
+    Ok(r)
+}
+
+#[tauri::command]
+pub fn platform_set_min_os(state: State<'_, AppState>, project_id: String, android: Option<u32>, ios: Option<String>) -> AppResult<crate::platform::Applied> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    crate::platform::set_min_os(&dir, android, ios.as_deref())
+}
+
+#[tauri::command]
+pub fn platform_set_permission(state: State<'_, AppState>, project_id: String, key: String, enabled: bool, ios_reason: String) -> AppResult<crate::platform::Applied> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    crate::platform::set_permission(&dir, &key, enabled, &ios_reason)
+}
+
+/// Versie expliciet zetten (`1.2.3` + buildnummer) in pubspec.yaml en in Studio.
+#[tauri::command]
+pub fn version_set(state: State<'_, AppState>, project_id: String, version: String, build: u32) -> AppResult<()> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let parts: Vec<&str> = version.split('.').collect();
+    if parts.len() != 3 || parts.iter().any(|p| p.is_empty() || p.parse::<u32>().is_err()) || build == 0 {
+        return Err(AppError::Invalid("version must look like 1.2.3 with a build number of 1 or more".into()));
+    }
+    let path = dir.join("pubspec.yaml");
+    let text = std::fs::read_to_string(&path)?;
+    let new_line = format!("version: {version}+{build}");
+    let mut found = false;
+    let mut out: Vec<String> = text.lines().map(|l| if l.starts_with("version:") { found = true; new_line.clone() } else { l.to_string() }).collect();
+    if !found {
+        return Err(AppError::Invalid("pubspec.yaml has no version line".into()));
+    }
+    if text.ends_with('\n') {
+        out.push(String::new());
+    }
+    std::fs::write(&path, out.join("\n"))?;
+    state.db.project_set_version(&project_id, &version, build as i64)
+}
+
+#[tauri::command]
+pub fn assets_generate_icon(state: State<'_, AppState>, project_id: String, source_path: String) -> AppResult<crate::assets::IconReport> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    crate::assets::generate_icons(&dir, std::path::Path::new(&source_path))
+}
+
+// ───────────── versies ─────────────
+
+#[tauri::command]
+pub fn snapshots_list(state: State<'_, AppState>, project_id: String) -> AppResult<Vec<crate::db::Snapshot>> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let mut list = state.db.snapshots_list(&project_id)?;
+    // Nog niet vastgelegde wijzigingen laten we de UI apart weten via het aantal.
+    let _ = crate::gitops::changed_files(&dir);
+    list.truncate(200);
+    Ok(list)
+}
+
+#[tauri::command]
+pub fn snapshot_create(state: State<'_, AppState>, project_id: String, label: String) -> AppResult<serde_json::Value> {
+    let (p, _) = project_and_dir(&state, &project_id)?;
+    crate::studio_tools::create_snapshot(&state.db, &p, &label, "manual")
+}
+
+/// Teruggaan naar een eerdere versie (de UI vraagt eerst bevestiging). Niets gaat verloren: het wordt een nieuwe snapshot.
+#[tauri::command]
+pub fn snapshot_restore(state: State<'_, AppState>, project_id: String, commit: String) -> AppResult<serde_json::Value> {
+    if state.chat.is_running(&project_id) || state.preview.state().project_id.as_deref() == Some(&project_id) && state.preview.state().status == "reloading" {
+        return Err(AppError::Invalid("wait until Claude has finished".into()));
+    }
+    let (p, dir) = project_and_dir(&state, &project_id)?;
+    let label = state
+        .db
+        .snapshots_list(&project_id)?
+        .into_iter()
+        .find(|s| s.commit == commit)
+        .map(|s| format!("Restored: {}", s.label))
+        .unwrap_or_else(|| "Restored an earlier version".into());
+    let new = crate::gitops::restore(&dir, &commit, &label)?;
+    if let Some(c) = &new {
+        let v = state.db.project_get(&project_id)?.version;
+        state.db.snapshot_insert(&project_id, c, &label, "manual", &v)?;
+        // Versie uit pubspec weer overnemen
+        if let Some((a, b, c2, n)) = std::fs::read_to_string(dir.join("pubspec.yaml")).ok().and_then(|t| crate::studio_tools::parse_pubspec_version(&t)) {
+            let _ = state.db.project_set_version(&project_id, &format!("{a}.{b}.{c2}"), n as i64);
+        }
+    }
+    state.db.project_touch_updated(&p.id)?;
+    Ok(serde_json::json!({ "restored": new.is_some(), "commit": new }))
+}
+
+/// Concept voor een changelog: de labels van alle momentopnames sinds de laatste publicatie.
+#[tauri::command]
+pub fn changelog_draft(state: State<'_, AppState>, project_id: String) -> AppResult<Vec<String>> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let meta = crate::meta::load(&dir)?;
+    let mut lines = crate::gitops::log_since(&dir, meta.last_published_commit.as_deref()).or_else(|_| crate::gitops::log_since(&dir, None))?;
+    lines.retain(|l| !l.starts_with("Before restoring") && !l.starts_with("Start:"));
+    Ok(lines)
+}
+
+// ───────────── vermelding, geheimen, checklist ─────────────
+
+#[tauri::command]
+pub fn meta_get(state: State<'_, AppState>, project_id: String) -> AppResult<crate::meta::Meta> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    crate::meta::load(&dir)
+}
+
+#[tauri::command]
+pub fn meta_save(state: State<'_, AppState>, project_id: String, meta: crate::meta::Meta) -> AppResult<()> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    // Wat uit meta is afgeleid (laatste publicatie) mag de UI niet zelf overschrijven.
+    let current = crate::meta::load(&dir)?;
+    let mut meta = meta;
+    meta.last_published_commit = current.last_published_commit;
+    meta.last_published_version = current.last_published_version;
+    crate::meta::save(&dir, &meta)
+}
+
+/// Geheimen: alleen zetten, controleren of ze bestaan en verwijderen. De waarde komt nooit terug.
+#[tauri::command]
+pub fn secret_set(state: State<'_, AppState>, project_id: String, name: String, value: String) -> AppResult<()> {
+    state.db.project_get(&project_id)?;
+    if name == "play_service_account_json" && serde_json::from_str::<serde_json::Value>(&value).ok().and_then(|v| v.get("client_email").cloned()).is_none() {
+        return Err(AppError::Invalid("this does not look like a Google service account key (JSON with client_email)".into()));
+    }
+    if value.trim().is_empty() {
+        return Err(AppError::Invalid("the value is empty".into()));
+    }
+    crate::keychain::set(&project_id, &name, value.trim())
+}
+
+#[tauri::command]
+pub fn secret_has(project_id: String, name: String) -> AppResult<bool> {
+    crate::keychain::has(&project_id, &name)
+}
+
+#[tauri::command]
+pub fn secret_delete(project_id: String, name: String) -> AppResult<()> {
+    crate::keychain::delete(&project_id, &name)
+}
+
+#[tauri::command]
+pub fn data_setup_prompt(state: State<'_, AppState>, project_id: String) -> AppResult<String> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    Ok(crate::integrations::setup_prompt(&crate::meta::load(&dir)?))
+}
+
+fn count_screenshots(dir: &std::path::Path) -> usize {
+    std::fs::read_dir(dir.join("store/screenshots")).map(|rd| rd.flatten().filter(|e| e.path().extension().is_some_and(|x| x == "png" || x == "jpg")).count()).unwrap_or(0)
+}
+
+fn gather_facts(state: &AppState, p: &Project, dir: &std::path::Path) -> crate::checklist::Facts {
+    let last = state.db.setting_get(&format!("testrun:{}", p.id)).ok().flatten().unwrap_or_default();
+    let current = crate::gitops::fingerprint(dir).unwrap_or_default();
+    let android_id = crate::platform::read_settings(dir).android_application_id.unwrap_or_else(|| p.bundle_id.clone());
+    let pubspec = std::fs::read_to_string(dir.join("pubspec.yaml")).unwrap_or_default();
+    crate::checklist::Facts {
+        bundle_id: android_id,
+        version: p.version.clone(),
+        has_icon: dir.join("store/icon-512.png").is_file(),
+        screenshots: count_screenshots(dir),
+        privacy_docs: dir.join("legal/privacy-policy.md").is_file() && dir.join("legal/terms.md").is_file(),
+        changelog: std::fs::read_to_string(dir.join("CHANGELOG.md")).map(|t| t.trim().len() > 20).unwrap_or(false),
+        keystore: crate::signing::keystore_path(&state.data_dir, &p.id).is_file(),
+        signing_configured: crate::signing::gradle_configured(dir),
+        test_passed_fingerprint: last.strip_prefix("passed:").map(str::to_string),
+        test_ever_ran: !last.is_empty(),
+        test_failed_last: last.starts_with("failed:"),
+        current_fingerprint: current,
+        native_features: crate::testrun::native_features(&pubspec),
+    }
+}
+
+fn evaluate_and_store(state: &AppState, p: &Project, dir: &std::path::Path) -> AppResult<crate::checklist::Evaluation> {
+    let meta = crate::meta::load(dir)?;
+    let facts = gather_facts(state, p, dir);
+    let e = crate::checklist::evaluate(&meta, &facts);
+    for it in &e.items {
+        let detail = serde_json::to_string(&it.missing).unwrap_or_default();
+        state.db.checklist_update(&p.id, &it.key, &it.status, &detail, None)?;
+    }
+    // Status van het project volgt de poort (gepubliceerd blijft gepubliceerd).
+    if p.status != "published" {
+        let status = if e.can_publish { "ready" } else if state.db.setting_get(&format!("testrun:{}", p.id))?.is_some() { "testing" } else { "draft" };
+        if status != p.status {
+            state.db.project_set_status(&p.id, status)?;
+        }
+    }
+    Ok(e)
+}
+
+#[tauri::command]
+pub fn checklist_evaluate(state: State<'_, AppState>, project_id: String) -> AppResult<crate::checklist::Evaluation> {
+    let (p, dir) = project_and_dir(&state, &project_id)?;
+    evaluate_and_store(&state, &p, &dir)
+}
+
+// ───────────── winkelschermafdrukken ─────────────
+
+#[tauri::command]
+pub fn store_screenshots_list(state: State<'_, AppState>, project_id: String) -> AppResult<Vec<String>> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let mut v: Vec<String> = std::fs::read_dir(dir.join("store/screenshots")).map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.ends_with(".png") || n.ends_with(".jpg")).collect()).unwrap_or_default();
+    v.sort();
+    Ok(v)
+}
+
+/// Maakt een winkel-schermafdruk (1080×1920) van de draaiende preview.
+#[tauri::command]
+pub async fn store_screenshot_capture(app: AppHandle, state: State<'_, AppState>, project_id: String) -> AppResult<String> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let st = state.preview.state();
+    let url = match (&st.url, st.project_id.as_deref() == Some(project_id.as_str()), st.status.as_str()) {
+        (Some(u), true, "running" | "reloading") => u.clone(),
+        _ => return Err(AppError::Invalid("start the live preview first".into())),
+    };
+    let work = state.data_dir.join("shots");
+    let handle = app.clone();
+    blocking(move || {
+        let _ = handle;
+        let png = crate::screenshot::capture(&url, 360, 640, 3, &work)?;
+        let out = dir.join("store/screenshots");
+        std::fs::create_dir_all(&out)?;
+        let n = std::fs::read_dir(&out)?.flatten().count() + 1;
+        let name = format!("phone-{n:02}.png");
+        std::fs::write(out.join(&name), png)?;
+        Ok(name)
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn store_screenshot_import(state: State<'_, AppState>, project_id: String, paths: Vec<String>) -> AppResult<Vec<String>> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let out = dir.join("store/screenshots");
+    std::fs::create_dir_all(&out)?;
+    let mut names = vec![];
+    for p in paths.iter().take(8) {
+        let src = std::path::Path::new(p);
+        let ext = src.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        if !["png", "jpg", "jpeg"].contains(&ext.as_str()) || std::fs::metadata(src)?.len() > 15 * 1024 * 1024 {
+            return Err(AppError::Invalid("screenshots must be PNG or JPG images under 15 MB".into()));
+        }
+        let n = std::fs::read_dir(&out)?.flatten().count() + 1;
+        let name = format!("imported-{n:02}.{}", if ext == "png" { "png" } else { "jpg" });
+        std::fs::copy(src, out.join(&name))?;
+        names.push(name);
+    }
+    Ok(names)
+}
+
+#[tauri::command]
+pub fn store_screenshot_delete(state: State<'_, AppState>, project_id: String, name: String) -> AppResult<()> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    if name.contains(['/', '\\']) || !(name.ends_with(".png") || name.ends_with(".jpg")) {
+        return Err(AppError::Unsafe("invalid file name".into()));
+    }
+    let _ = std::fs::remove_file(dir.join("store/screenshots").join(name));
+    Ok(())
+}
+
+/// Afbeelding als data-URL, alleen uit `store/` en de testmap.
+#[tauri::command]
+pub fn file_data_url(state: State<'_, AppState>, project_id: String, rel: String) -> AppResult<String> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let allowed = rel.starts_with("store/") || rel.starts_with("build/studio_test/");
+    if !allowed || rel.contains("..") || !(rel.ends_with(".png") || rel.ends_with(".jpg")) {
+        return Err(AppError::Unsafe("this file cannot be shown".into()));
+    }
+    let bytes = std::fs::read(dir.join(&rel))?;
+    let mime = if rel.ends_with(".png") { "image/png" } else { "image/jpeg" };
+    Ok(format!("data:{mime};base64,{}", crate::screenshot::base64(&bytes)))
+}
+
+// ───────────── AI-testrun ─────────────
+
+#[tauri::command]
+pub async fn testrun_start(app: AppHandle, state: State<'_, AppState>, project_id: String) -> AppResult<crate::testrun::TestReport> {
+    let flutter = proc::find("flutter").ok_or_else(|| AppError::ToolMissing("flutter".into()))?;
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    if state.chat.is_running(&project_id) {
+        return Err(AppError::Invalid("wait until Claude has finished".into()));
+    }
+    let handle = app.clone();
+    let pid = project_id.clone();
+    blocking(move || {
+        let st = handle.state::<AppState>();
+        let _guard = start_job(&st, &pid)?;
+        job_state(&handle, &pid, "test", "running");
+        // Vingerafdruk vóór de run: de testrun is aan precies deze code gekoppeld.
+        let _ = crate::testrun::ensure_crawler(&dir, &crate::testrun::package_name(&dir).unwrap_or_default());
+        let fp = crate::gitops::fingerprint(&dir)?;
+        let h2 = handle.clone();
+        let p2 = pid.clone();
+        let out = crate::testrun::run(&flutter, &dir, &mut |line| {
+            let _ = h2.emit("job-log", JobLine { project_id: p2.clone(), job: "test".into(), line: line.into() });
+        });
+        let out = match out {
+            Ok(o) => o,
+            Err(e) => {
+                job_state(&handle, &pid, "test", "failed");
+                return Err(e);
+            }
+        };
+        let report = out.report.ok_or_else(|| AppError::CommandFailed(format!("the test run produced no report: {}", out.log.lines().rev().take(6).collect::<Vec<_>>().join(" | "))));
+        let report = match report {
+            Ok(r) => r,
+            Err(e) => {
+                st.db.setting_set(&format!("testrun:{pid}"), &format!("failed:{fp}"))?;
+                job_state(&handle, &pid, "test", "failed");
+                return Err(e);
+            }
+        };
+        // Alleen als de code tijdens de run niet is veranderd, telt een geslaagde run voor de huidige versie.
+        let unchanged = crate::gitops::fingerprint(&dir)? == fp;
+        let value = if report.passed() && unchanged { format!("passed:{fp}") } else { format!("failed:{fp}") };
+        st.db.setting_set(&format!("testrun:{pid}"), &value)?;
+        job_state(&handle, &pid, "test", if report.passed() { "done" } else { "failed" });
+        Ok(report)
+    })
+    .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportView {
+    errors: usize,
+    warnings: usize,
+    report: Option<crate::testrun::TestReport>,
+    passed: bool,
+    /// De code is veranderd sinds deze run: het rapport is niet meer van toepassing.
+    stale: bool,
+    native_features: Vec<String>,
+    /// Wat deze run niet kan testen (altijd getoond).
+    not_tested: Vec<&'static str>,
+}
+
+#[tauri::command]
+pub fn testrun_report(state: State<'_, AppState>, project_id: String) -> AppResult<ReportView> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let last = state.db.setting_get(&format!("testrun:{project_id}"))?.unwrap_or_default();
+    let current = crate::gitops::fingerprint(&dir).unwrap_or_default();
+    let fp = last.split_once(':').map(|(_, f)| f.to_string()).unwrap_or_default();
+    let pubspec = std::fs::read_to_string(dir.join("pubspec.yaml")).unwrap_or_default();
+    let report = crate::testrun::read_report(&dir);
+    Ok(ReportView {
+        errors: report.as_ref().map_or(0, |r| r.error_count()),
+        warnings: report.as_ref().map_or(0, |r| r.warning_count()),
+        report,
+        passed: last.starts_with("passed:") && fp == current,
+        stale: !fp.is_empty() && fp != current,
+        native_features: crate::testrun::native_features(&pubspec),
+        not_tested: vec!["camera", "push", "payments", "sensors", "real_device", "performance"],
+    })
+}
+
+// ───────────── signing, build, upload ─────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SigningStatus {
+    keytool: bool,
+    keystore: bool,
+    keystore_path: Option<String>,
+    gradle_configured: bool,
+    play_key: bool,
+    fastlane: bool,
+}
+
+#[tauri::command]
+pub fn signing_status(state: State<'_, AppState>, project_id: String) -> AppResult<SigningStatus> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let path = crate::signing::keystore_path(&state.data_dir, &project_id);
+    Ok(SigningStatus {
+        keytool: crate::signing::find_keytool(None).is_some(),
+        keystore: path.is_file(),
+        keystore_path: path.is_file().then(|| path.display().to_string()),
+        gradle_configured: crate::signing::gradle_configured(&dir),
+        play_key: crate::keychain::has(&project_id, "play_service_account_json").unwrap_or(false),
+        fastlane: proc::find("fastlane").is_some(),
+    })
+}
+
+#[tauri::command]
+pub async fn signing_create_keystore(state: State<'_, AppState>, project_id: String, owner: String, organisation: String, country: String) -> AppResult<String> {
+    state.db.project_get(&project_id)?;
+    let flutter = proc::find("flutter");
+    let data_dir = state.data_dir.clone();
+    blocking(move || {
+        let keytool = crate::signing::find_keytool(flutter.as_deref()).ok_or_else(|| AppError::ToolMissing("keytool".into()))?;
+        let p = crate::signing::create_keystore(&keytool, &data_dir, &project_id, &crate::signing::dname(&owner, &organisation, &country))?;
+        Ok(p.display().to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn signing_prompt() -> &'static str {
+    crate::signing::GRADLE_PROMPT
+}
+
+/// Bouwt het App Bundle en uploadt het als concept naar een testtrack van Google Play.
+/// De UI vraagt eerst bevestiging (`confirmed`); de poort wordt hier opnieuw server-side gecontroleerd.
+#[tauri::command]
+pub async fn publish_android(app: AppHandle, state: State<'_, AppState>, project_id: String, track: String, confirmed: bool) -> AppResult<serde_json::Value> {
+    use crate::publish::{PlayPublisher, StorePublisher, UploadRequest};
+    if !confirmed {
+        return Err(AppError::Invalid("publishing needs confirmation".into()));
+    }
+    let (p, dir) = project_and_dir(&state, &project_id)?;
+    let eval = evaluate_and_store(&state, &p, &dir)?;
+    if !eval.can_publish {
+        return Err(AppError::Invalid("the checklist is not complete".into()));
+    }
+    let flutter = proc::find("flutter").ok_or_else(|| AppError::ToolMissing("flutter".into()))?;
+    let fastlane = proc::find("fastlane").ok_or_else(|| AppError::ToolMissing("fastlane".into()))?;
+    let handle = app.clone();
+    blocking(move || {
+        let st = handle.state::<AppState>();
+        let _guard = start_job(&st, &project_id)?;
+        let emit_line = |job: &'static str| {
+            let (h, id) = (handle.clone(), project_id.clone());
+            move |line: &str| {
+                let _ = h.emit("job-log", JobLine { project_id: id.clone(), job: job.into(), line: line.into() });
+            }
+        };
+        let env = crate::signing::build_env(&project_id, &st.data_dir)?;
+        let package = crate::platform::read_settings(&dir).android_application_id.unwrap_or_else(|| p.bundle_id.clone());
+        let publisher = PlayPublisher;
+        log::info!("publishing {} to {}", p.name, publisher.id());
+
+        job_state(&handle, &project_id, "build", "running");
+        let aab = match publisher.build(&flutter, &dir, &env, &mut emit_line("build")) {
+            Ok(a) => a,
+            Err(e) => {
+                job_state(&handle, &project_id, "build", "failed");
+                return Err(e);
+            }
+        };
+        job_state(&handle, &project_id, "build", "done");
+
+        job_state(&handle, &project_id, "upload", "running");
+        let work = st.data_dir.join("upload");
+        let req = UploadRequest { project_id: &project_id, package: &package, artifact: &aab, track: &track, work_dir: &work, fastlane: &fastlane };
+        if let Err(e) = publisher.upload(&req, &mut emit_line("upload")) {
+            job_state(&handle, &project_id, "upload", "failed");
+            return Err(e);
+        }
+        job_state(&handle, &project_id, "upload", "done");
+
+        // Vastleggen wat er is gepubliceerd.
+        let mut meta = crate::meta::load(&dir)?;
+        meta.last_published_version = Some(p.version.clone());
+        meta.last_published_commit = crate::gitops::head(&dir).ok();
+        meta.publishing.final_confirmed = false;
+        crate::meta::save(&dir, &meta)?;
+        let _ = crate::studio_tools::create_snapshot(&st.db, &p, &format!("Published version {} ({track} testing)", p.version), "publish");
+        st.db.project_set_status(&project_id, "published")?;
+        log::info!("published {} v{} to Google Play ({track})", p.name, p.version);
+        Ok(serde_json::json!({ "version": p.version, "track": track }))
+    })
+    .await
+}
+
+/// iOS: de interface bestaat al; de implementatie (cloud-build op macOS) volgt later.
+#[tauri::command]
+pub fn publish_ios() -> AppResult<()> {
+    use crate::publish::{AppStorePublisher, StorePublisher, UploadRequest};
+    let p = AppStorePublisher;
+    let _ = p.id();
+    let work = std::path::Path::new(".");
+    let req = UploadRequest { project_id: "", package: "", artifact: work, track: "", work_dir: work, fastlane: work };
+    p.upload(&req, &mut |_| {})
 }

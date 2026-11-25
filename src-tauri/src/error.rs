@@ -29,6 +29,10 @@ pub enum AppError {
     Unsafe(String),
     #[error("terminal error: {0}")]
     Pty(String),
+    #[error("keychain error: {0}")]
+    Keychain(String),
+    #[error("not supported yet: {0}")]
+    Unsupported(String),
 }
 
 impl AppError {
@@ -45,6 +49,8 @@ impl AppError {
             AppError::PathExists(_) => "path_exists",
             AppError::Unsafe(_) => "unsafe",
             AppError::Pty(_) => "pty",
+            AppError::Keychain(_) => "keychain",
+            AppError::Unsupported(_) => "unsupported",
         }
     }
 }

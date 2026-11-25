@@ -42,7 +42,7 @@ pub fn find_browser() -> Option<PathBuf> {
     candidates().into_iter().find(|p| p.is_file())
 }
 
-pub fn chrome_args(url: &str, out: &Path, profile: &Path, w: u32, h: u32) -> Vec<String> {
+pub fn chrome_args(url: &str, out: &Path, profile: &Path, w: u32, h: u32, scale: u32) -> Vec<String> {
     let mut a = vec![
         "--headless=new".into(),
         "--disable-gpu".into(),
@@ -51,6 +51,7 @@ pub fn chrome_args(url: &str, out: &Path, profile: &Path, w: u32, h: u32) -> Vec
         "--no-default-browser-check".into(),
         format!("--user-data-dir={}", profile.display()),
         format!("--window-size={w},{h}"),
+        format!("--force-device-scale-factor={scale}"),
         // Flutter web start asynchroon op; geef de pagina tijd om te tekenen.
         "--virtual-time-budget=12000".into(),
         format!("--screenshot={}", out.display()),
@@ -64,7 +65,7 @@ pub fn chrome_args(url: &str, out: &Path, profile: &Path, w: u32, h: u32) -> Vec
 }
 
 /// Maakt een PNG van `url`; geeft de bytes terug.
-pub fn capture(url: &str, w: u32, h: u32, work_dir: &Path) -> AppResult<Vec<u8>> {
+pub fn capture(url: &str, w: u32, h: u32, scale: u32, work_dir: &Path) -> AppResult<Vec<u8>> {
     if !(url.starts_with("http://127.0.0.1:") || url.starts_with("http://localhost:")) {
         return Err(AppError::Unsafe("only the local preview can be captured".into()));
     }
@@ -73,7 +74,7 @@ pub fn capture(url: &str, w: u32, h: u32, work_dir: &Path) -> AppResult<Vec<u8>>
     let id = uuid::Uuid::new_v4();
     let out = work_dir.join(format!("shot-{id}.png"));
     let profile = work_dir.join(format!("profile-{id}"));
-    let args = chrome_args(url, &out, &profile, w.clamp(200, 1600), h.clamp(300, 2400));
+    let args = chrome_args(url, &out, &profile, w.clamp(200, 1600), h.clamp(300, 2400), scale.clamp(1, 3));
     let argv: Vec<&str> = args.iter().map(String::as_str).collect();
     let res = proc::run(&browser, &argv, None, Duration::from_secs(60));
     let _ = std::fs::remove_dir_all(&profile);
@@ -110,14 +111,15 @@ mod tests {
 
     #[test]
     fn only_local_urls_are_captured() {
-        let r = capture("https://evil.example.com", 390, 844, &std::env::temp_dir());
+        let r = capture("https://evil.example.com", 390, 844, 1, &std::env::temp_dir());
         assert!(matches!(r, Err(AppError::Unsafe(_))));
     }
 
     #[test]
     fn args_contain_isolated_profile_and_size() {
-        let a = chrome_args("http://127.0.0.1:1", Path::new("/o.png"), Path::new("/p"), 390, 844);
+        let a = chrome_args("http://127.0.0.1:1", Path::new("/o.png"), Path::new("/p"), 390, 844, 2);
         assert!(a.contains(&"--user-data-dir=/p".to_string()) && a.contains(&"--window-size=390,844".to_string()));
+        assert!(a.contains(&"--force-device-scale-factor=2".to_string()));
         assert_eq!(a.last().unwrap(), "http://127.0.0.1:1");
     }
 
@@ -136,7 +138,7 @@ mod tests {
                 let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
             }
         });
-        let png = capture(&format!("http://127.0.0.1:{port}"), 390, 844, &std::env::temp_dir().join("studio-shots")).unwrap();
+        let png = capture(&format!("http://127.0.0.1:{port}"), 390, 844, 1, &std::env::temp_dir().join("studio-shots")).unwrap();
         assert!(png.starts_with(&[0x89, b'P', b'N', b'G']) && png.len() > 1000, "len {}", png.len());
     }
 }

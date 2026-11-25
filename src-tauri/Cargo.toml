@@ -26,6 +26,8 @@ portable-pty = "0.9"
 which = "8"
 uuid = { version = "1", features = ["v4"] }
 notify = "8"
+keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native", "linux-native"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

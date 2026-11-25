@@ -3,7 +3,7 @@
 use crate::db::Db;
 use crate::engine::{AiEngine, ChatEvent, RunHandle, TurnRequest};
 use crate::error::{AppError, AppResult};
-use crate::mcp::{config_json, McpInfo};
+use crate::mcp::{config_json_with, McpInfo};
 use crate::studio_tools;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -100,7 +100,8 @@ impl ChatManager {
             };
             std::fs::create_dir_all(&ctx.config_dir)?;
             let cfg = ctx.config_dir.join(format!("{project_id}.json"));
-            std::fs::write(&cfg, serde_json::to_string_pretty(&config_json(&ctx.mcp, project_id))?)?;
+            let extra = crate::integrations::extra_servers(project_id, std::path::Path::new(&project.path));
+            std::fs::write(&cfg, serde_json::to_string_pretty(&config_json_with(&ctx.mcp, project_id, &extra))?)?;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -144,6 +145,9 @@ impl ChatManager {
             }
             Err(e) => emit_event(Some(&sid), &ChatEvent::Error { code: error_code(&e).into(), message: crate::logging::redact(&e.to_string()) }),
         }
+
+        // De config kan een token bevatten (Supabase): na de beurt weer weghalen.
+        let _ = std::fs::remove_file(&req.mcp_config);
 
         // Wijzigingen van Claude altijd vastleggen, zodat de gebruiker terug kan.
         let label: String = format!("Claude: {}", text.chars().take(50).collect::<String>().replace('\n', " "));
@@ -234,9 +238,8 @@ mod tests {
         let args = std::fs::read_to_string(root.join("args.txt")).unwrap();
         assert!(args.contains("--mcp-config") && args.contains("mcp__studio__approve") && !args.contains("--resume"));
 
-        // MCP-config staat buiten het project en bevat het token
-        let cfg = std::fs::read_to_string(root.join("mcp").join(format!("{}.json", p.id))).unwrap();
-        assert!(cfg.contains("127.0.0.1:4242") && cfg.contains("Bearer tok"));
+        // MCP-config staat buiten het project, bevat het token en wordt na de beurt verwijderd
+        assert!(!root.join("mcp").join(format!("{}.json", p.id)).exists(), "config with tokens must not stay on disk");
         assert!(!proj.join(".mcp.json").exists());
 
         // sessie hervat + berichten bewaard + automatische momentopname

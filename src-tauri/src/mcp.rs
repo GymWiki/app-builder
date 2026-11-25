@@ -85,7 +85,7 @@ fn call_tool(deps: &Deps, project_id: &str, name: &str, args: &Value) -> Value {
                 _ => return text_result(&json!("The live preview is not running (or has a build error), so there is no screenshot. Check preview_status, fix errors, or ask the user to start the preview."), true),
             };
             let n = |k: &str, d: u32| args.get(k).and_then(Value::as_u64).map(|v| v as u32).unwrap_or(d);
-            return match screenshot::capture(&url, n("width", 390), n("height", 844), &deps.work_dir) {
+            return match screenshot::capture(&url, n("width", 390), n("height", 844), 1, &deps.work_dir) {
                 Ok(png) => json!({"content":[
                     {"type":"image","data":screenshot::base64(&png),"mimeType":"image/png"},
                     {"type":"text","text":"Screenshot of the live preview."}]}),
@@ -237,12 +237,27 @@ pub fn start(deps: Deps) -> std::io::Result<McpInfo> {
 }
 
 /// MCP-configuratie voor `claude --mcp-config`: één HTTP-server, gescoped op het project.
+#[cfg(test)]
 pub fn config_json(info: &McpInfo, project_id: &str) -> Value {
-    json!({"mcpServers":{crate::engine::claude::MCP_SERVER:{
+    config_json_with(info, project_id, &json!({}))
+}
+
+/// Zelfde, met extra servers (bv. Supabase/Firebase) uit `integrations`.
+pub fn config_json_with(info: &McpInfo, project_id: &str, extra: &Value) -> Value {
+    let mut servers = json!({crate::engine::claude::MCP_SERVER:{
         "type":"http",
         "url":format!("http://127.0.0.1:{}/mcp/{}", info.port, project_id),
         "headers":{"Authorization":format!("Bearer {}", info.token)}
-    }}})
+    }});
+    if let (Some(base), Some(add)) = (servers.as_object_mut(), extra.as_object()) {
+        for (k, v) in add {
+            // Een extra server mag de Studio-server nooit vervangen.
+            if k != crate::engine::claude::MCP_SERVER {
+                base.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    json!({ "mcpServers": servers })
 }
 
 #[cfg(test)]

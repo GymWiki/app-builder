@@ -1,7 +1,7 @@
 //! Subprocessen starten zonder shell, met timeout en zonder consolevenster op Windows.
 
 use crate::error::{AppError, AppResult};
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -110,4 +110,64 @@ mod tests {
     fn missing_binary_is_reported() {
         assert!(run(Path::new("/nonexistent/xyz"), &[], None, Duration::from_secs(1)).is_err());
     }
+}
+
+/// Draait een programma en geeft de uitvoer (stdout + stderr) regel voor regel door. `env` wordt
+/// alleen aan dit proces meegegeven. Geeft de exitcode terug (None bij time-out of beëindigd).
+pub fn run_streaming(
+    program: &Path,
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(String, String)],
+    timeout: Duration,
+    on_line: &mut dyn FnMut(&str),
+) -> AppResult<Option<i32>> {
+    let mut cmd = command(program);
+    cmd.args(args);
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    if let Some(d) = cwd {
+        cmd.current_dir(d);
+    }
+    let mut child = cmd.spawn().map_err(|e| AppError::CommandFailed(format!("{}: {e}", program.display())))?;
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let mut handles = vec![];
+    let streams: [Option<Box<dyn Read + Send>>; 2] = [
+        child.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
+        child.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
+    ];
+    for s in streams.into_iter().flatten() {
+        let tx = tx.clone();
+        handles.push(std::thread::spawn(move || {
+            for l in BufReader::new(s).lines().map_while(Result::ok) {
+                let _ = tx.send(crate::logging::redact(&l));
+            }
+        }));
+    }
+    drop(tx);
+    // Waarden die we zelf als omgeving meegeven (wachtwoorden!) komen nooit letterlijk in een log.
+    let secrets: Vec<&str> = env.iter().map(|(_, v)| v.as_str()).filter(|v| v.len() >= 8).collect();
+    let deadline = Instant::now() + timeout;
+    loop {
+        match rx.recv_timeout(Duration::from_millis(200)) {
+            Ok(mut l) => {
+                for s in &secrets {
+                    l = l.replace(s, "[redacted]");
+                }
+                on_line(&l)
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(_) => {}
+        }
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(AppError::Timeout(program.display().to_string()));
+        }
+    }
+    for h in handles {
+        let _ = h.join();
+    }
+    Ok(child.wait()?.code())
 }

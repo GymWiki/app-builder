@@ -1,19 +1,29 @@
 mod chat;
+mod checklist;
+mod assets;
 mod commands;
 mod db;
 mod engine;
 mod error;
 mod gitops;
 mod install;
+mod integrations;
+mod keychain;
 mod logging;
 mod mcp;
+mod meta;
 mod permissions;
+mod platform;
 mod projects;
 mod preview;
 mod proc;
+mod publish;
 mod pty;
+mod screens;
+mod signing;
 mod screenshot;
 mod studio_tools;
+mod testrun;
 mod toolchain;
 
 use std::sync::Arc;
@@ -66,7 +76,7 @@ pub fn run() {
             });
             let chat = Arc::new(chat::ChatManager::new(Arc::new(engine::claude::ClaudeEngine::new())));
             log::info!("Studio {} started on {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS);
-            app.manage(commands::AppState { db, pty: pty::PtyManager::default(), chat, chat_ctx, perms, preview });
+            app.manage(commands::AppState { db, pty: pty::PtyManager::default(), chat, chat_ctx, perms, preview, data_dir: dir.clone(), jobs: Default::default() });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -105,6 +115,39 @@ pub fn run() {
             commands::preview_log,
             commands::preview_reload,
             commands::preview_devices,
+            commands::theme_get,
+            commands::theme_set,
+            commands::screens_graph,
+            commands::platform_get,
+            commands::platform_set_name,
+            commands::platform_set_bundle,
+            commands::platform_set_min_os,
+            commands::platform_set_permission,
+            commands::version_set,
+            commands::assets_generate_icon,
+            commands::snapshots_list,
+            commands::snapshot_create,
+            commands::snapshot_restore,
+            commands::changelog_draft,
+            commands::meta_get,
+            commands::meta_save,
+            commands::secret_set,
+            commands::secret_has,
+            commands::secret_delete,
+            commands::data_setup_prompt,
+            commands::checklist_evaluate,
+            commands::store_screenshots_list,
+            commands::store_screenshot_capture,
+            commands::store_screenshot_import,
+            commands::store_screenshot_delete,
+            commands::file_data_url,
+            commands::testrun_start,
+            commands::testrun_report,
+            commands::signing_status,
+            commands::signing_create_keystore,
+            commands::signing_prompt,
+            commands::publish_android,
+            commands::publish_ios,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Studio")
