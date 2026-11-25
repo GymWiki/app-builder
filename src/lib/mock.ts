@@ -81,6 +81,7 @@ async function mockChat(projectId: string, text: string) {
   const id = ++seq;
   runningChats.add(projectId);
   push({ type: "user", text, context: null });
+  push({ type: "status", code: "scope", detail: "small|HomeScreen" });
   push({ type: "init", session_id: "mock-session", model: "mock" });
   try {
     if (text.toLowerCase().includes("login")) {
@@ -180,6 +181,8 @@ async function mockChat(projectId: string, text: string) {
       };
     }
     push({ type: "done", ok: true, text: "Done!", duration_ms: 4000, code: null });
+    push({ type: "status", code: "checking", detail: null });
+    push({ type: "status", code: "checks_ok", detail: null });
     push({ type: "snapshot", commit: "abc1234", label: "Claude: " + text.slice(0, 40) });
   } finally {
     runningChats.delete(projectId);
@@ -768,6 +771,20 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       return { version: 1, current: 1, plugin: true, dart: "3.14.0", dartMcpOk: true, structure: "feature-first" };
     case "profile_apply":
       return;
+    case "run_metrics":
+      return {
+        runs: 12,
+        byLevel: { small: 7, screen: 3, shared: 1, project: 1 },
+        expanded: 2,
+        cleanFirstTime: 9,
+        repaired: 2,
+        rolledBack: 1,
+        aiQuestions: 1,
+        avgDurationMs: 41000,
+        totalCostUsd: 3.42,
+        avgFilesChanged: 2.3,
+        deniedEdits: 3,
+      };
     case "project_get":
     case "project_open": {
       const p = projects.find((x) => x.id === args.id);

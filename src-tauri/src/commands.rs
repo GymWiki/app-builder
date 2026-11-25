@@ -1015,6 +1015,11 @@ pub struct ProfileInfo {
 }
 
 #[tauri::command]
+pub fn run_metrics(state: State<'_, AppState>, project_id: String) -> AppResult<crate::db::RunsSummary> {
+    state.db.runs_summary(&project_id, 200)
+}
+
+#[tauri::command]
 pub fn profile_info(state: State<'_, AppState>, project_id: String) -> AppResult<ProfileInfo> {
     let (_, dir) = project_and_dir(&state, &project_id)?;
     let dart = crate::profile::dart_version();

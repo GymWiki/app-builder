@@ -23,6 +23,14 @@ const ok = (c, m) => {
   const line = p.getByText(/^Studio 0\.1\.0 on/);
   for (let i = 0; i < 7; i++) await line.click();
   await p.getByRole("heading", { name: "Developer mode" }).waitFor();
+  ok(await p.getByText("Runs: 12").first().isVisible(), "developer panel shows the run metrics");
+  ok(
+    await p
+      .getByText(/small 7, screen 3, shared 1, project 1/)
+      .first()
+      .isVisible(),
+    "levels per run are listed",
+  );
   ok(
     await p
       .getByText(/Profile version 1 \(current 1\)/)

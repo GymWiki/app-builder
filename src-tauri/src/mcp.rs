@@ -6,6 +6,8 @@ use crate::db::Db;
 use crate::error::AppError;
 use crate::permissions::{Decision, Permissions};
 use crate::preview::PreviewManager;
+use crate::index::CodeIndex;
+use crate::scope::{Level, ScopeRegistry, EDIT_TOOLS};
 use crate::screenshot;
 use crate::studio_tools as tools;
 use serde_json::{json, Value};
@@ -29,6 +31,8 @@ pub struct Deps {
     pub preview: Arc<PreviewManager>,
     /// Tijdelijke map voor schermafdrukken.
     pub work_dir: PathBuf,
+    /// Het werkgebied van de lopende run per project (fase 7).
+    pub scopes: Arc<ScopeRegistry>,
 }
 
 pub fn tool_list() -> Value {
@@ -49,6 +53,13 @@ pub fn tool_list() -> Value {
         {"name":"set_store_listing","description":"Save store page texts. Only the fields you pass are changed. Limits: title 30, shortDescription 80, fullDescription 4000 characters.",
          "inputSchema":{"type":"object","properties":{"title":{"type":"string"},"shortDescription":{"type":"string"},"fullDescription":{"type":"string"},"category":{"type":"string"}}}},
         {"name":"get_checklist","description":"The publish checklist and which items are done.","inputSchema":no_args},
+        {"name":"scherm_index","description":"Compact index of all screens: file, route, own files, shared files they use and where they navigate to. Use this instead of searching the project.","inputSchema":no_args},
+        {"name":"afhankelijkheden","description":"What a file imports: direct and indirect project files.",
+         "inputSchema":{"type":"object","properties":{"file":{"type":"string","description":"Project-relative path, e.g. lib/features/home/home_screen.dart"}},"required":["file"]}},
+        {"name":"wie_gebruikt","description":"Who uses a file: direct users, all indirect users and the screens that a change to it can affect.",
+         "inputSchema":{"type":"object","properties":{"file":{"type":"string"}},"required":["file"]}},
+        {"name":"breid_bereik_uit","description":"Ask for more files to edit when the task really needs a change outside the current scope (shared theme, widgets, models, other screens). Give a short reason; optionally specific files or a level (screen, shared, project). Call this BEFORE editing outside the scope.",
+         "inputSchema":{"type":"object","properties":{"reason":{"type":"string"},"files":{"type":"array","items":{"type":"string"}},"level":{"type":"string","enum":["screen","shared","project"]}},"required":["reason"]}},
         {"name":"approve","description":"Internal: asks the user in Studio for permission. Used by Claude Code only.",
          "inputSchema":{"type":"object","properties":{"tool_name":{"type":"string"},"input":{"type":"object"},"tool_use_id":{"type":"string"}},"required":["tool_name","input"]}}
     ])
@@ -101,9 +112,46 @@ fn call_tool(deps: &Deps, project_id: &str, name: &str, args: &Value) -> Value {
         "get_checklist" => tools::get_checklist(&deps.db, &project),
         "get_store_listing" => tools::get_store_listing(&dir),
         "set_store_listing" => tools::set_store_listing(&dir, args),
+        "scherm_index" => CodeIndex::build(&dir).map(|i| json!(i.render_markdown())),
+        "afhankelijkheden" => CodeIndex::build(&dir).map(|i| {
+            let f = arg("file");
+            json!({ "file": f, "imports": i.files.get(&f).map(|n| n.imports.clone()).unwrap_or_default(), "allImports": i.deps(&f) })
+        }),
+        "wie_gebruikt" => CodeIndex::build(&dir).map(|i| {
+            let f = arg("file");
+            let direct: Vec<&String> = i.files.values().filter(|n| n.imports.contains(&f)).map(|n| &n.path).collect();
+            json!({ "file": f, "direct": direct, "all": i.dependents(&f), "screensAffected": i.screens_affected(std::slice::from_ref(&f)) })
+        }),
+        "breid_bereik_uit" => {
+            let files: Vec<String> = args.get("files").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default();
+            let level = Level::parse(&arg("level")).filter(|_| !arg("level").is_empty());
+            CodeIndex::build(&dir).and_then(|idx| {
+                deps.scopes
+                    .with(project_id, |s| {
+                        s.expand(&idx, level, &files, &arg("reason"));
+                        json!({ "ok": true, "level": s.level.as_str(), "scope": s.describe() })
+                    })
+                    .ok_or_else(|| AppError::Invalid("there is no active run, so there is no scope to widen".into()))
+            })
+        }
         "approve" => {
             let tool = arg("tool_name");
             let input = args.get("input").cloned().unwrap_or(json!({}));
+            // Bewerkingen worden tegen het werkgebied van de run getoetst, zonder de gebruiker te storen.
+            if EDIT_TOOLS.contains(&tool.as_str()) {
+                let path = input["file_path"].as_str().or_else(|| input["notebook_path"].as_str()).unwrap_or("").to_string();
+                let verdict = deps.scopes.with(project_id, |s| {
+                    if s.permits_path(&dir, &path) {
+                        json!({"behavior":"allow","updatedInput":input})
+                    } else {
+                        s.denied.push(path.clone());
+                        json!({"behavior":"deny","message":"This file is outside the scope of the current task. If the task really needs it, call the tool breid_bereik_uit with a short reason first, then try again."})
+                    }
+                });
+                if let Some(v) = verdict {
+                    return json!({"content":[{"type":"text","text":v.to_string()}]});
+                }
+            }
             let verdict = match deps.perms.request(&deps.db, project_id, &dir, &tool, &input) {
                 Decision::Deny => json!({"behavior":"deny","message":"The user declined this action in Studio."}),
                 _ => json!({"behavior":"allow","updatedInput":input}),
@@ -289,7 +337,7 @@ mod tests {
             .unwrap();
         let perms = Arc::new(Permissions::new(Arc::new(|_| {}), Duration::from_millis(100)));
         let preview = Arc::new(PreviewManager::new(Arc::new(|_, _| {})));
-        (Deps { db, perms, preview, work_dir: std::env::temp_dir().join("studio-mcp-shots") }, p.id, dir)
+        (Deps { db, perms, preview, work_dir: std::env::temp_dir().join("studio-mcp-shots"), scopes: Default::default() }, p.id, dir)
     }
 
     fn rpc(deps: &Deps, pid: &str, method: &str, params: Value) -> Value {
@@ -309,10 +357,42 @@ mod tests {
         assert!(handle_rpc(&deps, &pid, &json!({"jsonrpc":"2.0","method":"notifications/initialized"})).is_none());
         let list = rpc(&deps, &pid, "tools/list", json!({}));
         let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-        for n in ["project_status", "list_screens", "get_theme", "set_theme", "preview_status", "preview_screenshot", "create_snapshot", "bump_version", "get_checklist", "get_store_listing", "set_store_listing", "approve"] {
+        for n in ["project_status", "list_screens", "get_theme", "set_theme", "preview_status", "preview_screenshot", "create_snapshot", "bump_version", "get_checklist", "get_store_listing", "set_store_listing", "approve", "scherm_index", "afhankelijkheden", "wie_gebruikt", "breid_bereik_uit"] {
             assert!(names.contains(&n), "missing {n}");
         }
         assert_eq!(rpc(&deps, &pid, "nope", json!({}))["error"]["code"], -32601);
+    }
+
+    #[test]
+    fn index_tools_answer_from_the_project_and_scope_gates_edits() {
+        let (deps, pid, dir) = deps_with_project();
+        let call = |name: &str, args: Value| rpc(&deps, &pid, "tools/call", json!({"name":name,"arguments":args}));
+        assert!(tool_text(&call("scherm_index", json!({}))).contains("HomeScreen"));
+        let deps_of = tool_text(&call("afhankelijkheden", json!({"file":"lib/main.dart"})));
+        assert!(deps_of.contains("\"imports\""));
+        assert!(tool_text(&call("wie_gebruikt", json!({"file":"lib/main.dart"}))).contains("screensAffected"));
+        // Zonder lopende run is er niets om te verbreden.
+        assert_eq!(call("breid_bereik_uit", json!({"reason":"x"}))["result"]["isError"], true);
+
+        // Met een lopend werkgebied: binnen mag, buiten wordt geweigerd tot Claude om meer vraagt.
+        let idx = CodeIndex::build(&dir).unwrap();
+        let home = idx.screens[0].class.clone();
+        let scope = crate::scope::RunScope::new(&idx, &crate::scope::Decision { level: Level::Small, screen: Some(home), why: crate::scope::Why::Selection });
+        deps.scopes.set(&pid, scope);
+        let own = idx.screens[0].file.clone();
+        let verdict = |path: &str| -> Value {
+            let r = call("approve", json!({"tool_name":"Edit","input":{"file_path": dir.join(path).to_string_lossy()}}));
+            serde_json::from_str(r["result"]["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        assert_eq!(verdict(&own)["behavior"], "allow");
+        let denied = verdict("pubspec.yaml");
+        assert_eq!(denied["behavior"], "deny");
+        assert!(denied["message"].as_str().unwrap().contains("breid_bereik_uit"));
+        let r = call("breid_bereik_uit", json!({"reason":"needs a package","files":["pubspec.yaml"]}));
+        assert_eq!(r["result"]["isError"], false);
+        assert_eq!(verdict("pubspec.yaml")["behavior"], "allow");
+        assert_eq!(deps.scopes.with(&pid, |s| (s.denied.len(), s.expansions.len())), Some((1, 1)));
+        deps.scopes.take(&pid);
     }
 
     #[test]

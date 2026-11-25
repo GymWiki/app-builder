@@ -14,6 +14,31 @@ fn git(dir: &Path, args: &[&str]) -> AppResult<String> {
     Ok(o.stdout)
 }
 
+/// Bestanden die sinds `base` veranderd, toegevoegd of verwijderd zijn (ook nog niet vastgelegde).
+pub fn changed_since(dir: &Path, base: &str) -> AppResult<Vec<String>> {
+    let mut out: Vec<String> = git(dir, &["diff", "--name-only", base])?.lines().map(str::to_string).collect();
+    out.extend(git(dir, &["ls-files", "--others", "--exclude-standard"])?.lines().map(str::to_string));
+    out.retain(|l| !l.trim().is_empty());
+    out.sort();
+    out.dedup();
+    Ok(out)
+}
+
+/// Zet losse bestanden terug naar de staat van `base` (nieuwe bestanden worden verwijderd).
+pub fn restore_files(dir: &Path, base: &str, files: &[String]) -> AppResult<()> {
+    for f in files {
+        if f.starts_with('/') || f.split('/').any(|c| c == "..") {
+            continue;
+        }
+        if git(dir, &["cat-file", "-e", &format!("{base}:{f}")]).is_ok() {
+            git(dir, &["checkout", base, "--", f])?;
+        } else {
+            let _ = std::fs::remove_file(dir.join(f));
+        }
+    }
+    Ok(())
+}
+
 pub fn head(dir: &Path) -> AppResult<String> {
     Ok(git(dir, &["rev-parse", "HEAD"])?.trim().to_string())
 }

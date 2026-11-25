@@ -521,6 +521,16 @@
       "start": "Terminal starten",
       "stop": "Terminal sluiten",
       "running": "Terminal actief"
+    },
+    "status": {
+      "scope": "Aan het werk aan {{screen}}",
+      "scope_app": "Aan het werk aan de app",
+      "checking": "Controleren of alles nog werkt…",
+      "repairing": "Een klein probleem herstellen…",
+      "repaired": "Een klein probleem automatisch hersteld.",
+      "checks_ok": "Alles werkt nog.",
+      "rolled_back": "Die aanpassing werkte niet, dus ik ben teruggegaan naar de vorige versie. Er gaat niets verloren.",
+      "scope_reverted": "Een aanpassing buiten deze taak is teruggedraaid om de rest van de app veilig te houden."
     }
   },
   "preview": {
@@ -1106,7 +1116,21 @@
       "yes": "geïnstalleerd",
       "no": "niet geïnstalleerd",
       "okay": "beschikbaar",
-      "notOkay": "niet beschikbaar"
+      "notOkay": "niet beschikbaar",
+      "metrics": {
+        "title": "Runs",
+        "runs": "Runs: {{n}}",
+        "levels": "Aan het begin: klein {{small}}, scherm {{screen}}, gedeeld {{shared}}, project {{project}}",
+        "expanded": "Bereik verbreed: {{n}}",
+        "clean": "Meteen goed: {{n}}",
+        "repaired": "Automatisch hersteld: {{n}}",
+        "rolledBack": "Teruggedraaid: {{n}}",
+        "ai": "Extra AI-vragen: {{n}}",
+        "avg": "Gemiddelde duur: {{s}} s · {{files}} bestanden",
+        "cost": "Totale kosten: ${{cost}}",
+        "denied": "Bewerkingen buiten bereik geweigerd: {{n}}",
+        "none": "Nog geen runs."
+      }
     }
   }
 }

@@ -68,4 +68,15 @@ describe("chat model", () => {
     expect(items.map((i) => i.kind)).toEqual(["user", "tool", "assistant", "snapshot"]);
     expect(items[0]).toMatchObject({ context: "screen HomeScreen" });
   });
+
+  it("shows Studio status lines in order and keeps them in history", () => {
+    const items = replay([
+      { type: "user", text: "make it bigger", context: null },
+      { type: "status", code: "scope", detail: "small|HomeScreen" },
+      { type: "status", code: "checking", detail: null },
+      { type: "status", code: "rolled_back", detail: null },
+    ]);
+    expect(items.map((i) => i.kind)).toEqual(["user", "status", "status", "status"]);
+    expect(items[1]).toMatchObject({ kind: "status", code: "scope", detail: "small|HomeScreen" });
+  });
 });

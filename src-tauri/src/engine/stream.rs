@@ -159,7 +159,7 @@ pub fn parse_line(line: &str, project_dir: &Path) -> Vec<ChatEvent> {
                 }
                 .to_string()
             });
-            vec![ChatEvent::Done { ok, text, duration_ms: v["duration_ms"].as_u64(), code }]
+            vec![ChatEvent::Done { ok, text, duration_ms: v["duration_ms"].as_u64(), code, cost_usd: v["total_cost_usd"].as_f64(), turns: v["num_turns"].as_u64().map(|n| n as u32) }]
         }
         _ => vec![],
     }

@@ -7,7 +7,10 @@ mod engine;
 mod error;
 mod gitops;
 mod install;
+mod index;
 mod integrations;
+mod scope;
+mod quality;
 mod keychain;
 mod logging;
 mod mcp;
@@ -65,13 +68,17 @@ pub fn run() {
             let preview = Arc::new(preview::PreviewManager::new(Arc::new(move |name, payload| {
                 let _ = handle.emit(name, payload);
             })));
-            let mcp = mcp::start(mcp::Deps { db: db.clone(), perms: perms.clone(), preview: preview.clone(), work_dir: dir.join("shots") })?;
+            let scopes: Arc<scope::ScopeRegistry> = Default::default();
+            let mcp = mcp::start(mcp::Deps { db: db.clone(), perms: perms.clone(), preview: preview.clone(), work_dir: dir.join("shots"), scopes: scopes.clone() })?;
 
             let handle = app.handle().clone();
             let chat_ctx = Arc::new(chat::ChatCtx {
                 db: db.clone(),
                 mcp,
                 config_dir: dir.join("mcp"),
+                scopes,
+                checks: true,
+                flutter: None,
                 emit: Arc::new(move |name, payload| {
                     let _ = handle.emit(name, payload);
                 }),
@@ -162,6 +169,7 @@ pub fn run() {
             commands::publish_android,
             commands::publish_ios,
             commands::profile_info,
+            commands::run_metrics,
             commands::profile_apply,
         ])
         .build(tauri::generate_context!())

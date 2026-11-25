@@ -20,6 +20,7 @@ import type {
   PermissionDecision,
   PreviewState,
   ProfileInfo,
+  RunsSummary,
   Project,
   Screen,
   Settings,
@@ -145,6 +146,7 @@ export const api = {
 
   profileInfo: (projectId: string) => call<ProfileInfo>("profile_info", { projectId }),
   profileApply: (projectId: string) => call<void>("profile_apply", { projectId }),
+  runMetrics: (projectId: string) => call<RunsSummary>("run_metrics", { projectId }),
 
   projectsList: (query?: string) => call<Project[]>("projects_list", { query: query || null }),
   projectGet: (id: string) => call<Project>("project_get", { id }),

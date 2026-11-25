@@ -7,6 +7,38 @@ import { api } from "@/lib/ipc";
 import { toastError } from "@/lib/toast";
 import type { Project } from "@/lib/types";
 
+function Metrics({ projectId }: { projectId: string }) {
+  const { t } = useTranslation();
+  const q = useQuery({ queryKey: ["runMetrics", projectId], queryFn: () => api.runMetrics(projectId) });
+  const m = q.data;
+  if (!m) return null;
+  if (m.runs === 0) return <p className="t-small text-muted-foreground">{t("profile.dev.metrics.none")}</p>;
+  const lv = (k: string) => m.byLevel[k] ?? 0;
+  return (
+    <ul className="t-small text-muted-foreground space-y-0.5 font-mono">
+      <li>{t("profile.dev.metrics.runs", { n: m.runs })}</li>
+      <li>
+        {t("profile.dev.metrics.levels", {
+          small: lv("small"),
+          screen: lv("screen"),
+          shared: lv("shared"),
+          project: lv("project"),
+        })}
+      </li>
+      <li>{t("profile.dev.metrics.expanded", { n: m.expanded })}</li>
+      <li>{t("profile.dev.metrics.clean", { n: m.cleanFirstTime })}</li>
+      <li>{t("profile.dev.metrics.repaired", { n: m.repaired })}</li>
+      <li>{t("profile.dev.metrics.rolledBack", { n: m.rolledBack })}</li>
+      <li>{t("profile.dev.metrics.ai", { n: m.aiQuestions })}</li>
+      <li>{t("profile.dev.metrics.denied", { n: m.deniedEdits })}</li>
+      <li>
+        {t("profile.dev.metrics.avg", { s: (m.avgDurationMs / 1000).toFixed(1), files: m.avgFilesChanged.toFixed(1) })}
+      </li>
+      <li>{t("profile.dev.metrics.cost", { cost: m.totalCostUsd.toFixed(2) })}</li>
+    </ul>
+  );
+}
+
 function Info({ project }: { project: Project }) {
   const { t } = useTranslation();
   const q = useQuery({ queryKey: ["profileInfo", project.id], queryFn: () => api.profileInfo(project.id) });
@@ -25,6 +57,7 @@ function Info({ project }: { project: Project }) {
           <li>{t("profile.dev.structure", { structure: i.structure })}</li>
         </ul>
       )}
+      <Metrics projectId={project.id} />
       <Button
         size="xs"
         variant="outline"

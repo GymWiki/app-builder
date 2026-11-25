@@ -17,6 +17,7 @@ export type Item =
       result: string | null;
     }
   | { kind: "snapshot"; key: string; label: string; commit: string }
+  | { kind: "status"; key: string; code: string; detail: string | null }
   | { kind: "error"; key: string; code: string; message: string };
 
 const next = (items: Item[]) => `i${items.length}`;
@@ -73,6 +74,9 @@ export function applyEvent(items: Item[], ev: ChatEvent): Item[] {
 
     case "snapshot":
       return [...items, { kind: "snapshot", key: next(items), label: ev.label, commit: ev.commit }];
+
+    case "status":
+      return [...items, { kind: "status", key: next(items), code: ev.code, detail: ev.detail }];
 
     case "done":
       return ev.ok

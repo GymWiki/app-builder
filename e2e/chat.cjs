@@ -41,6 +41,16 @@ const ok = (c, m) => {
   await p.getByText("Claude is working…").waitFor({ state: "detached" });
   ok(await p.getByText("Changed lib/settings_screen.dart").isVisible(), "file change card shown in plain language");
   ok(await p.getByText("Ran flutter analyze").isVisible(), "command card shown");
+  ok(await p.getByText("Working on Home").isVisible(), "scope shown as a plain sentence for the chosen screen");
+  ok(await p.getByText("Everything still works.").isVisible(), "check result shown as a plain sentence");
+  ok(
+    !(await p
+      .getByText(/small|breid_bereik_uit/)
+      .first()
+      .isVisible()
+      .catch(() => false)),
+    "no technical level names for normal users",
+  );
   ok((await p.locator("strong", { hasText: "settings screen" }).count()) === 1, "markdown bold rendered");
   await p.screenshot({ path: `${S}/22-chat-done.png` });
 

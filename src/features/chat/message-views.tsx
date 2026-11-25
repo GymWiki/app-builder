@@ -11,11 +11,13 @@ import {
   Wrench,
   X,
   Camera,
+  Undo2,
 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
+import { useSettings } from "@/hooks";
 import type { PermissionDecision, PermissionRequest, ToolKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { Item } from "./chat-model";
@@ -116,6 +118,28 @@ export function SnapshotChip({ item }: { item: Extract<Item, { kind: "snapshot" 
   return (
     <p className="text-muted-foreground t-small flex items-center justify-center gap-1.5">
       <Camera className="size-3.5" aria-hidden /> {t("chat.snapshot", { label: item.label })}
+    </p>
+  );
+}
+
+/** "Scherm|Home" -> weergavenaam; het niveau zelf is alleen in de ontwikkelaarsmodus te zien. */
+export function StatusLine({ item }: { item: Extract<Item, { kind: "status" }> }) {
+  const { t } = useTranslation();
+  const dev = useSettings().data?.dev_mode === "true";
+  const [level, screen] = (item.detail ?? "").split("|");
+  const name = (screen ?? "").replace(/(Screen|Page)$/, "");
+  const code = item.code === "scope" && !name ? "scope_app" : item.code;
+  const Icon =
+    code === "rolled_back" || code === "scope_reverted"
+      ? Undo2
+      : code === "checking" || code === "repairing"
+        ? Loader2
+        : Check;
+  return (
+    <p role="status" className="text-muted-foreground t-small flex items-center justify-center gap-1.5">
+      <Icon className={cn("size-3.5", Icon === Loader2 && "animate-spin")} aria-hidden />
+      {t(`chat.status.${code}`, { screen: name })}
+      {dev && item.code === "scope" && level ? <span className="font-mono"> · {level}</span> : null}
     </p>
   );
 }

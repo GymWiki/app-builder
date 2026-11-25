@@ -10,7 +10,15 @@ import { toastError } from "@/lib/toast";
 import { ProfileStatusLine } from "@/features/profile/profile-status-line";
 import { AdvancedTerminal } from "./advanced-terminal";
 import { useChat } from "./chat-store";
-import { AssistantBubble, ErrorCard, PermissionCard, SnapshotChip, ToolCard, UserBubble } from "./message-views";
+import {
+  AssistantBubble,
+  ErrorCard,
+  PermissionCard,
+  SnapshotChip,
+  StatusLine,
+  ToolCard,
+  UserBubble,
+} from "./message-views";
 
 export interface ChatContext {
   /** Leesbare tekst voor de chip. */
@@ -145,6 +153,8 @@ export function ChatPanel({
                   return <ToolCard key={it.key} item={it} />;
                 case "snapshot":
                   return <SnapshotChip key={it.key} item={it} />;
+                case "status":
+                  return <StatusLine key={it.key} item={it} />;
                 case "error":
                   return <ErrorCard key={it.key} item={it} />;
               }

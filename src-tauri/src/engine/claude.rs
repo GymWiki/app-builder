@@ -107,8 +107,8 @@ pub fn system_prompt(language: &str) -> String {
          The user is not a developer: explain in plain {lang}, avoid jargon, keep changes small and focused, and always answer in {lang}. \
          Read STUDIO.md first and keep it up to date when the app's behavior or an important decision changes. \
          Use the `studio` MCP tools to inspect and steer the project (project_status, list_screens, get_theme/set_theme, \
-         create_snapshot, bump_version, get_checklist, get_store_listing/set_store_listing, preview_status, preview_screenshot). \
-         Prefer set_theme over hand-editing colors. After code changes run `flutter analyze` and fix problems. \
+         create_snapshot, bump_version, get_checklist, scherm_index/afhankelijkheden/wie_gebruikt (instead of searching the whole project), get_store_listing/set_store_listing, preview_status, preview_screenshot). \
+         Prefer set_theme over hand-editing colors. Studio gives every task a scope (the files you may edit); when you really need other files call breid_bereik_uit first. After code changes run `flutter analyze` and fix problems. \
          Never put secrets (API keys, passwords, signing keys) in project files."
     )
 }
@@ -153,6 +153,10 @@ pub fn build_args(help: &str, req: &TurnRequest, isolate_user_settings: bool) ->
         a.push("--permission-prompt-tool".into());
         a.push(PERMISSION_TOOL.into());
     }
+    if let Some(f) = req.settings.as_ref().filter(|_| help.contains("--settings")) {
+        a.push("--settings".into());
+        a.push(f.to_string_lossy().into_owned());
+    }
     if let Some(id) = &req.resume {
         a.push("--resume".into());
         a.push(id.clone());
@@ -163,6 +167,36 @@ pub fn build_args(help: &str, req: &TurnRequest, isolate_user_settings: bool) ->
 impl AiEngine for ClaudeEngine {
     fn id(&self) -> &'static str {
         "claude-code"
+    }
+
+    fn classify(&self, question: &str) -> Option<String> {
+        let program = self.program().ok()?;
+        let help = help_text(&program);
+        let mut args: Vec<&str> = vec!["-p", "--output-format", "text"];
+        // Alleen vlaggen die de CLI echt kent; zonder gereedschap, zonder sessie en met het goedkoopste model.
+        for (flag, val) in [("--model", Some("haiku")), ("--tools", Some("")), ("--no-session-persistence", None)] {
+            if help.contains(flag) {
+                args.push(flag);
+                args.extend(val);
+            }
+        }
+        let mut cmd = proc::command(&program);
+        cmd.args(&args).stdin(Stdio::piped());
+        let mut child = cmd.spawn().ok()?;
+        if let Some(mut s) = child.stdin.take() {
+            let _ = s.write_all(question.as_bytes());
+        }
+        let mut out = child.stdout.take()?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut text = String::new();
+            let _ = out.read_to_string(&mut text);
+            let _ = tx.send(text);
+        });
+        let answer = rx.recv_timeout(Duration::from_secs(60)).ok();
+        let _ = child.kill();
+        let _ = child.wait();
+        answer.filter(|t| !t.trim().is_empty())
     }
 
     fn run_turn(&self, req: &TurnRequest, run: &RunHandle, on_event: &mut dyn FnMut(ChatEvent)) -> AppResult<TurnOutcome> {
@@ -243,6 +277,7 @@ mod tests {
             resume: resume.map(Into::into),
             mcp_config: "/tmp/mcp.json".into(),
             language: "nl".into(),
+            settings: None,
         }
     }
 

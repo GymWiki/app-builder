@@ -44,7 +44,13 @@ pub enum ChatEvent {
         duration_ms: Option<u64>,
         /// Herkende oorzaak bij een mislukte beurt: not_logged_in | failed
         code: Option<String>,
+        #[serde(default)]
+        cost_usd: Option<f64>,
+        #[serde(default)]
+        turns: Option<u32>,
     },
+    /// Een statusregel van Studio zelf (werkgebied gekozen, gerepareerd, teruggedraaid, ...). De UI vertaalt `code`.
+    Status { code: String, detail: Option<String> },
     Error { code: String, message: String },
 }
 
@@ -57,6 +63,8 @@ pub struct TurnRequest {
     pub mcp_config: PathBuf,
     /// UI-taal ("en", "nl"): Claude antwoordt in die taal.
     pub language: String,
+    /// Extra instellingen voor alleen deze run (bv. het werkgebied), als bestand.
+    pub settings: Option<PathBuf>,
 }
 
 pub struct TurnOutcome {
@@ -85,5 +93,9 @@ impl RunHandle {
 pub trait AiEngine: Send + Sync {
     fn id(&self) -> &'static str;
     /// Voert één beurt uit en meldt gebeurtenissen via `on_event`.
+    /// Eén korte vraag zonder gereedschap of project (goedkoop model). `None` als de engine dat niet kan.
+    fn classify(&self, _question: &str) -> Option<String> {
+        None
+    }
     fn run_turn(&self, req: &TurnRequest, run: &RunHandle, on_event: &mut dyn FnMut(ChatEvent)) -> AppResult<TurnOutcome>;
 }

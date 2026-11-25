@@ -12,7 +12,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Versie van het profiel. Verhogen bij elke inhoudelijke wijziging; bestaande projecten worden gemigreerd.
-pub const CURRENT: u32 = 1;
+pub const CURRENT: u32 = 2;
 pub const PLUGIN_ID: &str = "dart-flutter@dart-flutter";
 pub const PLUGIN_SOURCE: &str = "flutter/agent-plugins";
 pub const MIN_DART: &str = "3.9.0";
@@ -266,7 +266,7 @@ pub fn apply(dir: &Path, facts: &ProjectFacts) -> AppResult<ProfileReport> {
     for f in owned_files() {
         apply_owned(dir, &mut man, &f, &mut rep)?;
     }
-    apply_claude_md(dir, &claude_block(facts, false), &mut rep)?;
+    apply_claude_md(dir, &claude_block(facts, true), &mut rep)?;
     apply_settings(dir, &mut rep)?;
     apply_feature_notes(dir, &mut rep)?;
     man.version = CURRENT;
@@ -373,8 +373,8 @@ mod tests {
         for must in ["STUDIO.md", "Riverpod", "go_router", "lib/core/", "lib/features/", "list_screens", "AppSpacing"] {
             assert!(md.contains(must), "{must}");
         }
-        assert!(!md.contains("breid_bereik_uit"), "the scope tool does not exist in profile v1");
-        assert!(claude_block(&facts(), true).contains("breid_bereik_uit"));
+        assert!(md.contains("breid_bereik_uit") && md.contains("scherm_index"), "profile v2 knows the scope tool and the index");
+        assert!(!claude_block(&facts(), false).contains("breid_bereik_uit"));
         assert!(!md.contains("__"), "no unfilled placeholders");
     }
 
@@ -429,6 +429,25 @@ mod tests {
         let again = read(&d, "CLAUDE.md");
         assert!(again.contains("Explain in plain language") && !again.contains("OLD TEXT") && again.contains("Always answer in Dutch."));
         assert_eq!(again.matches(BLOCK_START).count(), 1);
+    }
+
+    #[test]
+    fn a_v1_project_migrates_to_v2_without_touching_user_text_or_modified_files() {
+        let d = tmp();
+        // Zo zag een project uit fase 6 eruit: blok zonder de scope-regel, eigen tekst eromheen, aangepaste regels.
+        let v1 = format!("My own notes\n\n{}\n\nMore notes\n", claude_block(&facts(), false).trim_end());
+        std::fs::write(d.join("CLAUDE.md"), &v1).unwrap();
+        apply(&d, &facts()).unwrap();
+        std::fs::write(d.join(".claude/rules/flutter.md"), "my own rules\n").unwrap();
+        let before = read(&d, "CLAUDE.md");
+        assert!(before.contains("breid_bereik_uit") && before.contains("scherm_index"), "block updated to v2");
+        assert!(before.starts_with("My own notes") && before.contains("More notes"), "text around the block is untouched");
+        assert_eq!(before.matches("studio:start").count(), 1, "replaced in place, not appended");
+        let r = apply(&d, &facts()).unwrap();
+        assert_eq!(read(&d, "CLAUDE.md"), before);
+        assert_eq!(read(&d, ".claude/rules/flutter.md"), "my own rules\n", "a file the user changed is never overwritten");
+        assert!(r.skipped.iter().any(|s| s.0.contains("flutter.md")), "{:?}", r.skipped);
+        assert_eq!(r.version, 2);
     }
 
     #[test]

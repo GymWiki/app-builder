@@ -80,7 +80,16 @@ export type ChatEvent =
     }
   | { type: "tool_result"; tool_use_id: string; ok: boolean; text: string }
   | { type: "snapshot"; commit: string; label: string }
-  | { type: "done"; ok: boolean; text: string; duration_ms: number | null; code: string | null }
+  | { type: "status"; code: string; detail: string | null }
+  | {
+      type: "done";
+      ok: boolean;
+      text: string;
+      duration_ms: number | null;
+      code: string | null;
+      cost_usd?: number | null;
+      turns?: number | null;
+    }
   | { type: "error"; code: string; message: string };
 
 export interface PermissionRequest {
@@ -257,4 +266,19 @@ export interface ProfileInfo {
   dart: string | null;
   dartMcpOk: boolean;
   structure: "feature-first" | "flat";
+}
+
+/** Spiegel van `RunsSummary` in src-tauri/src/db.rs (alleen voor het verborgen ontwikkelaarspaneel). */
+export interface RunsSummary {
+  runs: number;
+  byLevel: Record<string, number>;
+  expanded: number;
+  cleanFirstTime: number;
+  repaired: number;
+  rolledBack: number;
+  aiQuestions: number;
+  avgDurationMs: number;
+  totalCostUsd: number;
+  avgFilesChanged: number;
+  deniedEdits: number;
 }

@@ -4,7 +4,8 @@ Flutter app made with Studio for a non-programmer. Explain in plain language and
 
 ## Before you start
 - Read STUDIO.md (what the app does, decisions so far).
-- Use the studio tool `list_screens` (or `ls lib/features`) to see the screens.
+- Read .studio/screens.md (or call the studio tool `scherm_index`) for the screens and what they share; `list_screens` gives a plain list.
+- Studio sets the scope of each task. Stay inside it.
 - Change only what the task needs. Never read build/, .dart_tool/ or generated files.
 
 ## Stack

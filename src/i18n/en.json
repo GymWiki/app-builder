@@ -521,6 +521,16 @@
       "start": "Start terminal",
       "stop": "Close terminal",
       "running": "Terminal running"
+    },
+    "status": {
+      "scope": "Working on {{screen}}",
+      "scope_app": "Working on the app",
+      "checking": "Checking that everything still works…",
+      "repairing": "Fixing a small problem…",
+      "repaired": "Fixed a small problem automatically.",
+      "checks_ok": "Everything still works.",
+      "rolled_back": "That change did not work out, so I went back to the previous version. Nothing is lost.",
+      "scope_reverted": "A change outside this task was undone to keep the rest of the app safe."
     }
   },
   "preview": {
@@ -1106,7 +1116,21 @@
       "yes": "installed",
       "no": "not installed",
       "okay": "available",
-      "notOkay": "not available"
+      "notOkay": "not available",
+      "metrics": {
+        "title": "Runs",
+        "runs": "Runs: {{n}}",
+        "levels": "At the start: small {{small}}, screen {{screen}}, shared {{shared}}, project {{project}}",
+        "expanded": "Scope widened: {{n}}",
+        "clean": "Clean the first time: {{n}}",
+        "repaired": "Repaired automatically: {{n}}",
+        "rolledBack": "Rolled back: {{n}}",
+        "ai": "Extra AI questions: {{n}}",
+        "avg": "Average duration: {{s}} s · {{files}} files",
+        "cost": "Total cost: ${{cost}}",
+        "denied": "Edits outside scope refused: {{n}}",
+        "none": "No runs yet."
+      }
     }
   }
 }

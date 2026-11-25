@@ -1,6 +1,11 @@
 //! Eén chatbeurt van begin tot eind: sessie, opslag, MCP-config, engine, automatische momentopname.
 
-use crate::db::Db;
+use crate::db::{Db, RunRecord};
+use crate::gitops;
+use crate::index::CodeIndex;
+use crate::proc;
+use crate::quality;
+use crate::scope::{self, RunScope, ScopeRegistry};
 use crate::engine::{AiEngine, ChatEvent, RunHandle, TurnRequest};
 use crate::error::{AppError, AppResult};
 use crate::mcp::{config_json_with, McpInfo};
@@ -9,6 +14,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 pub type Emit = Arc<dyn Fn(&str, Value) + Send + Sync>;
 
@@ -22,6 +28,10 @@ pub struct ChatCtx {
     pub mcp: McpInfo,
     pub config_dir: PathBuf,
     pub emit: Emit,
+    pub scopes: Arc<ScopeRegistry>,
+    /// Controle na afloop aan/uit (tests) en een vaste Flutter (tests); anders wordt `flutter` in PATH gezocht.
+    pub checks: bool,
+    pub flutter: Option<PathBuf>,
 }
 
 fn kind_of(e: &ChatEvent) -> &'static str {
@@ -33,6 +43,7 @@ fn kind_of(e: &ChatEvent) -> &'static str {
         ChatEvent::ToolUse { .. } => "tool_use",
         ChatEvent::ToolResult { .. } => "tool_result",
         ChatEvent::Snapshot { .. } => "snapshot",
+        ChatEvent::Status { .. } => "status",
         ChatEvent::Done { .. } => "done",
         ChatEvent::Error { .. } => "error",
     }
@@ -96,8 +107,10 @@ impl ChatManager {
         Ok(())
     }
 
-    /// De eigenlijke beurt (synchroon; apart zodat tests hem direct kunnen aanroepen).
+    /// De eigenlijke beurt (synchroon; apart zodat tests hem direct kunnen aanroepen). Volgorde: werkgebied kiezen,
+    /// momentopname, run, controle met gerichte reparatie, eventueel terugdraaien, metingen.
     pub fn run_flow(&self, ctx: &ChatCtx, project_id: &str, text: &str, context: Option<String>, language: &str, handle: &RunHandle) {
+        let started = Instant::now();
         let emit_event = |session: Option<&str>, e: &ChatEvent| {
             if let (Some(s), false) = (session, matches!(e, ChatEvent::TextDelta { .. })) {
                 let _ = ctx.db.message_insert(s, kind_of(e), &serde_json::to_string(e).unwrap_or_default());
@@ -105,76 +118,229 @@ impl ChatManager {
             (ctx.emit)("chat-event", json!({ "projectId": project_id, "event": e }));
         };
 
-        let setup = || -> AppResult<(crate::db::Project, crate::db::Session, PathBuf)> {
-            let project = ctx.db.project_get(project_id)?;
-            let session = match ctx.db.session_active(project_id)? {
-                Some(s) => s,
-                None => ctx.db.session_create(project_id, self.engine.id())?,
-            };
+        let project = match ctx.db.project_get(project_id) {
+            Ok(p) => p,
+            Err(e) => return emit_event(None, &ChatEvent::Error { code: error_code(&e).into(), message: crate::logging::redact(&e.to_string()) }),
+        };
+        let dir = PathBuf::from(&project.path);
+
+        // 1. Werkgebied kiezen (de gebruiker merkt hier niets van).
+        let _ = ctx.db.session_for_scope(project_id, "", self.engine.id()); // begin van het gesprek
+        let index = CodeIndex::build(&dir).unwrap_or_default();
+        let current_key = format!("scope:{project_id}:screen");
+        let current = ctx.db.setting_get(&current_key).ok().flatten();
+        let mut ai_questions = 0i64;
+        let decision = scope::decide(&index, text, context.as_deref(), current.as_deref(), &mut |q| {
+            ai_questions += 1;
+            self.engine.classify(q)
+        });
+        if let Some(s) = &decision.screen {
+            let _ = ctx.db.setting_set(&current_key, s);
+        }
+        let scope_state = RunScope::new(&index, &decision);
+        let key = decision.screen.clone().unwrap_or_else(|| decision.level.as_str().to_string());
+        let session = match ctx.db.session_for_scope(project_id, &key, self.engine.id()) {
+            Ok(s) => s,
+            Err(e) => return emit_event(None, &ChatEvent::Error { code: error_code(&e).into(), message: crate::logging::redact(&e.to_string()) }),
+        };
+        let sid = session.id.clone();
+
+        // 2. Momentopname van vóór de run (daar draaien we naar terug als de controle mislukt) en een verse schermindex.
+        let snap_label = format!("Before Claude: {}", text.chars().take(40).collect::<String>().replace('\n', " "));
+        let _ = studio_tools::create_snapshot(&ctx.db, &project, &snap_label, "auto");
+        let base = gitops::head(&dir).ok();
+        let _ = std::fs::create_dir_all(dir.join(".studio")).and_then(|_| std::fs::write(dir.join(".studio/screens.md"), index.render_markdown()));
+
+        // 3. MCP-config en per-run instellingen.
+        let files = || -> AppResult<(PathBuf, Option<PathBuf>)> {
             std::fs::create_dir_all(&ctx.config_dir)?;
             let cfg = ctx.config_dir.join(format!("{project_id}.json"));
-            let extra = mcp_extras(project_id, std::path::Path::new(&project.path));
+            let extra = mcp_extras(project_id, &dir);
             std::fs::write(&cfg, serde_json::to_string_pretty(&config_json_with(&ctx.mcp, project_id, &extra))?)?;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(&cfg, std::fs::Permissions::from_mode(0o600))?;
             }
-            Ok((project, session, cfg))
+            let settings = match scope::settings_json(decision.level) {
+                Some(v) => {
+                    let f = ctx.config_dir.join(format!("{project_id}.settings.json"));
+                    std::fs::write(&f, serde_json::to_string(&v)?)?;
+                    Some(f)
+                }
+                None => None,
+            };
+            Ok((cfg, settings))
         };
-        let (project, session, cfg) = match setup() {
+        let (cfg, settings) = match files() {
             Ok(x) => x,
             Err(e) => return emit_event(None, &ChatEvent::Error { code: error_code(&e).into(), message: crate::logging::redact(&e.to_string()) }),
         };
-        let sid = session.id.clone();
+        ctx.scopes.set(project_id, scope_state);
 
         emit_event(Some(&sid), &ChatEvent::User { text: text.to_string(), context: context.clone() });
         let _ = ctx.db.session_set_title_if_empty(&sid, &text.chars().take(60).collect::<String>());
+        let why = serde_json::to_value(decision.why).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
+        emit_event(Some(&sid), &ChatEvent::Status { code: "scope".into(), detail: Some(format!("{}|{}", decision.level.as_str(), decision.screen.clone().unwrap_or_default())) });
 
+        let scope_text = ctx.scopes.with(project_id, |s| s.describe()).unwrap_or_default();
         let prompt = match &context {
-            Some(c) if !c.trim().is_empty() => format!("[Studio context: {c}]\n\n{text}"),
-            _ => text.to_string(),
-        };
-        let req = TurnRequest {
-            project_dir: PathBuf::from(&project.path),
-            prompt,
-            resume: session.engine_session_id.clone(),
-            mcp_config: cfg,
-            language: language.to_string(),
+            Some(c) if !c.trim().is_empty() => format!("[Studio scope: {scope_text}]\n[Studio context: {c}]\n\n{text}"),
+            _ => format!("[Studio scope: {scope_text}]\n\n{text}"),
         };
 
-        let mut last_text = String::new();
-        let outcome = self.engine.run_turn(&req, handle, &mut |e| {
-            if let ChatEvent::Text { text, .. } = &e {
-                last_text = text.clone();
+        let mut stats = TurnStats::default();
+        let mut resume = session.engine_session_id.clone();
+        let mut turn = |prompt: String, stats: &mut TurnStats| {
+            let req = TurnRequest { project_dir: dir.clone(), prompt, resume: resume.clone(), mcp_config: cfg.clone(), language: language.to_string(), settings: settings.clone() };
+            let mut last_ok = None;
+            let outcome = self.engine.run_turn(&req, handle, &mut |e| {
+                if let ChatEvent::Init { mcp, .. } = &e {
+                    for (name, status) in mcp.iter().filter(|(n, s)| n == "dart" && s != "connected" && s != "pending") {
+                        log::warn!("MCP server {name} is {status}; continuing without it");
+                    }
+                }
+                if let ChatEvent::Done { ok, cost_usd, turns, .. } = &e {
+                    last_ok = Some(*ok);
+                    stats.cost += cost_usd.unwrap_or(0.0);
+                    stats.turns += turns.unwrap_or(0);
+                }
+                emit_event(Some(&sid), &e);
+            });
+            match outcome {
+                Ok(o) => {
+                    if let Some(id) = o.engine_session_id {
+                        let _ = ctx.db.session_set_engine_id(&sid, &id);
+                        resume = Some(id);
+                    }
+                }
+                Err(e) => emit_event(Some(&sid), &ChatEvent::Error { code: error_code(&e).into(), message: crate::logging::redact(&e.to_string()) }),
             }
-            if let ChatEvent::Init { mcp, .. } = &e {
-                for (name, status) in mcp.iter().filter(|(n, s)| n == "dart" && s != "connected" && s != "pending") {
-                    log::warn!("MCP server {name} is {status}; continuing without it");
+            last_ok == Some(true) && !handle.is_cancelled()
+        };
+
+        let mut ok = turn(prompt, &mut stats);
+
+        // 3b. Controle van het werkgebied achteraf. Bewerkingen via de editor worden al onderweg getoetst, maar Claude kan
+        // ook een shell-commando gebruiken. Wat buiten het gebied is aangepast, draait Studio terug; Claude krijgt één
+        // kans om met `breid_bereik_uit` om meer te vragen en het opnieuw te doen.
+        if let Some(base) = base.as_ref().filter(|_| ok) {
+            for round in 0..2 {
+                let changed = gitops::changed_since(&dir, base).unwrap_or_default();
+                let out = ctx.scopes.with(project_id, |s| s.breaches(&changed)).unwrap_or_default();
+                if out.is_empty() {
+                    break;
+                }
+                let _ = gitops::restore_files(&dir, base, &out);
+                emit_event(Some(&sid), &ChatEvent::Status { code: "scope_reverted".into(), detail: Some(out.len().to_string()) });
+                ctx.scopes.with(project_id, |s| s.denied.extend(out.iter().cloned()));
+                if round == 0 {
+                    let msg = format!(
+                        "Studio undid your changes to {} because they are outside the scope of this task. \
+                         If the task really needs them, call breid_bereik_uit with a short reason first and then redo exactly those changes with the editor tools; otherwise leave them as they were.",
+                        out.join(", ")
+                    );
+                    ok = turn(msg, &mut stats);
+                    if !ok {
+                        break;
+                    }
                 }
             }
-            emit_event(Some(&sid), &e);
-        });
-        match outcome {
-            Ok(o) => {
-                if let Some(id) = o.engine_session_id {
-                    let _ = ctx.db.session_set_engine_id(&sid, &id);
-                }
-            }
-            Err(e) => emit_event(Some(&sid), &ChatEvent::Error { code: error_code(&e).into(), message: crate::logging::redact(&e.to_string()) }),
         }
 
-        // De config kan een token bevatten (Supabase): na de beurt weer weghalen.
-        let _ = std::fs::remove_file(&req.mcp_config);
+        // 4. Controle, gerichte reparatie (max. 2x) en zo nodig terugdraaien.
+        let mut gate_result = quality::GateResult { initial_issues: 0, repairs: 0, rolled_back: false, remaining: vec![] };
+        let flutter = if ctx.checks { ctx.flutter.clone().or_else(|| proc::find("flutter")) } else { None };
+        if let (true, Some(flutter), Some(base)) = (ok, flutter.as_ref(), base.as_ref()) {
+            let changed = |dir: &std::path::Path| -> Vec<String> {
+                gitops::changed_since(dir, base).unwrap_or_default().into_iter().filter(|f| !f.starts_with(".studio/")).collect()
+            };
+            let first = changed(&dir);
+            if first.iter().any(|f| f.ends_with(".dart") || f == "pubspec.yaml") {
+                emit_event(Some(&sid), &ChatEvent::Status { code: "checking".into(), detail: None });
+                let mut check = || {
+                    let level = ctx.scopes.with(project_id, |s| s.level).unwrap_or(decision.level);
+                    quality::run_checks(&dir, flutter, level, &changed(&dir))
+                };
+                let mut repair = |issues: &[quality::Issue], n: u32| {
+                    emit_event(Some(&sid), &ChatEvent::Status { code: "repairing".into(), detail: Some(n.to_string()) });
+                    let files: Vec<String> = issues.iter().map(|i| i.file.clone()).collect();
+                    ctx.scopes.with(project_id, |s| s.allow_files(&files));
+                    turn(quality::repair_prompt(issues, n), &mut stats)
+                };
+                let mut rollback = || {
+                    if let Ok(Some(c)) = gitops::restore(&dir, base, "Studio: undid the last change (it did not pass the checks)") {
+                        let v = ctx.db.project_get(project_id).map(|p| p.version).unwrap_or_default();
+                        let _ = ctx.db.snapshot_insert(project_id, &c, "Undid a change that did not pass the checks", "auto", &v);
+                    }
+                    emit_event(Some(&sid), &ChatEvent::Status { code: "rolled_back".into(), detail: None });
+                };
+                gate_result = quality::gate(&mut check, &mut repair, &mut rollback);
+                let code = match (gate_result.rolled_back, gate_result.repairs) {
+                    (true, _) => None,
+                    (false, 0) => Some("checks_ok"),
+                    (false, _) => Some("repaired"),
+                };
+                if let Some(code) = code {
+                    emit_event(Some(&sid), &ChatEvent::Status { code: code.into(), detail: None });
+                }
+            }
+        }
+        if gate_result.rolled_back {
+            ok = false;
+        }
+
+        // 5. Opruimen: de config kan een token bevatten (Supabase), het werkgebied geldt alleen voor deze run.
+        let final_scope = ctx.scopes.take(project_id);
+        let _ = std::fs::remove_file(&cfg);
+        if let Some(f) = &settings {
+            let _ = std::fs::remove_file(f);
+        }
 
         // Wijzigingen van Claude altijd vastleggen, zodat de gebruiker terug kan.
         let label: String = format!("Claude: {}", text.chars().take(50).collect::<String>().replace('\n', " "));
-        if let Ok(v) = studio_tools::create_snapshot(&ctx.db, &project, &label, "auto") {
-            if v["created"] == true {
-                emit_event(Some(&sid), &ChatEvent::Snapshot { commit: v["commit"].as_str().unwrap_or_default().to_string(), label });
+        if !gate_result.rolled_back {
+            if let Ok(v) = studio_tools::create_snapshot(&ctx.db, &project, &label, "auto") {
+                if v["created"] == true {
+                    emit_event(Some(&sid), &ChatEvent::Snapshot { commit: v["commit"].as_str().unwrap_or_default().to_string(), label });
+                }
             }
         }
+        let files_changed = base.as_ref().and_then(|b| gitops::changed_since(&dir, b).ok()).map(|c| c.len()).unwrap_or(0);
+        // Koppeling met het volgende verzoek: de index bijwerken zodat de volgende run niet op oude gegevens begint.
+        if let Ok(idx) = CodeIndex::build(&dir) {
+            let _ = std::fs::write(dir.join(".studio/screens.md"), idx.render_markdown());
+        }
+
+        // 6. Metingen (alleen lokaal).
+        let (final_level, expansions, denied) = final_scope.map(|s| (s.level, s.expansions.len(), s.denied.len())).unwrap_or((decision.level, 0, 0));
+        let _ = ctx.db.run_insert(
+            project_id,
+            &RunRecord {
+                level: decision.level.as_str().into(),
+                final_level: final_level.as_str().into(),
+                screen: decision.screen.clone().unwrap_or_default(),
+                why,
+                expansions: expansions as i64,
+                denied_edits: denied as i64,
+                files_changed: files_changed as i64,
+                issues_before: gate_result.initial_issues as i64,
+                repairs: gate_result.repairs as i64,
+                rolled_back: gate_result.rolled_back,
+                ok,
+                duration_ms: started.elapsed().as_millis() as i64,
+                cost_usd: stats.cost,
+                turns: stats.turns as i64,
+                ai_questions,
+            },
+        );
     }
+}
+
+#[derive(Default)]
+struct TurnStats {
+    cost: f64,
+    turns: u32,
 }
 
 #[cfg(test)]
@@ -230,6 +396,7 @@ mod tests {
             db: db.clone(),
             mcp: McpInfo { port: 4242, token: "tok".into() },
             config_dir: root.join("mcp"),
+            scopes: Default::default(), checks: false, flutter: None,
             emit: Arc::new(move |n, v| sink.lock().unwrap().push((n.to_string(), v))),
         });
         let mgr = Arc::new(ChatManager::new(Arc::new(ClaudeEngine::with_program(fake))));
@@ -272,9 +439,178 @@ mod tests {
             std::thread::sleep(Duration::from_millis(50));
         }
         let args = std::fs::read_to_string(root.join("args.txt")).unwrap();
-        let turns: Vec<&str> = args.lines().filter(|l| l.contains("--output-format")).collect();
+        let turns: Vec<&str> = args.lines().filter(|l| l.contains("stream-json")).collect();
         assert!(turns[1].contains(&format!("--resume {}", s.engine_session_id.unwrap())), "{turns:?}");
-        assert!(mgr.send(Arc::new(ChatCtx { db, mcp: McpInfo { port: 1, token: String::new() }, config_dir: root.join("x"), emit: Arc::new(|_, _| {}) }), p.id, "  ".into(), None, "en".into()).is_err());
+        assert!(mgr.send(Arc::new(ChatCtx { db, mcp: McpInfo { port: 1, token: String::new() }, config_dir: root.join("x"), scopes: Default::default(), checks: false, flutter: None, emit: Arc::new(|_, _| {}) }), p.id, "  ".into(), None, "en".into()).is_err());
+    }
+
+    /// Een echte git-repo met het voorbeeldproject, een nep-claude die steeds iets achter home_screen.dart plakt en een
+    /// nep-flutter die (niet) klaagt. Zo testen we de hele keten: werkgebied, momentopname, controle, reparatie, terugdraaien.
+    #[cfg(unix)]
+    fn scoped_fixture(broken: bool) -> (PathBuf, PathBuf, Arc<Db>, crate::db::Project, ChatCtx, ChatManager) {
+        use std::os::unix::fs::PermissionsExt;
+        let git = crate::proc::find("git").expect("git");
+        let proj = crate::index::fixture("chat");
+        let root = proj.clone();
+        for a in [vec!["init", "-q"], vec!["config", "user.email", "t@t"], vec!["config", "user.name", "t"], vec!["add", "-A"], vec!["commit", "-qm", "start"]] {
+            crate::proc::run(&git, &a, Some(&proj), Duration::from_secs(10)).unwrap();
+        }
+        let bin = std::env::temp_dir().join(format!("studio-fakebin-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/claude_stream.jsonl"), bin.join("stream.jsonl")).unwrap();
+        let claude = bin.join("claude");
+        std::fs::write(
+            &claude,
+            "#!/bin/sh\nd=$(dirname \"$0\")\n\
+             if [ \"$1\" = \"--help\" ]; then echo '--output-format --mcp-config --resume --allowedTools --permission-mode --strict-mcp-config --settings (--permission-prompt-tool)'; exit 0; fi\n\
+             echo \"$@\" >> \"$d/args.txt\"\ncat >> \"$d/stdin.txt\"\n\
+             echo '// edit' >> \"$PWD/lib/features/home/home_screen.dart\"\ncat \"$d/stream.jsonl\"\n",
+        )
+        .unwrap();
+        let flutter = bin.join("flutter");
+        let out = if broken {
+            "echo \"  error • Undefined name 'x' • lib/features/home/home_screen.dart:3:5 • undefined_identifier\"; exit 1"
+        } else {
+            "echo 'No issues found!'"
+        };
+        std::fs::write(&flutter, format!("#!/bin/sh\necho \"$@\" >> \"$(dirname \"$0\")/flutter_args.txt\"\n{out}\n")).unwrap();
+        for f in [&claude, &flutter] {
+            std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let db = Arc::new(Db::open_in_memory().unwrap());
+        let p = db
+            .project_insert(&NewProject {
+                name: "Demo".into(),
+                slug: "demo".into(),
+                path: proj.to_string_lossy().into(),
+                template: "blank".into(),
+                description: String::new(),
+                bundle_id: "com.example.demo".into(),
+                initial_commit: None,
+                profile_version: 0,
+            })
+            .unwrap();
+        let ctx = ChatCtx {
+            db: db.clone(),
+            mcp: McpInfo { port: 1, token: "t".into() },
+            config_dir: root.join("mcp-cfg"),
+            emit: Arc::new(|_, _| {}),
+            scopes: Default::default(),
+            checks: true,
+            flutter: Some(flutter),
+        };
+        (bin, proj, db, p, ctx, ChatManager::new(Arc::new(ClaudeEngine::with_program(claude))))
+    }
+
+    #[cfg(unix)]
+    fn statuses(db: &Db, project_id: &str) -> Vec<String> {
+        db.messages_active(project_id)
+            .unwrap()
+            .iter()
+            .filter_map(|m| serde_json::from_str::<Value>(m).ok())
+            .filter(|v| v["type"] == "status")
+            .map(|v| format!("{}:{}", v["code"].as_str().unwrap(), v["detail"].as_str().unwrap_or("")))
+            .collect()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_small_change_is_scoped_checked_and_kept_when_the_checks_pass() {
+        let (bin, proj, db, p, ctx, mgr) = scoped_fixture(false);
+        mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+        let st = statuses(&db, &p.id);
+        assert_eq!(st, vec!["scope:small|HomeScreen", "checking:", "checks_ok:"], "{st:?}");
+        // De prompt draagt het werkgebied; de run kreeg een eigen instellingenbestand dat daarna weer weg is.
+        let stdin = std::fs::read_to_string(bin.join("stdin.txt")).unwrap();
+        assert!(stdin.contains("[Studio scope: Scope: Small (one file) for HomeScreen") && stdin.contains("lib/features/home/home_screen.dart") && stdin.contains("breid_bereik_uit"));
+        let args = std::fs::read_to_string(bin.join("args.txt")).unwrap();
+        assert!(args.contains("--settings"));
+        assert!(!ctx.config_dir.join(format!("{}.settings.json", p.id)).exists());
+        // Snelle controle: alleen de gewijzigde bestanden en hun directe gebruikers.
+        let fa = std::fs::read_to_string(bin.join("flutter_args.txt")).unwrap();
+        assert!(fa.contains("analyze lib/core/navigation/router.dart lib/features/home/home_screen.dart"), "{fa}");
+        assert!(!fa.contains("settings_screen"), "{fa}");
+        assert!(std::fs::read_to_string(proj.join("lib/features/home/home_screen.dart")).unwrap().ends_with("// edit\n"));
+        assert_eq!(crate::gitops::last_commit_subject(&proj).unwrap(), "Claude: make the title bigger on the home screen");
+        // De schermindex is bijgewerkt en het werkgebied is opgeruimd.
+        assert!(std::fs::read_to_string(proj.join(".studio/screens.md")).unwrap().contains("## HomeScreen"));
+        assert!(ctx.scopes.with(&p.id, |_| ()).is_none());
+        let m = db.runs_summary(&p.id, 10).unwrap();
+        assert_eq!((m.runs, m.clean_first_time, m.rolled_back, m.ai_questions), (1, 1, 0, 0));
+        assert_eq!(m.by_level["small"], 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failing_checks_trigger_two_targeted_repairs_and_then_an_automatic_rollback() {
+        let (bin, proj, db, p, ctx, mgr) = scoped_fixture(true);
+        let before = std::fs::read_to_string(proj.join("lib/features/home/home_screen.dart")).unwrap();
+        mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+        let st = statuses(&db, &p.id);
+        assert_eq!(st, vec!["scope:small|HomeScreen", "checking:", "repairing:1", "repairing:2", "rolled_back:"], "{st:?}");
+        // Eén gewone beurt + precies twee reparaties, de reparaties op dezelfde sessie en met de foutregel erin.
+        let args = std::fs::read_to_string(bin.join("args.txt")).unwrap();
+        let turns: Vec<&str> = args.lines().filter(|l| l.contains("stream-json")).collect();
+        assert_eq!(turns.len(), 3, "{turns:?}");
+        assert!(turns[1].contains("--resume") && turns[2].contains("--resume"));
+        let stdin = std::fs::read_to_string(bin.join("stdin.txt")).unwrap();
+        assert!(stdin.contains("repair attempt 1 of 2") && stdin.contains("repair attempt 2 of 2") && stdin.contains("home_screen.dart:3 error: Undefined name 'x'"));
+        // Terug naar de staat van vóór de run, zonder geschiedenis kwijt te raken.
+        assert_eq!(std::fs::read_to_string(proj.join("lib/features/home/home_screen.dart")).unwrap(), before);
+        assert!(crate::gitops::last_commit_subject(&proj).unwrap().starts_with("Studio: undid"));
+        assert!(db.snapshots_list(&p.id).unwrap().iter().any(|s| s.label.contains("Undid a change")));
+        let m = db.runs_summary(&p.id, 10).unwrap();
+        assert_eq!((m.runs, m.rolled_back, m.clean_first_time), (1, 1, 0));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn edits_outside_the_scope_made_with_the_shell_are_undone_and_claude_gets_one_chance() {
+        use std::os::unix::fs::PermissionsExt;
+        let (bin, proj, db, p, ctx, mgr) = scoped_fixture(false);
+        // Deze nep-claude past ook een gedeeld bestand aan, zoals een shell-commando dat zou doen.
+        let claude = bin.join("claude");
+        std::fs::write(
+            &claude,
+            "#!/bin/sh\nd=$(dirname \"$0\")\n\
+             if [ \"$1\" = \"--help\" ]; then echo '--output-format --mcp-config --resume --allowedTools --permission-mode --strict-mcp-config --settings (--permission-prompt-tool)'; exit 0; fi\n\
+             echo \"$@\" >> \"$d/args.txt\"\ncat >> \"$d/stdin.txt\"\n\
+             echo '// edit' >> \"$PWD/lib/features/home/home_screen.dart\"\necho '// sneaky' >> \"$PWD/lib/core/theme/app_theme.dart\"\ncat \"$d/stream.jsonl\"\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let core_before = std::fs::read_to_string(proj.join("lib/core/theme/app_theme.dart")).unwrap();
+        mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+        let st = statuses(&db, &p.id);
+        assert_eq!(st.iter().filter(|s| s.starts_with("scope_reverted:1")).count(), 2, "{st:?}");
+        assert_eq!(std::fs::read_to_string(proj.join("lib/core/theme/app_theme.dart")).unwrap(), core_before, "the shared file is back to normal");
+        assert!(std::fs::read_to_string(proj.join("lib/features/home/home_screen.dart")).unwrap().contains("// edit"), "the in-scope edit stays");
+        let args = std::fs::read_to_string(bin.join("args.txt")).unwrap();
+        assert_eq!(args.lines().filter(|l| l.contains("stream-json")).count(), 2, "one normal turn and one follow-up, no endless loop");
+        let stdin = std::fs::read_to_string(bin.join("stdin.txt")).unwrap();
+        assert!(stdin.contains("undid your changes to lib/core/theme/app_theme.dart") && stdin.contains("breid_bereik_uit"));
+        assert_eq!(db.runs_summary(&p.id, 5).unwrap().denied_edits, 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn each_screen_keeps_its_own_conversation_and_new_chat_resets_all() {
+        let (bin, _proj, db, p, ctx, mgr) = scoped_fixture(false);
+        let run = |t: &str| mgr.run_flow(&ctx, &p.id, t, None, "en", &RunHandle::default());
+        run("make the title bigger on the home screen");
+        run("change the text on the settings screen");
+        run("change the label on the home screen again");
+        let args = std::fs::read_to_string(bin.join("args.txt")).unwrap();
+        let turns: Vec<&str> = args.lines().filter(|l| l.contains("stream-json")).collect();
+        assert!(!turns[0].contains("--resume"));
+        assert!(!turns[1].contains("--resume"), "settings is a different screen: fresh context");
+        assert!(turns[2].contains("--resume"), "home continues its own conversation");
+        assert!(db.messages_active(&p.id).unwrap().len() > 12, "the feed shows all screens together");
+        db.session_create(&p.id, "claude-code").unwrap(); // "nieuw gesprek"
+        assert!(db.messages_active(&p.id).unwrap().is_empty());
+        run("change the text on the home screen");
+        let args = std::fs::read_to_string(bin.join("args.txt")).unwrap();
+        assert!(!args.lines().rfind(|l| l.contains("stream-json")).unwrap().contains("--resume"));
     }
 
     #[test]
@@ -300,6 +636,7 @@ mod tests {
             db,
             mcp: McpInfo { port: 1, token: "t".into() },
             config_dir: root.join("mcp"),
+            scopes: Default::default(), checks: false, flutter: None,
             emit: Arc::new(move |n, v| {
                 if n == "chat-event" {
                     sink.lock().unwrap().push(v["event"].clone())
@@ -345,10 +682,10 @@ mod tests {
                 }
             });
         }
-        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots") }).unwrap();
+        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots"), scopes: Default::default() }).unwrap();
         let events: Arc<Mutex<Vec<Value>>> = Arc::default();
         let sink = events.clone();
-        let ctx = ChatCtx { db: db.clone(), mcp, config_dir: root.join("mcp"), emit: Arc::new(move |n, v| { if n == "chat-event" { sink.lock().unwrap().push(v["event"].clone()) } }) };
+        let ctx = ChatCtx { db: db.clone(), mcp, config_dir: root.join("mcp"), scopes: Default::default(), checks: false, flutter: None, emit: Arc::new(move |n, v| { if n == "chat-event" { sink.lock().unwrap().push(v["event"].clone()) } }) };
         let mgr = ChatManager::new(Arc::new(ClaudeEngine::new()));
         let prompt = "Do exactly these steps and nothing else: 1) call the studio MCP tool project_status, 2) call the studio MCP tool list_screens, 3) fetch https://example.com with the WebFetch tool, 4) reply with the single word done.";
         mgr.run_flow(&ctx, &p.id, prompt, None, "en", &RunHandle::default());
@@ -362,6 +699,66 @@ mod tests {
     }
 
     /// Echte Flutter + echte `claude`: `STUDIO_TEST_PLUGIN_SOURCE=<pad of owner/repo> cargo test real_profile_end_to_end -- --ignored --nocapture`
+    /// De ene goedkope AI-vraag van de niveau-keuze, met de echte CLI (haiku, zonder gereedschap).
+    #[test]
+    #[ignore]
+    fn real_classify() {
+        let idx = CodeIndex::build(&crate::index::fixture("cls")).unwrap();
+        let started = Instant::now();
+        let answer = ClaudeEngine::new().classify(&scope::ai_question(&idx, "the settings page feels cramped, give it more air")).expect("an answer");
+        println!("answer after {:?}: {answer}", started.elapsed());
+        let (level, screen) = scope::parse_ai(&answer, &idx).expect("a parseable answer");
+        println!("level {level:?} screen {screen:?}");
+        assert_eq!(screen.as_deref(), Some("SettingsScreen"));
+    }
+
+    /// Bewijst met de echte `claude` dat het werkgebied wordt afgedwongen: een bewerking buiten het gebied wordt via de
+    /// permissie-tool geweigerd en `breid_bereik_uit` verbreedt het gebied.
+    #[test]
+    #[ignore]
+    fn real_scope_enforcement() {
+        use crate::permissions::Permissions;
+        use crate::projects::{create_project, CreateRequest, Tools};
+        let flutter = crate::proc::find("flutter").expect("flutter on PATH");
+        let git = crate::proc::find("git").unwrap();
+        let root = std::env::temp_dir().join(format!("studio-scope-{}", uuid::Uuid::new_v4()));
+        let db = Arc::new(Db::open_in_memory().unwrap());
+        let req = CreateRequest { name: "Friday Scores".into(), template: "scoreboard".into(), description: "Scores".into(), org: "com.example".into() };
+        let p = create_project(&db, &Tools { flutter: flutter.clone(), git }, &root.join("projects"), &req, &|_| {}).unwrap();
+        let dir = PathBuf::from(&p.path);
+        let idx = CodeIndex::build(&dir).unwrap();
+        let screen = idx.screens.iter().find(|s| s.feature_dir.is_some()).expect("a feature screen").clone();
+        println!("screen {} own={:?} shared={:?}", screen.class, screen.own, screen.shared);
+        let target = screen.shared.iter().find(|f| f.starts_with("lib/core/")).cloned().expect("a shared core file").clone();
+
+        let perms = Arc::new(Permissions::new(Arc::new(|_| {}), Duration::from_secs(5)));
+        let scopes: Arc<ScopeRegistry> = Default::default();
+        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots"), scopes: scopes.clone() }).unwrap();
+        let events: Arc<Mutex<Vec<Value>>> = Arc::default();
+        let sink = events.clone();
+        let ctx = ChatCtx { db: db.clone(), mcp, config_dir: root.join("mcp"), scopes, checks: false, flutter: None, emit: Arc::new(move |n, v| { if n == "chat-event" { sink.lock().unwrap().push(v["event"].clone()) } }) };
+        let mgr = ChatManager::new(Arc::new(ClaudeEngine::new()));
+        let text = format!("Use the Edit tool (never a shell command) to add the comment line `// scope-test` as the last line of {} and ALSO the comment line `// core-test` as the last line of {target}. If one of them is refused, follow the instructions in the refusal.", screen.file);
+        let context = format!("The user selected the screen \"{}\" ({}).", screen.class, screen.file);
+        mgr.run_flow(&ctx, &p.id, &text, Some(context), "en", &RunHandle::default());
+        for e in events.lock().unwrap().iter() {
+            match e["type"].as_str().unwrap_or("") {
+                "tool_use" => println!("tool_use {} {}", e["name"], e["summary"]),
+                "tool_result" => println!("tool_result ok={} {}", e["ok"], e["text"].as_str().unwrap_or("").chars().take(160).collect::<String>()),
+                "status" => println!("status {} {}", e["code"], e["detail"]),
+                _ => {}
+            }
+        }
+        let m = db.runs_summary(&p.id, 5).unwrap();
+        println!("metrics {m:?}");
+        let own = std::fs::read_to_string(dir.join(&screen.file)).unwrap();
+        let core = std::fs::read_to_string(dir.join(&target)).unwrap();
+        println!("own edited: {} core edited: {}", own.contains("scope-test"), core.contains("core-test"));
+        assert!(own.contains("scope-test"), "edits inside the scope work");
+        assert!(m.denied_edits >= 1, "the edit outside the scope must have been refused first");
+        assert_eq!(core.contains("core-test"), m.expanded == 1, "the core file changes only after the scope was widened");
+    }
+
     /// Bewijst dat het projectprofiel in de praktijk werkt (skills, hook, deny-regels, Dart-MCP, structuur).
     #[test]
     #[ignore]
@@ -393,10 +790,10 @@ mod tests {
         std::fs::write(dir.join("build/secret.txt"), "TOPSECRET-BUILD-OUTPUT").unwrap();
 
         let perms = Arc::new(Permissions::new(Arc::new(|_| {}), Duration::from_secs(5)));
-        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots") }).unwrap();
+        let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots"), scopes: Default::default() }).unwrap();
         let events: Arc<Mutex<Vec<Value>>> = Arc::default();
         let sink = events.clone();
-        let ctx = ChatCtx { db: db.clone(), mcp, config_dir: root.join("mcp"), emit: Arc::new(move |n, v| { if n == "chat-event" { sink.lock().unwrap().push(v["event"].clone()) } }) };
+        let ctx = ChatCtx { db: db.clone(), mcp, config_dir: root.join("mcp"), scopes: Default::default(), checks: false, flutter: None, emit: Arc::new(move |n, v| { if n == "chat-event" { sink.lock().unwrap().push(v["event"].clone()) } }) };
         let mgr = ChatManager::new(Arc::new(ClaudeEngine::new()));
         let run = |text: &str| {
             events.lock().unwrap().clear();

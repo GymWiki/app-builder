@@ -88,6 +88,34 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE projects ADD COLUMN profile_version INTEGER NOT NULL DEFAULT 0;
     "#,
+    // v5 — een gesprek per scherm: '' = het hoofdgesprek (begin van een nieuw gesprek), anders de naam van het scherm
+    r#"
+    ALTER TABLE sessions ADD COLUMN scope_key TEXT NOT NULL DEFAULT '';
+    "#,
+    // v6 — metingen per run (fase 9): alleen lokaal, nooit verstuurd
+    r#"
+    CREATE TABLE runs (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        level           TEXT NOT NULL,
+        final_level     TEXT NOT NULL,
+        screen          TEXT NOT NULL DEFAULT '',
+        why             TEXT NOT NULL DEFAULT '',
+        expansions      INTEGER NOT NULL DEFAULT 0,
+        denied_edits    INTEGER NOT NULL DEFAULT 0,
+        files_changed   INTEGER NOT NULL DEFAULT 0,
+        issues_before   INTEGER NOT NULL DEFAULT 0,
+        repairs         INTEGER NOT NULL DEFAULT 0,
+        rolled_back     INTEGER NOT NULL DEFAULT 0,
+        ok              INTEGER NOT NULL DEFAULT 1,
+        duration_ms     INTEGER NOT NULL DEFAULT 0,
+        cost_usd        REAL NOT NULL DEFAULT 0,
+        turns           INTEGER NOT NULL DEFAULT 0,
+        ai_questions    INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_runs_project ON runs(project_id, id DESC);
+    "#,
 ];
 
 /// De verplichte (blokkerende) checklistpunten. Volgorde = weergavevolgorde.
@@ -142,6 +170,67 @@ pub struct NewProject {
 pub struct Session {
     pub id: String,
     pub engine_session_id: Option<String>,
+}
+
+/// Eén run, zoals in de tabel `runs`.
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RunRecord {
+    pub level: String,
+    pub final_level: String,
+    pub screen: String,
+    pub why: String,
+    pub expansions: i64,
+    pub denied_edits: i64,
+    pub files_changed: i64,
+    pub issues_before: i64,
+    pub repairs: i64,
+    pub rolled_back: bool,
+    pub ok: bool,
+    pub duration_ms: i64,
+    pub cost_usd: f64,
+    pub turns: i64,
+    pub ai_questions: i64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RunsSummary {
+    pub runs: usize,
+    /// Aantal runs per niveau (small, screen, shared, project) aan het begin.
+    pub by_level: std::collections::BTreeMap<String, usize>,
+    pub expanded: usize,
+    pub clean_first_time: usize,
+    pub repaired: usize,
+    pub rolled_back: usize,
+    pub ai_questions: i64,
+    pub avg_duration_ms: i64,
+    pub total_cost_usd: f64,
+    pub avg_files_changed: f64,
+    pub denied_edits: i64,
+}
+
+impl RunsSummary {
+    pub fn from_runs(rows: &[RunRecord]) -> Self {
+        let mut s = RunsSummary { runs: rows.len(), ..Default::default() };
+        for r in rows {
+            *s.by_level.entry(r.level.clone()).or_default() += 1;
+            s.expanded += (r.expansions > 0) as usize;
+            s.clean_first_time += (r.issues_before == 0 && !r.rolled_back) as usize;
+            s.repaired += (r.repairs > 0 && !r.rolled_back) as usize;
+            s.rolled_back += r.rolled_back as usize;
+            s.ai_questions += r.ai_questions;
+            s.total_cost_usd += r.cost_usd;
+            s.denied_edits += r.denied_edits;
+            s.avg_duration_ms += r.duration_ms;
+            s.avg_files_changed += r.files_changed as f64;
+        }
+        if !rows.is_empty() {
+            s.avg_duration_ms /= rows.len() as i64;
+            s.avg_files_changed /= rows.len() as f64;
+        }
+        s
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -344,6 +433,7 @@ impl Db {
 
     // ── sessies en berichten ──
     /// De actieve sessie is de nieuwste van het project.
+    #[cfg(test)]
     pub fn session_active(&self, project_id: &str) -> AppResult<Option<Session>> {
         Ok(self
             .lock()
@@ -387,13 +477,93 @@ impl Db {
         Ok(())
     }
 
-    /// Opgeslagen gebeurtenissen (JSON) van de actieve sessie, oudste eerst.
+    /// Opgeslagen gebeurtenissen (JSON) van het huidige gesprek (alle schermgesprekken sinds het laatste nieuwe
+    /// gesprek), oudste eerst.
     pub fn messages_active(&self, project_id: &str) -> AppResult<Vec<String>> {
-        let Some(s) = self.session_active(project_id)? else { return Ok(vec![]) };
+        let root = self.root_rowid(project_id)?;
         let conn = self.lock();
-        let mut st = conn.prepare("SELECT data FROM messages WHERE session_id = ?1 ORDER BY id")?;
-        let rows = st.query_map([s.id], |r| r.get(0))?;
+        let mut st = conn.prepare(
+            "SELECT m.data FROM messages m JOIN sessions s ON s.id = m.session_id
+             WHERE s.project_id = ?1 AND s.rowid >= ?2 ORDER BY m.id",
+        )?;
+        let rows = st.query_map(params![project_id, root], |r| r.get(0))?;
         Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Het gesprek van één scherm (of "project"/"shared"), binnen het huidige hoofdgesprek. Bestaat het nog niet, dan
+    /// wordt het aangemaakt. Zo blijft de context per scherm klein en lopen schermen elkaar niet in de weg.
+    pub fn session_for_scope(&self, project_id: &str, key: &str, engine: &str) -> AppResult<Session> {
+        let root = self.root_rowid(project_id)?;
+        let found = self
+            .lock()
+            .query_row(
+                "SELECT id, engine_session_id FROM sessions WHERE project_id = ?1 AND scope_key = ?2 AND rowid >= ?3
+                 ORDER BY rowid DESC LIMIT 1",
+                params![project_id, key, root],
+                |r| Ok(Session { id: r.get(0)?, engine_session_id: r.get(1)? }),
+            )
+            .optional()?;
+        match found {
+            Some(s) => Ok(s),
+            None => {
+                let id = uuid::Uuid::new_v4().to_string();
+                self.lock().execute("INSERT INTO sessions(id, project_id, engine, scope_key) VALUES (?1, ?2, ?3, ?4)", params![id, project_id, engine, key])?;
+                Ok(Session { id, engine_session_id: None })
+            }
+        }
+    }
+
+    /// Het begin van het huidige hoofdgesprek (nieuwste sessie zonder scherm-sleutel), 0 als er nog geen is.
+    fn root_rowid(&self, project_id: &str) -> AppResult<i64> {
+        Ok(self
+            .lock()
+            .query_row("SELECT rowid FROM sessions WHERE project_id = ?1 AND scope_key = '' ORDER BY rowid DESC LIMIT 1", [project_id], |r| r.get(0))
+            .optional()?
+            .unwrap_or(0))
+    }
+
+    pub fn run_insert(&self, project_id: &str, r: &RunRecord) -> AppResult<()> {
+        self.lock().execute(
+            "INSERT INTO runs(project_id, level, final_level, screen, why, expansions, denied_edits, files_changed, issues_before, repairs,
+                              rolled_back, ok, duration_ms, cost_usd, turns, ai_questions)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
+            params![
+                project_id, r.level, r.final_level, r.screen, r.why, r.expansions, r.denied_edits, r.files_changed, r.issues_before, r.repairs,
+                r.rolled_back, r.ok, r.duration_ms, r.cost_usd, r.turns, r.ai_questions
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Samenvatting van de laatste `limit` runs van een project (alles als getallen, voor het ontwikkelaarspaneel).
+    pub fn runs_summary(&self, project_id: &str, limit: i64) -> AppResult<RunsSummary> {
+        let conn = self.lock();
+        let mut st = conn.prepare(
+            "SELECT level, final_level, screen, why, expansions, denied_edits, files_changed, issues_before, repairs, rolled_back, ok,
+                    duration_ms, cost_usd, turns, ai_questions FROM runs WHERE project_id = ?1 ORDER BY id DESC LIMIT ?2",
+        )?;
+        let rows: Vec<RunRecord> = st
+            .query_map(params![project_id, limit], |r| {
+                Ok(RunRecord {
+                    level: r.get(0)?,
+                    final_level: r.get(1)?,
+                    screen: r.get(2)?,
+                    why: r.get(3)?,
+                    expansions: r.get(4)?,
+                    denied_edits: r.get(5)?,
+                    files_changed: r.get(6)?,
+                    issues_before: r.get(7)?,
+                    repairs: r.get(8)?,
+                    rolled_back: r.get(9)?,
+                    ok: r.get(10)?,
+                    duration_ms: r.get(11)?,
+                    cost_usd: r.get(12)?,
+                    turns: r.get(13)?,
+                    ai_questions: r.get(14)?,
+                })
+            })?
+            .collect::<Result<_, _>>()?;
+        Ok(RunsSummary::from_runs(&rows))
     }
 
     // ── snapshots en checklist ──
@@ -593,6 +763,60 @@ mod tests {
         db.checklist_update(&p.id, "legal", "done", "[]", None).unwrap();
         db.checklist_update(&p.id, "ai_test_run", "done", "[]", Some("fp1")).unwrap();
         assert_eq!(db.project_get(&p.id).unwrap().checklist_done, 2);
+    }
+
+    #[test]
+    fn run_summary_counts_levels_repairs_and_rollbacks() {
+        let db = Db::open_in_memory().unwrap();
+        let p = db
+            .project_insert(&NewProject { name: "A".into(), slug: "a".into(), path: "/a".into(), template: "blank".into(), description: String::new(), bundle_id: "x.y".into(), initial_commit: None, profile_version: 1 })
+            .unwrap();
+        let run = |level: &str, expansions, issues, repairs, rolled| RunRecord {
+            level: level.into(),
+            final_level: level.into(),
+            expansions,
+            issues_before: issues,
+            repairs,
+            rolled_back: rolled,
+            ok: !rolled,
+            duration_ms: 1000,
+            cost_usd: 0.5,
+            files_changed: 2,
+            ..Default::default()
+        };
+        for r in [run("small", 0, 0, 0, false), run("small", 0, 2, 1, false), run("screen", 1, 3, 2, true), run("shared", 0, 0, 0, false)] {
+            db.run_insert(&p.id, &r).unwrap();
+        }
+        let s = db.runs_summary(&p.id, 100).unwrap();
+        assert_eq!((s.runs, s.expanded, s.clean_first_time, s.repaired, s.rolled_back), (4, 1, 2, 1, 1));
+        assert_eq!((s.by_level["small"], s.by_level["screen"], s.by_level["shared"]), (2, 1, 1));
+        assert!((s.total_cost_usd - 2.0).abs() < 1e-9 && s.avg_duration_ms == 1000 && (s.avg_files_changed - 2.0).abs() < 1e-9);
+        assert_eq!(db.runs_summary(&p.id, 2).unwrap().runs, 2, "limit counts the newest runs");
+        assert_eq!(RunsSummary::from_runs(&[]), RunsSummary::default());
+    }
+
+    #[test]
+    fn conversations_are_per_scope_and_a_new_root_resets_the_feed() {
+        let db = Db::open_in_memory().unwrap();
+        let p = db
+            .project_insert(&NewProject { name: "A".into(), slug: "a".into(), path: "/a".into(), template: "blank".into(), description: String::new(), bundle_id: "x.y".into(), initial_commit: None, profile_version: 1 })
+            .unwrap();
+        let root = db.session_for_scope(&p.id, "", "claude-code").unwrap();
+        let home = db.session_for_scope(&p.id, "HomeScreen", "claude-code").unwrap();
+        let again = db.session_for_scope(&p.id, "HomeScreen", "claude-code").unwrap();
+        assert_eq!(home.id, again.id, "same screen, same conversation");
+        assert_ne!(root.id, home.id);
+        db.session_set_engine_id(&home.id, "engine-1").unwrap();
+        assert_eq!(db.session_for_scope(&p.id, "HomeScreen", "claude-code").unwrap().engine_session_id.as_deref(), Some("engine-1"));
+        assert!(db.session_for_scope(&p.id, "SettingsScreen", "claude-code").unwrap().engine_session_id.is_none());
+        db.message_insert(&home.id, "text", "{\"a\":1}").unwrap();
+        let other = db.session_for_scope(&p.id, "SettingsScreen", "claude-code").unwrap();
+        db.message_insert(&other.id, "text", "{\"a\":2}").unwrap();
+        assert_eq!(db.messages_active(&p.id).unwrap().len(), 2);
+        // "Nieuw gesprek": alles begint opnieuw, ook de schermgesprekken.
+        db.session_create(&p.id, "claude-code").unwrap();
+        assert!(db.messages_active(&p.id).unwrap().is_empty());
+        assert!(db.session_for_scope(&p.id, "HomeScreen", "claude-code").unwrap().engine_session_id.is_none());
     }
 
     #[test]
