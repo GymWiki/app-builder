@@ -148,8 +148,6 @@
         "desc": "Een begeleide checklist naar Google Play en de App Store."
       }
     },
-    "comingSoon": "Komt in een volgende stap",
-    "comingSoonBody": "Dit onderdeel staat op de planning. Het paneel is er al, zodat de indeling hetzelfde blijft.",
     "device": {
       "label": "Preview-apparaat",
       "small": "Kleine telefoon",
@@ -179,7 +177,8 @@
       "select": "Praat over dit scherm",
       "selected": "Gekozen voor de chat",
       "hint": "Kies een scherm om er direct in de chat over te praten."
-    }
+    },
+    "askInChat": "Gebruik de chat om dit aan te passen: beschrijf wat je wilt en Claude doet het. Het paneel in het midden toont de details."
   },
   "settings": {
     "title": "Instellingen",
@@ -346,6 +345,15 @@
     "claudeLogin": {
       "name": "Claude-account",
       "why": "Je logt zelf in via de officiële Claude Code. Studio controleert alleen of je bent ingelogd."
+    },
+    "keytool": {
+      "name": "Java-keytool"
+    },
+    "fastlane": {
+      "name": "Fastlane"
+    },
+    "browser": {
+      "name": "Een browser (Chrome of Edge)"
     }
   },
   "errors": {
@@ -392,6 +400,14 @@
     "pty": {
       "title": "De terminal kon niet starten",
       "fix": "Sluit de terminal en probeer het opnieuw. Lukt het nog niet, start Studio dan opnieuw."
+    },
+    "keychain": {
+      "title": "Studio kon de sleutelbos van je computer niet bereiken",
+      "fix": "Ontgrendel je sleutelbos of wachtwoordmanager en probeer het opnieuw. Studio bewaart geheimen alleen daar, nooit in je project."
+    },
+    "unsupported": {
+      "title": "Nog niet beschikbaar",
+      "fix": "Dit onderdeel staat gepland voor een latere versie van Studio. Al het andere blijft gewoon werken."
     }
   },
   "design": {
@@ -567,5 +583,506 @@
     "fresh": "Eerste start",
     "ready": "Met projecten",
     "empty": "Geen projecten"
+  },
+  "sec": {
+    "common": {
+      "ask": "Laat Claude dit doen",
+      "askBusy": "Claude is al bezig",
+      "saved": "Opgeslagen",
+      "save": "Opslaan",
+      "applied": "Aangepast: {{list}}",
+      "skippedTitle": "Studio kon niet alles automatisch aanpassen",
+      "skippedHelp": "Deze bestanden zien er anders uit dan Studio verwacht. Vraag Claude de wijziging met de hand te doen.",
+      "askFix": "Vraag Claude dit op te lossen",
+      "yes": "Ja",
+      "no": "Nee",
+      "change": "Wijzigen",
+      "remove": "Verwijderen",
+      "choose": "Kiezen…",
+      "notNow": "Nog niet",
+      "working": "Bezig…",
+      "open": "Openen",
+      "loadError": "Dit kon niet worden geladen"
+    },
+    "screens": {
+      "title": "Schermenkaart",
+      "home": "Beginscherm",
+      "unlinked": "Nergens naartoe gelinkt",
+      "none": "Nog geen schermen",
+      "noneHint": "Vraag Claude er een toe te voegen. Schermen zijn widgets waarvan de naam op Screen of Page eindigt.",
+      "hint": "Klik op een scherm om er in de chat over te praten.",
+      "selected": "Gekozen voor de chat",
+      "refresh": "Schermen verversen",
+      "addScreen": "Scherm toevoegen",
+      "linkScreens": "Schermen verbinden",
+      "addPrompt": "Voeg een nieuw scherm toe aan de app. Vraag me wat het moet tonen als dat niet duidelijk is, voeg het toe aan de navigatie en werk STUDIO.md bij.",
+      "linkPrompt": "Bekijk de schermen en hoe ze samenhangen. Stel voor en voeg daarna zinnige navigatie toe tussen schermen die nog niet bereikbaar zijn, en werk STUDIO.md bij."
+    },
+    "theme": {
+      "title": "Kleuren",
+      "seed": "Hoofdkleur",
+      "hex": "Kleurcode",
+      "hexInvalid": "Gebruik een kleurcode zoals #4F46E5",
+      "apply": "Kleur toepassen",
+      "applied": "Kleur aangepast. De preview ververst vanzelf.",
+      "notWired": "Deze app gebruikt het thema van Studio nog niet. Vraag Claude het te koppelen.",
+      "wire": "Thema koppelen",
+      "wirePrompt": "Laat MaterialApp AppTheme.light en AppTheme.dark uit lib/app_theme.dart gebruiken en haal kleuren weg die elders met de hand zijn ingesteld.",
+      "fontTitle": "Lettertype",
+      "fontHelp": "Claude voegt het lettertype toe als package en gebruikt het overal.",
+      "kitTitle": "Stijl",
+      "kitHelp": "Claude kiest een Flutter-package voor deze stijl en gebruikt die op alle schermen.",
+      "fonts": {
+        "Inter": "Inter",
+        "Poppins": "Poppins",
+        "Lora": "Lora",
+        "Roboto": "Roboto"
+      },
+      "kits": {
+        "material": "Material (standaard)",
+        "cupertino": "iPhone-stijl",
+        "rounded": "Zacht en rond",
+        "minimal": "Minimalistisch"
+      },
+      "fontPrompt": "Gebruik het lettertype “{{font}}” voor de hele app (voeg het toe met het google_fonts-package of als asset) en zorg dat het themabestand het gebruikt.",
+      "kitPrompt": "Geef de hele app een “{{kit}}”-uitstraling. Kies een passend Flutter-package of thema-instellingen, pas het consequent toe op elk scherm en blijf AppTheme voor de kleuren gebruiken."
+    },
+    "data": {
+      "title": "Data en inloggen",
+      "intro": "Kies waar je app zijn gegevens bewaart en hoe mensen inloggen. Je gebruikt je eigen account; Studio bewaart nooit je sleutels.",
+      "provider": "Waar worden de gegevens bewaard?",
+      "providers": {
+        "none": {
+          "name": "Geen data",
+          "desc": "De app slaat niets op."
+        },
+        "local": {
+          "name": "Op de telefoon",
+          "desc": "Een lokale database. Geen account, geen server."
+        },
+        "supabase": {
+          "name": "Supabase",
+          "desc": "Je eigen Supabase-project online."
+        },
+        "firebase": {
+          "name": "Firebase",
+          "desc": "Je eigen Firebase-project online."
+        }
+      },
+      "auth": "Hoe loggen mensen in?",
+      "authHelp": "Alleen van belang als mensen een account hebben.",
+      "methods": {
+        "email": "E-mail en wachtwoord",
+        "google": "Google",
+        "apple": "Apple",
+        "anonymous": "Geen account (gast)"
+      },
+      "supabaseRef": "Projectreferentie",
+      "supabaseRefHelp": "Het deel vóór .supabase.co in de URL van je project.",
+      "supabaseUrl": "Project-URL",
+      "token": "Persoonlijk toegangstoken",
+      "tokenHelp": "Laat Claude tabellen en regels in je project opzetten. Studio bewaart het in de sleutelbos van je computer, nooit in je project.",
+      "tokenSaved": "Bewaard in de sleutelbos",
+      "tokenPlaceholder": "sbp_…",
+      "tokenSave": "Token opslaan",
+      "tokenRemove": "Token verwijderen",
+      "firebaseNote": "Claude gebruikt je eigen Firebase-login (firebase-tools). Ben je nog niet ingelogd, vraag het Claude dan; hij vertelt je het commando.",
+      "accountDeletion": "De app laat mensen hun account verwijderen",
+      "accountDeletionHelp": "Google Play en de App Store eisen dit allebei als een app accounts heeft.",
+      "setup": "Laat Claude dit opzetten",
+      "setupHint": "Claude vraagt in de chat bij elke databaseactie je bevestiging.",
+      "saveFirst": "Opslaan…"
+    },
+    "assets": {
+      "title": "App-icoon en afbeeldingen",
+      "intro": "Kies één vierkante afbeelding (liefst minstens 1024 × 1024) en Studio maakt alle formaten voor Android, iOS en het web.",
+      "pick": "Kies een afbeelding…",
+      "pickTitle": "Kies je app-icoon",
+      "generating": "Alle formaten maken…",
+      "done": "{{count}} bestanden gemaakt",
+      "current": "Huidig icoon",
+      "none": "Nog geen icoon",
+      "warnings": {
+        "small_source": "De afbeelding is klein, dus het icoon kan er wazig uitzien. 1024 × 1024 is het best.",
+        "not_square": "De afbeelding is niet vierkant. Studio gebruikte het middelste deel.",
+        "no_platforms": "Er zijn geen Android-, iOS- of webmappen gevonden."
+      },
+      "splashTitle": "Startscherm",
+      "splashHelp": "Het scherm dat je ziet terwijl de app opstart.",
+      "splash": "Startscherm instellen",
+      "splashPrompt": "Zet een native startscherm op dat past bij de hoofdkleur van de app en het app-icoon gebruikt, met het package flutter_native_splash, en voer het uit.",
+      "imagesTitle": "Afbeeldingen in de app",
+      "imagesHelp": "Zet je afbeeldingen in de map assets/images en vraag Claude ze te gebruiken.",
+      "images": "Mijn afbeeldingen gebruiken",
+      "imagesPrompt": "Kijk in assets/images, registreer die afbeeldingen in pubspec.yaml en gebruik ze waar dat zinvol is in de app. Vraag me waar als je twijfelt."
+    },
+    "settings": {
+      "title": "App-instellingen",
+      "intro": "Deze waarden worden voor je naar de juiste Android- en iOS-bestanden geschreven.",
+      "name": "Naam van de app",
+      "nameHelp": "Staat onder het icoon op de telefoon (max 30 tekens).",
+      "bundle": "Bundle-ID",
+      "bundleHelp": "Unieke ID van je app, zoals nl.jouwnaam.scores. Na publiceren niet meer te wijzigen.",
+      "version": "Versie",
+      "build": "Buildnummer",
+      "versionHelp": "Het buildnummer moet bij elke upload omhoog.",
+      "minAndroid": "Minimale Android-versie (API-niveau)",
+      "minIos": "Minimale iOS-versie",
+      "permissions": "Rechten",
+      "permissionsHelp": "Zet alleen aan wat de app echt gebruikt. Elk recht zien mensen in de winkel.",
+      "permission": {
+        "internet": "Internet",
+        "camera": "Camera",
+        "location": "Locatie",
+        "microphone": "Microfoon",
+        "photos": "Foto’s",
+        "notifications": "Meldingen"
+      },
+      "iosReason": "Waarom heeft de app dit nodig? (zichtbaar op iPhones)",
+      "iosReasonDefault": "Deze app heeft toegang nodig om zijn functies te bieden.",
+      "bundleDefault": "Nog het voorbeeld-ID. Kies je eigen ID vóór het publiceren.",
+      "notFound": "Niet gevonden in de projectbestanden"
+    },
+    "versions": {
+      "title": "Versies",
+      "intro": "Elke wijziging van Claude wordt als momentopname bewaard, zodat je altijd terug kunt.",
+      "create": "Momentopname bewaren",
+      "createPlaceholder": "Wat heb je net afgemaakt?",
+      "created": "Momentopname bewaard",
+      "nothing": "Er is niets veranderd sinds de vorige momentopname.",
+      "empty": "Nog geen momentopnames",
+      "restore": "Terug naar deze versie",
+      "restoreTitle": "Terug naar “{{label}}”?",
+      "restoreBody": "De app wordt zoals hij toen was. Er gaat niets verloren: je huidige stand wordt eerst bewaard en de oude versie wordt een nieuwe momentopname die je weer kunt terugdraaien.",
+      "restoreConfirm": "Ja, ga terug",
+      "restored": "Hersteld: {{label}}",
+      "kind": {
+        "auto": "Claude",
+        "manual": "Jij",
+        "publish": "Gepubliceerd"
+      },
+      "changelogTitle": "Changelog",
+      "changelogHelp": "Wijzigingen sinds de laatste release, uit je momentopnames.",
+      "changelogEmpty": "Nog geen wijzigingen om te beschrijven.",
+      "changelogAsk": "Laat Claude de changelog schrijven",
+      "changelogPrompt": "Schrijf of werk CHANGELOG.md bij voor versie {{version}} in gewone taal voor app-gebruikers (korte opsommingen, nieuwste bovenaan). Baseer het op deze wijzigingen:\n{{changes}}",
+      "current": "Nu"
+    },
+    "publish": {
+      "title": "Publiceren",
+      "intro": "Een begeleide checklist naar Google Play (iOS volgt). Alles wat verplicht is moet groen zijn voordat je kunt publiceren.",
+      "tabs": {
+        "checklist": "Checklist",
+        "test": "Testrun",
+        "listing": "Winkelpagina",
+        "legal": "Juridisch",
+        "signing": "Accounts",
+        "release": "Release"
+      },
+      "required": "Verplicht",
+      "advice": "Advies (blokkeert niet)",
+      "progress": "{{done}} van {{total}} verplichte punten klaar",
+      "nextAction": "Volgende: {{action}}",
+      "goTo": "Ga",
+      "allGreen": "Alles wat verplicht is, is klaar. Je kunt publiceren.",
+      "items": {
+        "app_basics": {
+          "title": "App-basis",
+          "desc": "Naam, eigen bundle-ID, app-icoon en versie.",
+          "missing": {
+            "bundle_id": "Kies je eigen bundle-ID",
+            "icon": "Voeg een app-icoon toe",
+            "version": "Stel een versie in"
+          }
+        },
+        "data_auth": {
+          "title": "Data en inloggen",
+          "desc": "Waar gegevens staan en hoe mensen inloggen.",
+          "missing": {
+            "provider": "Kies waar de gegevens bewaard worden",
+            "account_deletion": "Voeg “account verwijderen” toe (verplicht bij accounts)"
+          }
+        },
+        "legal": {
+          "title": "Juridisch",
+          "desc": "Privacybeleid en voorwaarden, online.",
+          "missing": {
+            "docs": "Laat het privacybeleid en de voorwaarden schrijven",
+            "privacy_url": "Voeg de link naar het privacybeleid toe",
+            "terms_url": "Voeg de link naar de voorwaarden toe",
+            "hosted_checked": "Controleer dat de pagina’s online staan"
+          }
+        },
+        "ai_test_run": {
+          "title": "AI-testrun",
+          "desc": "Studio loopt door je app en tikt alles aan. Het moet slagen op de huidige versie.",
+          "missing": {
+            "never": "Voer de test uit",
+            "failed": "Los de problemen op en test opnieuw",
+            "expired": "De app is veranderd sinds de laatste run. Test opnieuw"
+          }
+        },
+        "store_listing": {
+          "title": "Winkelpagina",
+          "desc": "Teksten, schermafbeeldingen, categorie en de privacyvragen.",
+          "missing": {
+            "title": "Voeg een titel toe",
+            "short_description": "Voeg een korte beschrijving toe",
+            "full_description": "Voeg een volledige beschrijving toe",
+            "category": "Kies een categorie",
+            "contact_email": "Voeg een contact-e-mail toe",
+            "screenshots": "Voeg minstens 2 schermafbeeldingen toe",
+            "questionnaire": "Beantwoord de vragen over je app",
+            "play_console": "Bevestig dat je ze in Google Play Console hebt ingevuld"
+          }
+        },
+        "accounts_signing": {
+          "title": "Accounts en ondertekenen",
+          "desc": "Een ondertekeningssleutel, ondertekenen in de build en je Google Play-account.",
+          "missing": {
+            "keystore": "Maak een ondertekeningssleutel",
+            "gradle": "Stel ondertekenen in de Android-build in",
+            "play_account": "Bevestig dat je Google Play-ontwikkelaarsaccount klaar is"
+          }
+        },
+        "version_changelog": {
+          "title": "Versie en changelog",
+          "desc": "Een nieuw versienummer en een lijst met wat er veranderd is.",
+          "missing": {
+            "version_bump": "Verhoog de versie: deze is al gepubliceerd",
+            "changelog": "Schrijf de changelog"
+          }
+        },
+        "final_confirmation": {
+          "title": "Laatste bevestiging",
+          "desc": "Je controleert alles nog een laatste keer.",
+          "missing": {
+            "others": "Rond eerst de punten hierboven af",
+            "confirm": "Bevestig dat je wilt releasen"
+          }
+        },
+        "device_test": {
+          "title": "Op een echte telefoon geprobeerd",
+          "desc": "Draai de app minstens één keer op je eigen telefoon.",
+          "missing": {
+            "device": "Probeer het op een telefoon"
+          }
+        },
+        "native_manual": {
+          "title": "Telefoonfuncties met de hand gecontroleerd",
+          "desc": "Studio kan deze functies niet testen. Probeer elke functie op je eigen telefoon.",
+          "missing": {
+            "camera": "Camera",
+            "photos": "Foto’s",
+            "location": "Locatie",
+            "push": "Meldingen",
+            "payments": "Betalingen",
+            "biometrics": "Vingerafdruk / gezicht",
+            "bluetooth": "Bluetooth",
+            "ads": "Advertenties",
+            "links": "Links openen",
+            "sharing": "Delen",
+            "microphone": "Microfoon"
+          }
+        }
+      },
+      "actions": {
+        "settings": "App-instellingen openen",
+        "assets": "App-icoon openen",
+        "data": "Data en inloggen openen",
+        "versions": "Versies openen",
+        "preview": "De preview openen",
+        "publish_legal": "Juridisch openen",
+        "publish_test": "Testrun openen",
+        "publish_listing": "Winkelpagina openen",
+        "publish_signing": "Accounts openen",
+        "publish_confirm": "Release openen"
+      },
+      "test": {
+        "title": "AI-testrun",
+        "intro": "Studio start je app zonder telefoon, opent elk scherm, tikt alles aan en vult formulieren met goede, lege en rare waarden. Het zoekt naar crashes, knoppen die niets doen en lege schermen.",
+        "run": "Test uitvoeren",
+        "running": "Aan het testen…",
+        "rerun": "Opnieuw testen",
+        "passed": "Geslaagd op de huidige versie",
+        "failed": "Problemen gevonden",
+        "stale": "De app is veranderd sinds deze run. Het resultaat telt niet meer.",
+        "never": "Nog niet uitgevoerd",
+        "summary": "{{screens}} schermen · {{taps}} tikken · {{errors}} problemen · {{warnings}} waarschuwingen",
+        "fix": "Laat Claude dit oplossen",
+        "fixAll": "Laat Claude alle problemen oplossen",
+        "fixPrompt": "De automatische testrun vond deze problemen. Los ze op en zorg dat de app nog steeds bouwt:\n\n{{problems}}",
+        "autoRetest": "Na het oplossen door Claude automatisch opnieuw testen",
+        "retesting": "Claude is klaar, opnieuw aan het testen…",
+        "screenOk": "Geen problemen",
+        "kind": {
+          "crash": "Crash",
+          "overflow": "Layout loopt over",
+          "empty_screen": "Leeg scherm",
+          "dead_button": "Knop lijkt niets te doen"
+        },
+        "honestTitle": "Wat deze test niet dekt",
+        "honest": {
+          "camera": "Camera en foto’s",
+          "push": "Pushmeldingen",
+          "payments": "Betalingen",
+          "sensors": "Locatie, Bluetooth en andere sensoren",
+          "real_device": "Hoe de app voelt op een echte telefoon",
+          "performance": "Snelheid en batterij"
+        },
+        "manualTitle": "Probeer dit op je eigen telefoon",
+        "manualHelp": "Je app gebruikt functies die de test niet kan controleren. Vink ze af als je ze hebt geprobeerd.",
+        "note": "De schermafbeeldingen in deze run zijn eenvoudige schetsen (gewoon testlettertype). De live preview toont de echte uitstraling.",
+        "unitTests": "Laat Claude unit-tests schrijven",
+        "unitTestsPrompt": "Schrijf unit-tests in test/ voor de logica van deze app (berekeningen, gegevensverwerking, alles wat niet alleen layout is). Voer ze uit met flutter test en los fouten op.",
+        "log": "Log tonen",
+        "startFailed": "De testrun kon geen rapport maken",
+        "deviceTested": "Ik heb de app op een echte telefoon geprobeerd"
+      },
+      "listing": {
+        "title": "Winkelpagina",
+        "intro": "Wat mensen in Google Play zien.",
+        "name": "Titel van de app",
+        "nameHelp": "Max 30 tekens.",
+        "short": "Korte beschrijving",
+        "shortHelp": "Max 80 tekens.",
+        "full": "Volledige beschrijving",
+        "fullHelp": "Max 4000 tekens.",
+        "category": "Categorie",
+        "email": "Contact-e-mail",
+        "categories": {
+          "tools": "Hulpmiddelen",
+          "productivity": "Productiviteit",
+          "lifestyle": "Lifestyle",
+          "health": "Gezondheid en fitness",
+          "education": "Educatie",
+          "entertainment": "Entertainment",
+          "games": "Spellen",
+          "finance": "Financiën",
+          "social": "Sociaal",
+          "business": "Zakelijk"
+        },
+        "write": "Laat Claude de teksten schrijven",
+        "writePrompt": "Schrijf de teksten voor de winkelpagina van deze app in de taal van de app zelf: een titel van maximaal 30 tekens, een korte beschrijving van maximaal 80 tekens en een volledige beschrijving van maximaal 4000 tekens, plus een passende categorie (een van: tools, productivity, lifestyle, health, education, entertainment, games, finance, social, business). Baseer het op STUDIO.md en de schermen en bewaar het met de Studio-tool set_store_listing.",
+        "screenshots": "Schermafbeeldingen",
+        "screenshotsHelp": "Minstens 2. Maak ze vanuit de live preview of voeg je eigen toe.",
+        "capture": "Maak er een vanuit de preview",
+        "capturing": "Schermafbeelding maken…",
+        "import": "Mijn eigen toevoegen…",
+        "importTitle": "Kies schermafbeeldingen",
+        "needPreview": "Start eerst de live preview.",
+        "remove": "Verwijderen",
+        "questions": "Vragen over je app",
+        "questionsHelp": "Google Play stelt deze in zijn privacy- en leeftijdsformulieren. Beantwoord ze hier en vul dezelfde antwoorden daarna in bij de Play Console.",
+        "q": {
+          "hasAccounts": "Mensen kunnen een account maken",
+          "collectsPersonalData": "De app verzamelt persoonsgegevens (namen, e-mails, …)",
+          "showsAds": "De app toont advertenties",
+          "inAppPurchases": "De app heeft in-app-aankopen",
+          "userGeneratedContent": "Mensen kunnen zelf inhoud plaatsen",
+          "usesLocation": "De app gebruikt locatie"
+        },
+        "summaryTitle": "Wat dit betekent in Play Console",
+        "summary": {
+          "privacy": "Gegevensbeveiliging: geef de persoonsgegevens op die je verzamelt en koppel je privacybeleid.",
+          "ads": "Geef aan dat de app advertenties bevat.",
+          "purchases": "Geef in-app-aankopen aan.",
+          "ugc": "Contentclassificatie: vermeld door gebruikers gemaakte inhoud en voeg een manier toe om inhoud te melden.",
+          "location": "Geef locatiegebruik aan bij Gegevensbeveiliging en leg het uit aan gebruikers.",
+          "accounts": "Voeg een manier toe om het account te verwijderen, en een link waar mensen verwijdering kunnen aanvragen.",
+          "none": "Naast de basis zijn geen bijzondere verklaringen nodig."
+        },
+        "consoleDone": "Ik heb deze ingevuld in Google Play Console",
+        "open": "Google Play Console openen",
+        "saveListing": "Winkelpagina opslaan"
+      },
+      "legal": {
+        "title": "Juridisch",
+        "intro": "Een privacybeleid en voorwaarden zijn verplicht in de winkel. Claude schrijft ze op basis van wat je app doet; jij zet ze online en voegt de links toe.",
+        "generate": "Laat Claude ze schrijven",
+        "generatePrompt": "Schrijf een privacybeleid en gebruiksvoorwaarden voor deze app in gewone taal, in de taal van de app zelf, gebaseerd op STUDIO.md, de datakeuzes (.studio/publish.json) en de rechten. Bewaar ze als legal/privacy-policy.md en legal/terms.md en ook als eenvoudige losse HTML-pagina’s legal/privacy-policy.html en legal/terms.html. Gebruik het contact-e-mailadres van de winkelpagina. Verzin geen feiten over de app: vraag het me als iets onduidelijk is. Herinner me eraan dat dit geen juridisch advies is.",
+        "docsReady": "Beide documenten staan in de map legal",
+        "docsMissing": "Nog niet geschreven",
+        "hostTitle": "Zet ze online",
+        "hostSteps": [
+          "Maak een gratis GitHub-account (of gebruik een website die je zelf beheert).",
+          "Maak een nieuwe publieke repository en upload de twee .html-bestanden uit de map legal.",
+          "Zet in de instellingen van de repository GitHub Pages aan. Na een minuut staan je pagina’s online.",
+          "Kopieer de twee webadressen en plak ze hieronder."
+        ],
+        "privacyUrl": "Link naar het privacybeleid",
+        "termsUrl": "Link naar de voorwaarden",
+        "urlHelp": "Moet met https:// beginnen",
+        "hostedChecked": "Ik heb beide links geopend en de pagina’s staan online",
+        "disclaimer": "Deze teksten zijn een startpunt en geen juridisch advies. Laat ze controleren als je app gevoelige gegevens verwerkt.",
+        "accountDeletion": "De app laat mensen hun account verwijderen",
+        "accountDeletionHelp": "Nodig als mensen kunnen inloggen.",
+        "saveLegal": "Opslaan"
+      },
+      "signing": {
+        "title": "Accounts en ondertekenen",
+        "intro": "Android-apps moeten worden ondertekend met een sleutel die alleen jij hebt. Studio maakt die en bewaart het wachtwoord in je sleutelbos.",
+        "keystore": "Ondertekeningssleutel",
+        "keystoreMissing": "Nog niet gemaakt",
+        "keystoreReady": "Gemaakt",
+        "keystorePath": "Bewaard op {{path}}",
+        "backup": "Bewaar een back-up van dit bestand op een veilige plek. Raak je het kwijt, dan kun je je app niet meer bijwerken.",
+        "owner": "Jouw naam",
+        "organisation": "Organisatie (optioneel)",
+        "country": "Landcode",
+        "create": "Ondertekeningssleutel maken",
+        "creating": "Bezig met maken…",
+        "noKeytool": "Keytool van Java is niet gevonden. Het hoort bij Android Studio; installeer dat eerst via de installatie.",
+        "gradle": "Ondertekenen in de Android-build",
+        "gradleReady": "Ingesteld",
+        "gradleMissing": "Nog niet ingesteld",
+        "gradleAsk": "Laat Claude dit instellen",
+        "playTitle": "Google Play-account",
+        "playHelp": "Je hebt een Google Play-ontwikkelaarsaccount nodig (eenmalige kosten) en een serviceaccountsleutel zodat Studio voor je kan uploaden.",
+        "playSteps": [
+          "Maak je ontwikkelaarsaccount aan op play.google.com/console.",
+          "Open in Play Console Instellen, dan API-toegang, en maak een serviceaccount.",
+          "Geef het rechten om apps uit te brengen, maak daarna een JSON-sleutel en download die.",
+          "Plak hieronder de inhoud van dat JSON-bestand. Studio bewaart het in je sleutelbos."
+        ],
+        "playOpen": "Google Play Console openen",
+        "keyLabel": "Serviceaccountsleutel (JSON)",
+        "keySaved": "Bewaard in de sleutelbos",
+        "keySave": "Sleutel opslaan",
+        "keyRemove": "Sleutel verwijderen",
+        "accountReady": "Mijn Google Play-ontwikkelaarsaccount is klaar",
+        "fastlane": "Fastlane (voor het uploaden)",
+        "fastlaneReady": "Gevonden",
+        "fastlaneMissing": "Niet geïnstalleerd. Installeer het via docs.fastlane.tools en controleer dan opnieuw.",
+        "closedTitle": "Nieuwe accounts: eerst gesloten testen",
+        "closedBody": "Google eist momenteel dat nieuwe persoonlijke ontwikkelaarsaccounts een gesloten test met genoeg testers een aantal dagen draaien voordat een app naar productie mag (op het moment van schrijven 12 testers gedurende 14 dagen; controleer de actuele regel in de Play Console). Upload dus eerst naar de interne of gesloten track.",
+        "iosTitle": "iPhone (App Store)",
+        "iosBody": "Publiceren voor iOS vraagt een Mac of een cloud-buildservice en een Apple Developer-account. Studio ondersteunt dit later. De checklist dekt al alles behalve deze laatste stap.",
+        "iosCheck": "Ondersteuning controleren"
+      },
+      "release": {
+        "title": "Release",
+        "intro": "Studio bouwt je app-bundle en uploadt het als concept naar een testtrack van Google Play. Je rondt de release af in Play Console.",
+        "track": "Testtrack",
+        "tracks": {
+          "internal": "Interne test (snel, tot 100 testers)",
+          "closed": "Gesloten test"
+        },
+        "version": "Versie {{version}} (build {{build}})",
+        "confirmBox": "Ik heb alles gecontroleerd en wil deze versie releasen",
+        "blocked": "Rond eerst de verplichte punten af.",
+        "button": "Bouwen en uploaden",
+        "confirmTitle": "Versie {{version}} uploaden naar Google Play?",
+        "confirmBody": "Studio bouwt de release-bundle en uploadt die als concept naar de track {{track}}. Er gaat niets live voor het publiek: je rondt de release af in Play Console.",
+        "confirmRun": "Ja, bouwen en uploaden",
+        "building": "De app-bundle wordt gebouwd…",
+        "uploading": "Uploaden naar Google Play…",
+        "done": "Geüpload! Open Play Console om de release af te ronden en uit te rollen.",
+        "failed": "Deze stap is mislukt. Het log hieronder laat zien waarom.",
+        "log": "Log",
+        "needFastlane": "Installeer eerst Fastlane (zie Accounts).",
+        "needKey": "Voeg eerst je Google Play-sleutel toe (zie Accounts)."
+      }
+    }
   }
 }

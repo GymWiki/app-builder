@@ -45,6 +45,9 @@ pub fn tool_list() -> Value {
          "inputSchema":{"type":"object","properties":{"label":{"type":"string","description":"Short description of what changed"}},"required":["label"]}},
         {"name":"bump_version","description":"Increase the app version in pubspec.yaml (and Studio).",
          "inputSchema":{"type":"object","properties":{"part":{"type":"string","enum":["major","minor","patch","build"]}},"required":["part"]}},
+        {"name":"get_store_listing","description":"The app's store page texts (title, short and full description, category).","inputSchema":no_args},
+        {"name":"set_store_listing","description":"Save store page texts. Only the fields you pass are changed. Limits: title 30, shortDescription 80, fullDescription 4000 characters.",
+         "inputSchema":{"type":"object","properties":{"title":{"type":"string"},"shortDescription":{"type":"string"},"fullDescription":{"type":"string"},"category":{"type":"string"}}}},
         {"name":"get_checklist","description":"The publish checklist and which items are done.","inputSchema":no_args},
         {"name":"approve","description":"Internal: asks the user in Studio for permission. Used by Claude Code only.",
          "inputSchema":{"type":"object","properties":{"tool_name":{"type":"string"},"input":{"type":"object"},"tool_use_id":{"type":"string"}},"required":["tool_name","input"]}}
@@ -96,6 +99,8 @@ fn call_tool(deps: &Deps, project_id: &str, name: &str, args: &Value) -> Value {
         "create_snapshot" => tools::create_snapshot(&deps.db, &project, &arg("label"), "manual"),
         "bump_version" => tools::bump_version(&deps.db, &project, &arg("part")),
         "get_checklist" => tools::get_checklist(&deps.db, &project),
+        "get_store_listing" => tools::get_store_listing(&dir),
+        "set_store_listing" => tools::set_store_listing(&dir, args),
         "approve" => {
             let tool = arg("tool_name");
             let input = args.get("input").cloned().unwrap_or(json!({}));
@@ -303,7 +308,7 @@ mod tests {
         assert!(handle_rpc(&deps, &pid, &json!({"jsonrpc":"2.0","method":"notifications/initialized"})).is_none());
         let list = rpc(&deps, &pid, "tools/list", json!({}));
         let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-        for n in ["project_status", "list_screens", "get_theme", "set_theme", "preview_status", "preview_screenshot", "create_snapshot", "bump_version", "get_checklist", "approve"] {
+        for n in ["project_status", "list_screens", "get_theme", "set_theme", "preview_status", "preview_screenshot", "create_snapshot", "bump_version", "get_checklist", "get_store_listing", "set_store_listing", "approve"] {
             assert!(names.contains(&n), "missing {n}");
         }
         assert_eq!(rpc(&deps, &pid, "nope", json!({}))["error"]["code"], -32601);

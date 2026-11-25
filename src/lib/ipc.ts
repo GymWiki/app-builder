@@ -3,8 +3,18 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toAppError, AppError } from "./errors";
 import type {
   AppInfo,
+  Applied,
   ChatEvent,
   Device,
+  Evaluation,
+  IconReport,
+  Meta,
+  PlatformSettings,
+  ReportView,
+  ScreenGraph,
+  SigningStatus,
+  Snapshot,
+  TestReport,
   FlutterCheck,
   InstallPlan,
   PermissionDecision,
@@ -80,6 +90,57 @@ export const api = {
   previewLog: () => call<string[]>("preview_log"),
   previewReload: () => call<void>("preview_reload"),
   previewDevices: () => call<Device[]>("preview_devices"),
+
+  themeGet: (projectId: string) => call<{ managed: boolean; seedColor: string | null }>("theme_get", { projectId }),
+  themeSet: (projectId: string, seedColor: string) =>
+    call<{ ok: boolean; wired: boolean; next: string }>("theme_set", { projectId, seedColor }),
+  screensGraph: (projectId: string) => call<ScreenGraph>("screens_graph", { projectId }),
+
+  platformGet: (projectId: string) => call<PlatformSettings>("platform_get", { projectId }),
+  platformSetName: (projectId: string, name: string) => call<Applied>("platform_set_name", { projectId, name }),
+  platformSetBundle: (projectId: string, bundleId: string) =>
+    call<Applied>("platform_set_bundle", { projectId, bundleId }),
+  platformSetMinOs: (projectId: string, android: number | null, ios: string | null) =>
+    call<Applied>("platform_set_min_os", { projectId, android, ios }),
+  platformSetPermission: (projectId: string, key: string, enabled: boolean, iosReason: string) =>
+    call<Applied>("platform_set_permission", { projectId, key, enabled, iosReason }),
+  versionSet: (projectId: string, version: string, build: number) =>
+    call<void>("version_set", { projectId, version, build }),
+  assetsGenerateIcon: (projectId: string, sourcePath: string) =>
+    call<IconReport>("assets_generate_icon", { projectId, sourcePath }),
+
+  snapshotsList: (projectId: string) => call<Snapshot[]>("snapshots_list", { projectId }),
+  snapshotCreate: (projectId: string, label: string) =>
+    call<{ created: boolean }>("snapshot_create", { projectId, label }),
+  snapshotRestore: (projectId: string, commit: string) =>
+    call<{ restored: boolean }>("snapshot_restore", { projectId, commit }),
+  changelogDraft: (projectId: string) => call<string[]>("changelog_draft", { projectId }),
+
+  metaGet: (projectId: string) => call<Meta>("meta_get", { projectId }),
+  metaSave: (projectId: string, meta: Meta) => call<void>("meta_save", { projectId, meta }),
+  secretSet: (projectId: string, name: string, value: string) => call<void>("secret_set", { projectId, name, value }),
+  secretHas: (projectId: string, name: string) => call<boolean>("secret_has", { projectId, name }),
+  secretDelete: (projectId: string, name: string) => call<void>("secret_delete", { projectId, name }),
+  dataSetupPrompt: (projectId: string) => call<string>("data_setup_prompt", { projectId }),
+  checklistEvaluate: (projectId: string) => call<Evaluation>("checklist_evaluate", { projectId }),
+
+  storeScreenshotsList: (projectId: string) => call<string[]>("store_screenshots_list", { projectId }),
+  storeScreenshotCapture: (projectId: string) => call<string>("store_screenshot_capture", { projectId }),
+  storeScreenshotImport: (projectId: string, paths: string[]) =>
+    call<string[]>("store_screenshot_import", { projectId, paths }),
+  storeScreenshotDelete: (projectId: string, name: string) =>
+    call<void>("store_screenshot_delete", { projectId, name }),
+  fileDataUrl: (projectId: string, rel: string) => call<string>("file_data_url", { projectId, rel }),
+
+  testrunStart: (projectId: string) => call<TestReport>("testrun_start", { projectId }),
+  testrunReport: (projectId: string) => call<ReportView>("testrun_report", { projectId }),
+  signingStatus: (projectId: string) => call<SigningStatus>("signing_status", { projectId }),
+  signingCreateKeystore: (projectId: string, owner: string, organisation: string, country: string) =>
+    call<string>("signing_create_keystore", { projectId, owner, organisation, country }),
+  signingPrompt: () => call<string>("signing_prompt"),
+  publishAndroid: (projectId: string, track: string, confirmed: boolean) =>
+    call<{ version: string; track: string }>("publish_android", { projectId, track, confirmed }),
+  publishIos: () => call<void>("publish_ios"),
 
   projectsList: (query?: string) => call<Project[]>("projects_list", { query: query || null }),
   projectGet: (id: string) => call<Project>("project_get", { id }),

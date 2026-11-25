@@ -9,3 +9,4 @@ src-tauri/gen/schemas
 *.local
 *.tsbuildinfo
 dist-demo
+e2e-out

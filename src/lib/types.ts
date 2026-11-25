@@ -121,3 +121,124 @@ export interface Device {
   emulator: boolean;
   wireless: boolean;
 }
+
+export interface ScreenNode {
+  class: string;
+  file: string;
+  line: number;
+  children: string[];
+}
+export interface ScreenGraph {
+  home: string | null;
+  nodes: ScreenNode[];
+  unlinked: string[];
+}
+
+export interface PermissionState {
+  key: string;
+  enabled: boolean;
+  ios_reason: string | null;
+}
+export interface PlatformSettings {
+  appName: string | null;
+  bundleId: string | null;
+  minAndroid: number | null;
+  minIos: string | null;
+  androidApplicationId: string | null;
+  permissions: PermissionState[];
+  hasAndroid: boolean;
+  hasIos: boolean;
+}
+export interface Applied {
+  applied: string[];
+  skipped: { target: string; reason: string }[];
+}
+export interface IconReport {
+  written: string[];
+  warnings: string[];
+}
+export interface Snapshot {
+  id: string;
+  commit: string;
+  label: string;
+  kind: "auto" | "manual" | "publish";
+  version: string;
+  createdAt: string;
+}
+
+export interface Questionnaire {
+  hasAccounts: boolean | null;
+  collectsPersonalData: boolean | null;
+  showsAds: boolean | null;
+  inAppPurchases: boolean | null;
+  userGeneratedContent: boolean | null;
+  usesLocation: boolean | null;
+  playConsoleDone: boolean;
+}
+export interface Meta {
+  listing: { title: string; shortDescription: string; fullDescription: string; category: string; contactEmail: string };
+  questionnaire: Questionnaire;
+  legal: { privacyUrl: string; termsUrl: string; hostedChecked: boolean; accountDeletion: boolean };
+  data: { provider: string; supabaseUrl: string; supabaseProjectRef: string; authMethods: string[] };
+  publishing: {
+    track: string;
+    playAccountReady: boolean;
+    finalConfirmed: boolean;
+    manualChecks: Record<string, boolean>;
+    deviceTested: boolean;
+  };
+  lastPublishedCommit: string | null;
+  lastPublishedVersion: string | null;
+}
+
+export interface ChecklistItemState {
+  key: string;
+  blocking: boolean;
+  status: "done" | "todo" | "failed";
+  missing: string[];
+  next: string | null;
+}
+export interface Evaluation {
+  items: ChecklistItemState[];
+  canPublish: boolean;
+  done: number;
+  total: number;
+}
+
+export interface TestIssue {
+  kind: string;
+  severity: "error" | "warning";
+  message: string;
+  detail: string;
+}
+export interface TestScreen {
+  name: string;
+  depth: number;
+  taps: number;
+  issues: TestIssue[];
+  screenshot: string | null;
+}
+export interface TestReport {
+  startedOk: boolean;
+  tapped: number;
+  durationMs: number;
+  screens: TestScreen[];
+  errors: TestIssue[];
+}
+export interface ReportView {
+  errors: number;
+  warnings: number;
+  report: TestReport | null;
+  passed: boolean;
+  stale: boolean;
+  nativeFeatures: string[];
+  notTested: string[];
+}
+export interface SigningStatus {
+  keytool: boolean;
+  keystore: boolean;
+  keystorePath: string | null;
+  gradleConfigured: boolean;
+  playKey: boolean;
+  fastlane: boolean;
+}

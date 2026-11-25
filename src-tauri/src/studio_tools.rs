@@ -207,6 +207,37 @@ pub fn create_snapshot(db: &Db, p: &Project, label: &str, kind: &str) -> AppResu
     }
 }
 
+// ───────────── winkelvermelding ─────────────
+
+pub fn get_store_listing(dir: &Path) -> AppResult<Value> {
+    let m = crate::meta::load(dir)?;
+    Ok(json!({ "listing": m.listing, "limits": { "title": 30, "shortDescription": 80, "fullDescription": 4000 },
+               "categories": ["tools","productivity","lifestyle","health","education","entertainment","games","finance","social","business"] }))
+}
+
+/// Alleen meegegeven velden worden aangepast; de limieten worden bij het opslaan gecontroleerd.
+pub fn set_store_listing(dir: &Path, args: &Value) -> AppResult<Value> {
+    let mut m = crate::meta::load(dir)?;
+    let get = |k: &str| args.get(k).and_then(Value::as_str).map(|s| s.trim().to_string());
+    if let Some(v) = get("title") {
+        m.listing.title = v;
+    }
+    if let Some(v) = get("shortDescription") {
+        m.listing.short_description = v;
+    }
+    if let Some(v) = get("fullDescription") {
+        m.listing.full_description = v;
+    }
+    if let Some(v) = get("category") {
+        if !v.is_empty() && !["tools","productivity","lifestyle","health","education","entertainment","games","finance","social","business"].contains(&v.as_str()) {
+            return Err(AppError::Invalid("unknown category".into()));
+        }
+        m.listing.category = v;
+    }
+    crate::meta::save(dir, &m)?;
+    Ok(json!({ "ok": true, "listing": m.listing }))
+}
+
 // ───────────── checklist ─────────────
 
 pub fn get_checklist(db: &Db, p: &Project) -> AppResult<Value> {
@@ -277,6 +308,19 @@ mod tests {
         assert_eq!(get_theme(&d).unwrap()["seedColor"], "#0D9488");
         std::fs::write(d.join("lib/main.dart"), "theme: AppTheme.light").unwrap();
         assert_eq!(set_theme(&d, "#112233").unwrap()["wired"], true);
+    }
+
+    #[test]
+    fn store_listing_roundtrip_and_limits() {
+        let d = tmp();
+        let r = set_store_listing(&d, &json!({"title":"Friday Scores","category":"tools"})).unwrap();
+        assert_eq!(r["listing"]["title"], "Friday Scores");
+        set_store_listing(&d, &json!({"shortDescription":"Keep score"})).unwrap();
+        let g = get_store_listing(&d).unwrap();
+        assert_eq!((g["listing"]["title"].as_str(), g["listing"]["shortDescription"].as_str()), (Some("Friday Scores"), Some("Keep score")), "partial updates keep other fields");
+        assert!(set_store_listing(&d, &json!({"title":"x".repeat(31)})).is_err());
+        assert!(set_store_listing(&d, &json!({"category":"weapons"})).is_err());
+        assert_eq!(get_store_listing(&d).unwrap()["listing"]["title"], "Friday Scores", "a rejected update changes nothing");
     }
 
     #[test]

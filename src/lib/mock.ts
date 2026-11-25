@@ -164,6 +164,21 @@ async function mockChat(projectId: string, text: string) {
     await wait(600);
     push({ type: "tool_result", tool_use_id: `t${id}c`, ok: true, text: "No issues found!" });
     push({ type: "text", message_id: `m${id}b`, text: "Done! Your app now has a settings screen." });
+    // Wat Claude in het echt met bestanden zou doen, voor de demo van de checklist.
+    const low = text.toLowerCase();
+    if (low.includes("privacy")) fs.docs = true;
+    if (low.includes("changelog")) fs.changelog = true;
+    if (low.includes("signingconfig") || low.includes("signing")) fs.gradle = true;
+    if (low.includes("set_store_listing")) {
+      const m = metaOf(projectId);
+      m.listing = {
+        title: "Friday Scores",
+        shortDescription: "Keep score on game night",
+        fullDescription: "A simple scoreboard for your board game nights.",
+        category: "tools",
+        contactEmail: "me@example.com",
+      };
+    }
     push({ type: "done", ok: true, text: "Done!", duration_ms: 4000, code: null });
     push({ type: "snapshot", commit: "abc1234", label: "Claude: " + text.slice(0, 40) });
   } finally {
@@ -192,6 +207,206 @@ const MOCK_PAGE =
   encodeURIComponent(
     "<body style='margin:0;font:16px sans-serif'><div style='background:#4f46e5;color:#fff;padding:18px'>Friday Scores</div><div style='padding:24px;text-align:center'><div style='font-size:64px'>7</div><button>+1</button></div></body>",
   );
+
+// ── fase 4 en 5 ──
+const emptyMeta = () => ({
+  listing: { title: "", shortDescription: "", fullDescription: "", category: "", contactEmail: "" },
+  questionnaire: {
+    hasAccounts: null,
+    collectsPersonalData: null,
+    showsAds: null,
+    inAppPurchases: null,
+    userGeneratedContent: null,
+    usesLocation: null,
+    playConsoleDone: false,
+  },
+  legal: { privacyUrl: "", termsUrl: "", hostedChecked: false, accountDeletion: false },
+  data: { provider: "", supabaseUrl: "", supabaseProjectRef: "", authMethods: [] as string[] },
+  publishing: {
+    track: "",
+    playAccountReady: false,
+    finalConfirmed: false,
+    manualChecks: {} as Record<string, boolean>,
+    deviceTested: false,
+  },
+  lastPublishedCommit: null as string | null,
+  lastPublishedVersion: null as string | null,
+});
+type MockMeta = ReturnType<typeof emptyMeta>;
+const metas = new Map<string, MockMeta>();
+const metaOf = (id: string) => metas.get(id) ?? metas.set(id, emptyMeta()).get(id)!;
+const secrets = new Set<string>();
+const fs = {
+  icon: false,
+  shots: [] as string[],
+  docs: false,
+  changelog: false,
+  keystore: false,
+  gradle: false,
+  testPassed: false,
+  testRan: false,
+  seed: "#4F46E5" as string | null,
+};
+let snaps = [
+  {
+    id: "s3",
+    commit: "c3c3c3c",
+    label: "Claude: add a settings screen",
+    kind: "auto",
+    version: "1.0.0",
+    createdAt: new Date(Date.now() - 600000).toISOString(),
+  },
+  {
+    id: "s2",
+    commit: "b2b2b2b",
+    label: "Claude: make the colors teal",
+    kind: "auto",
+    version: "1.0.0",
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: "s1",
+    commit: "a1a1a1a",
+    label: "Start",
+    kind: "auto",
+    version: "1.0.0",
+    createdAt: new Date(Date.now() - 172800000).toISOString(),
+  },
+];
+const platform = {
+  appName: "Friday Scores",
+  bundleId: "com.example.friday_scores",
+  minAndroid: 21,
+  minIos: "12.0",
+  androidApplicationId: "com.example.friday_scores",
+  permissions: ["internet", "camera", "location", "microphone", "photos", "notifications"].map((key) => ({
+    key,
+    enabled: key === "internet",
+    ios_reason: null as string | null,
+  })),
+  hasAndroid: true,
+  hasIos: true,
+};
+const applied = (what: string) => ({ applied: [what], skipped: [] as { target: string; reason: string }[] });
+
+function mockEvaluate(id: string) {
+  const m = metaOf(id);
+  const p = projects.find((x) => x.id === id);
+  const l = m.listing;
+  const q = m.questionnaire;
+  const answered = [
+    q.hasAccounts,
+    q.collectsPersonalData,
+    q.showsAds,
+    q.inAppPurchases,
+    q.userGeneratedContent,
+    q.usesLocation,
+  ].every((v) => v !== null);
+  const accounts = q.hasAccounts === true || m.data.authMethods.length > 0;
+  const mk = (key: string, blocking: boolean, missing: string[], next: string) => ({
+    key,
+    blocking,
+    status: missing.length ? "todo" : "done",
+    missing,
+    next: missing.length ? next : null,
+  });
+  const items = [
+    mk(
+      "app_basics",
+      true,
+      [...(platform.bundleId.startsWith("com.example.") ? ["bundle_id"] : []), ...(fs.icon ? [] : ["icon"])],
+      fs.icon ? "settings" : "assets",
+    ),
+    mk(
+      "data_auth",
+      true,
+      [...(m.data.provider ? [] : ["provider"]), ...(accounts && !m.legal.accountDeletion ? ["account_deletion"] : [])],
+      "data",
+    ),
+    mk(
+      "legal",
+      true,
+      [
+        ...(fs.docs ? [] : ["docs"]),
+        ...(m.legal.privacyUrl ? [] : ["privacy_url"]),
+        ...(m.legal.termsUrl ? [] : ["terms_url"]),
+        ...(m.legal.privacyUrl && !m.legal.hostedChecked ? ["hosted_checked"] : []),
+      ],
+      "publish:legal",
+    ),
+    mk("ai_test_run", true, fs.testPassed ? [] : [fs.testRan ? "failed" : "never"], "publish:test"),
+    mk(
+      "store_listing",
+      true,
+      [
+        ...(l.title ? [] : ["title"]),
+        ...(l.shortDescription ? [] : ["short_description"]),
+        ...(l.fullDescription ? [] : ["full_description"]),
+        ...(l.category ? [] : ["category"]),
+        ...(l.contactEmail ? [] : ["contact_email"]),
+        ...(fs.shots.length >= 2 ? [] : ["screenshots"]),
+        ...(!answered ? ["questionnaire"] : !q.playConsoleDone ? ["play_console"] : []),
+      ],
+      "publish:listing",
+    ),
+    mk(
+      "accounts_signing",
+      true,
+      [
+        ...(fs.keystore ? [] : ["keystore"]),
+        ...(fs.gradle ? [] : ["gradle"]),
+        ...(m.publishing.playAccountReady ? [] : ["play_account"]),
+      ],
+      "publish:signing",
+    ),
+    mk(
+      "version_changelog",
+      true,
+      [...(m.lastPublishedVersion === p?.version ? ["version_bump"] : []), ...(fs.changelog ? [] : ["changelog"])],
+      "versions",
+    ),
+  ];
+  const others = items.every((i) => i.status === "done");
+  items.push({
+    ...mk(
+      "final_confirmation",
+      true,
+      !others ? ["others"] : m.publishing.finalConfirmed ? [] : ["confirm"],
+      "publish:confirm",
+    ),
+  });
+  items.push(mk("device_test", false, m.publishing.deviceTested ? [] : ["device"], "preview"));
+  items.push(
+    mk(
+      "native_manual",
+      false,
+      ["camera"].filter((k) => !m.publishing.manualChecks[k]),
+      "publish:test",
+    ),
+  );
+  const blocking = items.filter((i) => i.blocking);
+  const done = blocking.filter((i) => i.status === "done").length;
+  return { items, canPublish: done === blocking.length, done, total: blocking.length };
+}
+
+const MOCK_REPORT = {
+  startedOk: true,
+  tapped: 9,
+  durationMs: 5200,
+  screens: [
+    {
+      name: "Friday Scores",
+      depth: 0,
+      taps: 6,
+      issues: [{ kind: "dead_button", severity: "warning", message: "A TextButton seems to do nothing", detail: "" }],
+      screenshot: null,
+    },
+    { name: "Settings", depth: 1, taps: 3, issues: [], screenshot: null },
+  ],
+  errors: [],
+};
+const emitJob = (projectId: string, job: string, status: string) => emit("job-state", { projectId, job, status });
+const emitLine = (projectId: string, job: string, line: string) => emit("job-log", { projectId, job, line });
 
 export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}): Promise<unknown> {
   switch (cmd) {
@@ -352,6 +567,195 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
               wireless: false,
             },
           ];
+    case "theme_get":
+      return { managed: fs.seed !== null, seedColor: fs.seed };
+    case "theme_set":
+      fs.seed = (args.seedColor as string).toUpperCase();
+      return { ok: true, wired: true, next: "" };
+    case "screens_graph":
+      return scenario === "noscreens"
+        ? { home: null, nodes: [], unlinked: [] }
+        : {
+            home: "HomeScreen",
+            nodes: [
+              { class: "HomeScreen", file: "lib/main.dart", line: 24, children: ["SettingsScreen"] },
+              { class: "SettingsScreen", file: "lib/settings_screen.dart", line: 5, children: ["AboutPage"] },
+              { class: "AboutPage", file: "lib/about_page.dart", line: 3, children: [] },
+              { class: "LonelyScreen", file: "lib/lonely.dart", line: 1, children: [] },
+            ],
+            unlinked: ["LonelyScreen"],
+          };
+    case "platform_get":
+      return platform;
+    case "platform_set_name":
+      platform.appName = args.name as string;
+      return applied("Android + iOS");
+    case "platform_set_bundle":
+      if (args.bundleId === "fail.demo")
+        return { applied: [], skipped: [{ target: "iOS", reason: "project.pbxproj not found" }] };
+      platform.bundleId = platform.androidApplicationId = args.bundleId as string;
+      return applied("Android: applicationId, iOS: PRODUCT_BUNDLE_IDENTIFIER");
+    case "platform_set_min_os":
+      if (args.android) platform.minAndroid = args.android as number;
+      if (args.ios) platform.minIos = args.ios as string;
+      return applied("minSdk, deployment target");
+    case "platform_set_permission": {
+      const perm = platform.permissions.find((x) => x.key === args.key)!;
+      perm.enabled = args.enabled as boolean;
+      perm.ios_reason = args.enabled ? (args.iosReason as string) : null;
+      return applied("AndroidManifest.xml, Info.plist");
+    }
+    case "version_set": {
+      const p = projects.find((x) => x.id === args.projectId);
+      if (p) {
+        p.version = args.version as string;
+        p.buildNumber = args.build as number;
+      }
+      return;
+    }
+    case "assets_generate_icon":
+      fs.icon = true;
+      return { written: new Array(26).fill("x"), warnings: [] };
+    case "snapshots_list":
+      return snaps;
+    case "snapshot_create":
+      snaps = [
+        {
+          id: `s${snaps.length + 1}`,
+          commit: `d${snaps.length}d${snaps.length}d`,
+          label: args.label as string,
+          kind: "manual",
+          version: "1.0.0",
+          createdAt: now(),
+        },
+        ...snaps,
+      ];
+      return { created: true };
+    case "snapshot_restore": {
+      const t = snaps.find((x) => x.commit === args.commit);
+      snaps = [
+        {
+          id: `r${snaps.length}`,
+          commit: `e${snaps.length}e${snaps.length}e`,
+          label: `Restored: ${t?.label}`,
+          kind: "manual",
+          version: "1.0.0",
+          createdAt: now(),
+        },
+        ...snaps,
+      ];
+      return { restored: true };
+    }
+    case "changelog_draft":
+      return snaps.filter((x) => x.kind === "auto" && x.label !== "Start").map((x) => x.label);
+    case "meta_get":
+      return metaOf(args.projectId as string);
+    case "meta_save": {
+      const id = args.projectId as string;
+      const m = args.meta as MockMeta;
+      if (m.listing.title.length > 30) throw new AppError("invalid", "store title can be at most 30 characters");
+      metas.set(id, {
+        ...m,
+        lastPublishedCommit: metaOf(id).lastPublishedCommit,
+        lastPublishedVersion: metaOf(id).lastPublishedVersion,
+      });
+      return;
+    }
+    case "secret_set":
+      secrets.add(`${args.projectId}:${args.name}`);
+      return;
+    case "secret_has":
+      return secrets.has(`${args.projectId}:${args.name}`);
+    case "secret_delete":
+      secrets.delete(`${args.projectId}:${args.name}`);
+      return;
+    case "data_setup_prompt":
+      return "Set up the data layer for this app.";
+    case "checklist_evaluate":
+      return mockEvaluate(args.projectId as string);
+    case "store_screenshots_list":
+      return fs.shots;
+    case "store_screenshot_capture": {
+      if (preview.status !== "running") throw new AppError("invalid", "start the live preview first");
+      const n = `phone-0${fs.shots.length + 1}.png`;
+      fs.shots = [...fs.shots, n];
+      return n;
+    }
+    case "store_screenshot_import":
+      fs.shots = [...fs.shots, ...(args.paths as string[]).map((_, i) => `imported-0${fs.shots.length + i + 1}.png`)];
+      return fs.shots;
+    case "store_screenshot_delete":
+      fs.shots = fs.shots.filter((x) => x !== args.name);
+      return;
+    case "file_data_url":
+      return (
+        "data:image/svg+xml," +
+        encodeURIComponent(
+          "<svg xmlns='http://www.w3.org/2000/svg' width='90' height='160'><rect width='90' height='160' fill='%234f46e5'/></svg>",
+        )
+      );
+    case "testrun_start": {
+      const id = args.projectId as string;
+      emitJob(id, "test", "running");
+      for (const l of ["00:01 +0: Studio crawl", "00:04 +1: Studio crawl"]) {
+        await sleep(500);
+        emitLine(id, "test", l);
+      }
+      fs.testRan = true;
+      fs.testPassed = !(metaOf(id).listing.title === "FAIL");
+      emitJob(id, "test", fs.testPassed ? "done" : "failed");
+      return MOCK_REPORT;
+    }
+    case "testrun_report":
+      return {
+        errors: 0,
+        warnings: fs.testRan ? 1 : 0,
+        report: fs.testRan ? MOCK_REPORT : null,
+        passed: fs.testPassed,
+        stale: false,
+        nativeFeatures: ["camera"],
+        notTested: ["camera", "push", "payments", "sensors", "real_device", "performance"],
+      };
+    case "signing_status":
+      return {
+        keytool: true,
+        keystore: fs.keystore,
+        keystorePath: fs.keystore
+          ? "C:\\Users\\me\\AppData\\Roaming\\app.studio.desktop\\keystores\\x\\upload-keystore.jks"
+          : null,
+        gradleConfigured: fs.gradle,
+        playKey: secrets.has(`${args.projectId}:play_service_account_json`),
+        fastlane: true,
+      };
+    case "signing_create_keystore":
+      await sleep(500);
+      fs.keystore = true;
+      return "keystore";
+    case "signing_prompt":
+      return "Configure release signing from environment variables.";
+    case "publish_android": {
+      const id = args.projectId as string;
+      if (!args.confirmed) throw new AppError("invalid", "publishing needs confirmation");
+      emitJob(id, "build", "running");
+      for (const l of [
+        "Running Gradle task 'bundleRelease'...",
+        "✓ Built build/app/outputs/bundle/release/app-release.aab",
+      ]) {
+        await sleep(400);
+        emitLine(id, "build", l);
+      }
+      emitJob(id, "build", "done");
+      emitJob(id, "upload", "running");
+      await sleep(600);
+      emitLine(id, "upload", "Uploading to internal track as draft…");
+      emitJob(id, "upload", "done");
+      const p = projects.find((x) => x.id === id);
+      metaOf(id).lastPublishedVersion = p?.version ?? null;
+      metaOf(id).publishing.finalConfirmed = false;
+      return { version: p?.version, track: args.track };
+    }
+    case "publish_ios":
+      throw new AppError("unsupported", "not supported yet: ios_publish");
     case "pty_write":
     case "pty_resize":
     case "pty_kill":

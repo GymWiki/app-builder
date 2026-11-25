@@ -40,11 +40,13 @@ export function friendlyError(e: unknown, t: TFunction): FriendlyError {
     "path_exists",
     "unsafe",
     "pty",
+    "keychain",
+    "unsupported",
   ];
   const code = known.includes(err.code) ? err.code : "unknown";
   // Alleen bekende tool-id's tonen; technische tekst hoort nooit in een melding voor de gebruiker.
   const candidate = err.message.split(":").pop()?.trim() ?? "";
-  const toolName = ["git", "flutter", "android", "claude"].includes(candidate)
+  const toolName = ["git", "flutter", "android", "claude", "keytool", "fastlane", "browser"].includes(candidate)
     ? t(`tools.${candidate}.name`)
     : t("tools.unknown");
   return {

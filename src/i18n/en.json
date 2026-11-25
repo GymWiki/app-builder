@@ -148,8 +148,6 @@
         "desc": "A guided checklist to Google Play and the App Store."
       }
     },
-    "comingSoon": "Coming in a later step",
-    "comingSoonBody": "This section is part of the roadmap. The panel is already here so the layout stays the same.",
     "device": {
       "label": "Preview device",
       "small": "Small phone",
@@ -179,7 +177,8 @@
       "select": "Talk about this screen",
       "selected": "Selected for chat",
       "hint": "Pick a screen to talk about it directly in the chat."
-    }
+    },
+    "askInChat": "Use the chat to change this: describe what you want and Claude does it. The panel in the middle shows the details."
   },
   "settings": {
     "title": "Settings",
@@ -346,6 +345,15 @@
     "claudeLogin": {
       "name": "Claude account",
       "why": "You sign in yourself through the official Claude Code. Studio only checks whether you are signed in."
+    },
+    "keytool": {
+      "name": "Java keytool"
+    },
+    "fastlane": {
+      "name": "Fastlane"
+    },
+    "browser": {
+      "name": "A browser (Chrome or Edge)"
     }
   },
   "errors": {
@@ -392,6 +400,14 @@
     "pty": {
       "title": "The terminal couldn’t start",
       "fix": "Close the terminal and try again. If it still fails, restart Studio."
+    },
+    "keychain": {
+      "title": "Studio couldn’t reach your computer’s keychain",
+      "fix": "Unlock your keychain or password manager and try again. Studio only stores secrets there, never in your project."
+    },
+    "unsupported": {
+      "title": "Not available yet",
+      "fix": "This part is planned for a later version of Studio. Everything else keeps working."
     }
   },
   "design": {
@@ -567,5 +583,506 @@
     "fresh": "First start",
     "ready": "With projects",
     "empty": "No projects"
+  },
+  "sec": {
+    "common": {
+      "ask": "Let Claude do this",
+      "askBusy": "Claude is already working",
+      "saved": "Saved",
+      "save": "Save",
+      "applied": "Updated: {{list}}",
+      "skippedTitle": "Studio couldn’t change everything automatically",
+      "skippedHelp": "These files look different from what Studio expects. Ask Claude to make the change by hand.",
+      "askFix": "Ask Claude to fix this",
+      "yes": "Yes",
+      "no": "No",
+      "change": "Change",
+      "remove": "Remove",
+      "choose": "Choose…",
+      "notNow": "Not yet",
+      "working": "Working…",
+      "open": "Open",
+      "loadError": "This could not be loaded"
+    },
+    "screens": {
+      "title": "Screen map",
+      "home": "Start screen",
+      "unlinked": "Not linked from anywhere",
+      "none": "No screens yet",
+      "noneHint": "Ask Claude to add one. Screens are widgets whose name ends in Screen or Page.",
+      "hint": "Click a screen to talk about it in the chat.",
+      "selected": "Selected for chat",
+      "refresh": "Refresh screens",
+      "addScreen": "Add a screen",
+      "linkScreens": "Connect screens",
+      "addPrompt": "Add a new screen to the app. Ask me what it should show if that isn’t clear, add it to the navigation, and update STUDIO.md.",
+      "linkPrompt": "Look at the screens and how they connect. Suggest and then add sensible navigation between screens that are not reachable yet, and update STUDIO.md."
+    },
+    "theme": {
+      "title": "Colors",
+      "seed": "Main color",
+      "hex": "Color code",
+      "hexInvalid": "Use a color code like #4F46E5",
+      "apply": "Apply color",
+      "applied": "Color updated. The preview refreshes by itself.",
+      "notWired": "This app doesn’t use Studio’s theme yet. Ask Claude to connect it.",
+      "wire": "Connect the theme",
+      "wirePrompt": "Make MaterialApp use AppTheme.light and AppTheme.dark from lib/app_theme.dart, and remove any colors that are set by hand elsewhere.",
+      "fontTitle": "Font",
+      "fontHelp": "Claude adds the font as a package and uses it everywhere.",
+      "kitTitle": "Look and feel",
+      "kitHelp": "Claude picks a Flutter package for this style and reuses it across all screens.",
+      "fonts": {
+        "Inter": "Inter",
+        "Poppins": "Poppins",
+        "Lora": "Lora",
+        "Roboto": "Roboto"
+      },
+      "kits": {
+        "material": "Material (default)",
+        "cupertino": "iPhone style",
+        "rounded": "Soft and rounded",
+        "minimal": "Minimal"
+      },
+      "fontPrompt": "Use the font “{{font}}” for the whole app (add it with the google_fonts package or bundle it as an asset) and make sure the theme file uses it.",
+      "kitPrompt": "Give the whole app a “{{kit}}” look and feel. Pick a suitable Flutter package or theme settings, apply it consistently on every screen, and keep using AppTheme for colors."
+    },
+    "data": {
+      "title": "Data and login",
+      "intro": "Choose where your app keeps its data and how people sign in. You use your own account; Studio never holds your keys.",
+      "provider": "Where is the data kept?",
+      "providers": {
+        "none": {
+          "name": "No data",
+          "desc": "The app doesn’t save anything."
+        },
+        "local": {
+          "name": "On the phone",
+          "desc": "A local database. No account, no server."
+        },
+        "supabase": {
+          "name": "Supabase",
+          "desc": "Your own Supabase project online."
+        },
+        "firebase": {
+          "name": "Firebase",
+          "desc": "Your own Firebase project online."
+        }
+      },
+      "auth": "How do people sign in?",
+      "authHelp": "Only relevant if people have accounts.",
+      "methods": {
+        "email": "Email and password",
+        "google": "Google",
+        "apple": "Apple",
+        "anonymous": "No account (guest)"
+      },
+      "supabaseRef": "Project reference",
+      "supabaseRefHelp": "The part before .supabase.co in your project URL.",
+      "supabaseUrl": "Project URL",
+      "token": "Personal access token",
+      "tokenHelp": "Lets Claude set up tables and rules in your project. Studio keeps it in your computer’s keychain, never in your project.",
+      "tokenSaved": "Saved in the keychain",
+      "tokenPlaceholder": "sbp_…",
+      "tokenSave": "Save token",
+      "tokenRemove": "Remove token",
+      "firebaseNote": "Claude uses your own Firebase login (firebase-tools). If you aren’t signed in yet, ask Claude and it tells you the command.",
+      "accountDeletion": "The app lets people delete their account",
+      "accountDeletionHelp": "Google Play and the App Store both require this when an app has accounts.",
+      "setup": "Let Claude set this up",
+      "setupHint": "Claude confirms each database action with you in the chat.",
+      "saveFirst": "Saving…"
+    },
+    "assets": {
+      "title": "App icon and images",
+      "intro": "Pick one square image (at least 1024 × 1024 works best) and Studio makes every size for Android, iOS and the web.",
+      "pick": "Choose an image…",
+      "pickTitle": "Choose your app icon",
+      "generating": "Making all sizes…",
+      "done": "{{count}} files created",
+      "current": "Current icon",
+      "none": "No icon yet",
+      "warnings": {
+        "small_source": "The image is small, so the icon may look blurry. 1024 × 1024 is best.",
+        "not_square": "The image isn’t square. Studio used the middle part.",
+        "no_platforms": "No Android, iOS or web folders were found."
+      },
+      "splashTitle": "Splash screen",
+      "splashHelp": "The screen shown while the app starts.",
+      "splash": "Set up a splash screen",
+      "splashPrompt": "Set up a native splash screen that matches the app’s main color and uses the app icon, using the flutter_native_splash package, and run it.",
+      "imagesTitle": "Images in the app",
+      "imagesHelp": "Put your pictures in the assets/images folder, then ask Claude to use them.",
+      "images": "Use my images",
+      "imagesPrompt": "Look in assets/images, register those images in pubspec.yaml, and use them where it makes sense in the app. Ask me where if unsure."
+    },
+    "settings": {
+      "title": "App settings",
+      "intro": "These values are written to the right Android and iOS files for you.",
+      "name": "App name",
+      "nameHelp": "Shown under the icon on the phone (max 30 characters).",
+      "bundle": "Bundle ID",
+      "bundleHelp": "Unique ID of your app, like nl.yourname.scores. Can’t be changed after you publish.",
+      "version": "Version",
+      "build": "Build number",
+      "versionHelp": "The build number must go up with every upload.",
+      "minAndroid": "Minimum Android version (API level)",
+      "minIos": "Minimum iOS version",
+      "permissions": "Permissions",
+      "permissionsHelp": "Only switch on what the app really uses. Each one is shown to people in the store.",
+      "permission": {
+        "internet": "Internet",
+        "camera": "Camera",
+        "location": "Location",
+        "microphone": "Microphone",
+        "photos": "Photos",
+        "notifications": "Notifications"
+      },
+      "iosReason": "Why does the app need this? (shown on iPhones)",
+      "iosReasonDefault": "This app needs access to provide its features.",
+      "bundleDefault": "Still the example ID. Choose your own before publishing.",
+      "notFound": "Not found in the project files"
+    },
+    "versions": {
+      "title": "Versions",
+      "intro": "Every change by Claude is saved as a snapshot, so you can always go back.",
+      "create": "Save a snapshot",
+      "createPlaceholder": "What did you just finish?",
+      "created": "Snapshot saved",
+      "nothing": "Nothing changed since the last snapshot.",
+      "empty": "No snapshots yet",
+      "restore": "Go back to this version",
+      "restoreTitle": "Go back to “{{label}}”?",
+      "restoreBody": "The app returns to how it was then. Nothing is lost: your current state is saved first and the old version becomes a new snapshot you can undo again.",
+      "restoreConfirm": "Yes, go back",
+      "restored": "Restored: {{label}}",
+      "kind": {
+        "auto": "Claude",
+        "manual": "You",
+        "publish": "Published"
+      },
+      "changelogTitle": "Changelog",
+      "changelogHelp": "Changes since the last release, from your snapshots.",
+      "changelogEmpty": "No changes to describe yet.",
+      "changelogAsk": "Let Claude write the changelog",
+      "changelogPrompt": "Write or update CHANGELOG.md for version {{version}} in plain language for app users (short bullet points, newest first). Base it on these changes:\n{{changes}}",
+      "current": "Now"
+    },
+    "publish": {
+      "title": "Publish",
+      "intro": "A guided checklist to Google Play (iOS follows). Everything required must be green before you can publish.",
+      "tabs": {
+        "checklist": "Checklist",
+        "test": "Test run",
+        "listing": "Store page",
+        "legal": "Legal",
+        "signing": "Accounts",
+        "release": "Release"
+      },
+      "required": "Required",
+      "advice": "Advice (doesn’t block)",
+      "progress": "{{done}} of {{total}} required items done",
+      "nextAction": "Next: {{action}}",
+      "goTo": "Go",
+      "allGreen": "Everything required is ready. You can publish.",
+      "items": {
+        "app_basics": {
+          "title": "App basics",
+          "desc": "Name, own bundle ID, app icon and version.",
+          "missing": {
+            "bundle_id": "Choose your own bundle ID",
+            "icon": "Add an app icon",
+            "version": "Set a version"
+          }
+        },
+        "data_auth": {
+          "title": "Data and login",
+          "desc": "Where data lives and how people sign in.",
+          "missing": {
+            "provider": "Choose where the data is kept",
+            "account_deletion": "Add “delete my account” (required when there are accounts)"
+          }
+        },
+        "legal": {
+          "title": "Legal",
+          "desc": "Privacy policy and terms, online.",
+          "missing": {
+            "docs": "Generate the privacy policy and terms",
+            "privacy_url": "Add the link to the privacy policy",
+            "terms_url": "Add the link to the terms",
+            "hosted_checked": "Check that the pages are online"
+          }
+        },
+        "ai_test_run": {
+          "title": "AI test run",
+          "desc": "Studio walks through your app and taps everything. It must pass on the current version.",
+          "missing": {
+            "never": "Run the test",
+            "failed": "Fix the problems and run the test again",
+            "expired": "The app changed since the last run. Run it again"
+          }
+        },
+        "store_listing": {
+          "title": "Store page",
+          "desc": "Texts, screenshots, category and the privacy questions.",
+          "missing": {
+            "title": "Add a title",
+            "short_description": "Add a short description",
+            "full_description": "Add a full description",
+            "category": "Choose a category",
+            "contact_email": "Add a contact email",
+            "screenshots": "Add at least 2 screenshots",
+            "questionnaire": "Answer the questions about your app",
+            "play_console": "Confirm you answered them in Google Play Console"
+          }
+        },
+        "accounts_signing": {
+          "title": "Accounts and signing",
+          "desc": "A signing key, signing set up in the build, and your Google Play account.",
+          "missing": {
+            "keystore": "Create a signing key",
+            "gradle": "Set up signing in the Android build",
+            "play_account": "Confirm your Google Play developer account is ready"
+          }
+        },
+        "version_changelog": {
+          "title": "Version and changelog",
+          "desc": "A new version number and a list of what changed.",
+          "missing": {
+            "version_bump": "Raise the version: this one is already published",
+            "changelog": "Write the changelog"
+          }
+        },
+        "final_confirmation": {
+          "title": "Final confirmation",
+          "desc": "You check everything one last time.",
+          "missing": {
+            "others": "Finish the items above first",
+            "confirm": "Confirm that you want to release"
+          }
+        },
+        "device_test": {
+          "title": "Tried on a real phone",
+          "desc": "Run the app on your own phone at least once.",
+          "missing": {
+            "device": "Try it on a phone"
+          }
+        },
+        "native_manual": {
+          "title": "Phone features checked by hand",
+          "desc": "Studio can’t test these features. Try each one on your own phone.",
+          "missing": {
+            "camera": "Camera",
+            "photos": "Photos",
+            "location": "Location",
+            "push": "Notifications",
+            "payments": "Payments",
+            "biometrics": "Fingerprint / face",
+            "bluetooth": "Bluetooth",
+            "ads": "Ads",
+            "links": "Opening links",
+            "sharing": "Sharing",
+            "microphone": "Microphone"
+          }
+        }
+      },
+      "actions": {
+        "settings": "Open app settings",
+        "assets": "Open app icon",
+        "data": "Open data and login",
+        "versions": "Open versions",
+        "preview": "Open the preview",
+        "publish_legal": "Open legal",
+        "publish_test": "Open test run",
+        "publish_listing": "Open store page",
+        "publish_signing": "Open accounts",
+        "publish_confirm": "Open release"
+      },
+      "test": {
+        "title": "AI test run",
+        "intro": "Studio starts your app without a phone, opens every screen, taps everything and fills in forms with good, empty and strange values. It looks for crashes, buttons that do nothing and empty screens.",
+        "run": "Run the test",
+        "running": "Testing…",
+        "rerun": "Run again",
+        "passed": "Passed on the current version",
+        "failed": "Problems found",
+        "stale": "The app changed since this run. The result no longer counts.",
+        "never": "Not run yet",
+        "summary": "{{screens}} screens · {{taps}} taps · {{errors}} problems · {{warnings}} warnings",
+        "fix": "Let Claude fix this",
+        "fixAll": "Let Claude fix all problems",
+        "fixPrompt": "The automatic test run found these problems. Fix them and make sure the app still builds:\n\n{{problems}}",
+        "autoRetest": "After Claude fixes it, test again automatically",
+        "retesting": "Claude finished, testing again…",
+        "screenOk": "No problems",
+        "kind": {
+          "crash": "Crash",
+          "overflow": "Layout overflow",
+          "empty_screen": "Empty screen",
+          "dead_button": "Button seems to do nothing"
+        },
+        "honestTitle": "What this test does not cover",
+        "honest": {
+          "camera": "Camera and photos",
+          "push": "Push notifications",
+          "payments": "Payments",
+          "sensors": "Location, Bluetooth and other sensors",
+          "real_device": "How the app feels on a real phone",
+          "performance": "Speed and battery"
+        },
+        "manualTitle": "Try these on your own phone",
+        "manualHelp": "Your app uses features the test can’t check. Tick each one when you tried it.",
+        "note": "Screenshots in this run are simple wireframes (plain test font). The live preview shows the real look.",
+        "unitTests": "Let Claude write unit tests",
+        "unitTestsPrompt": "Write unit tests in test/ for the logic of this app (calculations, data handling, anything that isn’t just layout). Run them with flutter test and fix failures.",
+        "log": "Show log",
+        "startFailed": "The test run could not produce a report",
+        "deviceTested": "I tried the app on a real phone"
+      },
+      "listing": {
+        "title": "Store page",
+        "intro": "What people see in Google Play.",
+        "name": "App title",
+        "nameHelp": "Max 30 characters.",
+        "short": "Short description",
+        "shortHelp": "Max 80 characters.",
+        "full": "Full description",
+        "fullHelp": "Max 4000 characters.",
+        "category": "Category",
+        "email": "Contact email",
+        "categories": {
+          "tools": "Tools",
+          "productivity": "Productivity",
+          "lifestyle": "Lifestyle",
+          "health": "Health and fitness",
+          "education": "Education",
+          "entertainment": "Entertainment",
+          "games": "Games",
+          "finance": "Finance",
+          "social": "Social",
+          "business": "Business"
+        },
+        "write": "Let Claude write the texts",
+        "writePrompt": "Write the store page texts for this app in the app’s own language: a title of at most 30 characters, a short description of at most 80 characters and a full description of at most 4000 characters, plus a fitting category (one of: tools, productivity, lifestyle, health, education, entertainment, games, finance, social, business). Base it on STUDIO.md and the screens, then save it with the Studio tool set_store_listing.",
+        "screenshots": "Screenshots",
+        "screenshotsHelp": "At least 2. Take them from the live preview, or add your own.",
+        "capture": "Take one from the preview",
+        "capturing": "Taking screenshot…",
+        "import": "Add my own…",
+        "importTitle": "Choose screenshots",
+        "needPreview": "Start the live preview first.",
+        "remove": "Remove",
+        "questions": "Questions about your app",
+        "questionsHelp": "Google Play asks these in its privacy and rating forms. Answer them here, then fill the same answers in on the Play Console.",
+        "q": {
+          "hasAccounts": "People can create an account",
+          "collectsPersonalData": "The app collects personal data (names, emails, …)",
+          "showsAds": "The app shows ads",
+          "inAppPurchases": "The app has in-app purchases",
+          "userGeneratedContent": "People can post their own content",
+          "usesLocation": "The app uses location"
+        },
+        "summaryTitle": "What this means in Play Console",
+        "summary": {
+          "privacy": "Data safety: you must declare the personal data you collect and link your privacy policy.",
+          "ads": "Declare that the app contains ads.",
+          "purchases": "Declare in-app purchases.",
+          "ugc": "Content rating: mention user-generated content and add a way to report content.",
+          "location": "Declare location use in Data safety and explain it to users.",
+          "accounts": "Add a way to delete the account, and a link where people can request deletion.",
+          "none": "No special declarations needed beyond the basics."
+        },
+        "consoleDone": "I filled these in in Google Play Console",
+        "open": "Open Google Play Console",
+        "saveListing": "Save store page"
+      },
+      "legal": {
+        "title": "Legal",
+        "intro": "A privacy policy and terms are required in the store. Claude writes them from what your app does; you put them online and add the links.",
+        "generate": "Let Claude write them",
+        "generatePrompt": "Write a privacy policy and terms of use for this app in plain language, in the app’s own language, based on STUDIO.md, the data choices (.studio/publish.json) and the permissions. Save them as legal/privacy-policy.md and legal/terms.md and also as simple standalone HTML pages legal/privacy-policy.html and legal/terms.html. Use the contact email from the store page. Don’t invent facts about the app: ask me if something is unclear. Remind me this is not legal advice.",
+        "docsReady": "Both documents exist in the legal folder",
+        "docsMissing": "Not written yet",
+        "hostTitle": "Put them online",
+        "hostSteps": [
+          "Create a free GitHub account (or use any website you control).",
+          "Make a new public repository and upload the two .html files from the legal folder.",
+          "In the repository settings turn on GitHub Pages. After a minute your pages are online.",
+          "Copy the two web addresses and paste them below."
+        ],
+        "privacyUrl": "Link to the privacy policy",
+        "termsUrl": "Link to the terms",
+        "urlHelp": "Must start with https://",
+        "hostedChecked": "I opened both links and the pages are online",
+        "disclaimer": "These texts are a starting point and not legal advice. Have them checked if your app handles sensitive data.",
+        "accountDeletion": "The app lets people delete their account",
+        "accountDeletionHelp": "Needed when people can sign in.",
+        "saveLegal": "Save"
+      },
+      "signing": {
+        "title": "Accounts and signing",
+        "intro": "Android apps must be signed with a key that only you have. Studio creates it and keeps its password in your keychain.",
+        "keystore": "Signing key",
+        "keystoreMissing": "Not created yet",
+        "keystoreReady": "Created",
+        "keystorePath": "Stored at {{path}}",
+        "backup": "Back this file up somewhere safe. If you lose it you can’t update your app anymore.",
+        "owner": "Your name",
+        "organisation": "Organisation (optional)",
+        "country": "Country code",
+        "create": "Create signing key",
+        "creating": "Creating…",
+        "noKeytool": "Java’s keytool wasn’t found. It comes with Android Studio; install it in setup first.",
+        "gradle": "Signing in the Android build",
+        "gradleReady": "Set up",
+        "gradleMissing": "Not set up yet",
+        "gradleAsk": "Let Claude set this up",
+        "playTitle": "Google Play account",
+        "playHelp": "You need a Google Play developer account (one-time fee) and a service account key so Studio can upload for you.",
+        "playSteps": [
+          "Create your developer account at play.google.com/console.",
+          "In Play Console open Setup, then API access, and create a service account.",
+          "Give it permission to release apps, then create a JSON key and download it.",
+          "Paste the contents of that JSON file below. Studio keeps it in your keychain."
+        ],
+        "playOpen": "Open Google Play Console",
+        "keyLabel": "Service account key (JSON)",
+        "keySaved": "Saved in the keychain",
+        "keySave": "Save key",
+        "keyRemove": "Remove key",
+        "accountReady": "My Google Play developer account is ready",
+        "fastlane": "Fastlane (used to upload)",
+        "fastlaneReady": "Found",
+        "fastlaneMissing": "Not installed. Install it from docs.fastlane.tools, then check again.",
+        "closedTitle": "New accounts: closed testing first",
+        "closedBody": "Google currently requires new personal developer accounts to run a closed test with enough testers for a number of days before an app can go to production (at the time of writing 12 testers for 14 days; check the Play Console for the current rule). Upload to the internal or closed track first.",
+        "iosTitle": "iPhone (App Store)",
+        "iosBody": "Publishing for iOS needs a Mac or a cloud build service and an Apple Developer account. Studio will support it later. The checklist already covers everything except this last step.",
+        "iosCheck": "Check support"
+      },
+      "release": {
+        "title": "Release",
+        "intro": "Studio builds your app bundle and uploads it to Google Play as a draft on a test track. You finish the release in Play Console.",
+        "track": "Test track",
+        "tracks": {
+          "internal": "Internal testing (quick, up to 100 testers)",
+          "closed": "Closed testing"
+        },
+        "version": "Version {{version}} (build {{build}})",
+        "confirmBox": "I checked everything and want to release this version",
+        "blocked": "Finish the required items first.",
+        "button": "Build and upload",
+        "confirmTitle": "Upload version {{version}} to Google Play?",
+        "confirmBody": "Studio builds the release bundle and uploads it as a draft to the {{track}} track. Nothing goes live to the public: you finish the release in Play Console.",
+        "confirmRun": "Yes, build and upload",
+        "building": "Building the app bundle…",
+        "uploading": "Uploading to Google Play…",
+        "done": "Uploaded! Open Play Console to finish and roll out the release.",
+        "failed": "This step failed. The log below shows why.",
+        "log": "Log",
+        "needFastlane": "Install Fastlane first (see Accounts).",
+        "needKey": "Add your Google Play key first (see Accounts)."
+      }
+    }
   }
 }

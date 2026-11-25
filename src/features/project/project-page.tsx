@@ -6,6 +6,14 @@ import { Link, useParams } from "react-router";
 import { ChatPanel, type ChatContext } from "@/features/chat/chat-panel";
 import type { Screen } from "@/lib/types";
 import { ScreensList } from "./screens-list";
+import { ThemePanel } from "@/features/sections/theme-panel";
+import { DataView } from "@/features/sections/data-view";
+import { AssetsView } from "@/features/sections/assets-view";
+import { SettingsView } from "@/features/sections/settings-view";
+import { VersionsView } from "@/features/sections/versions-view";
+import { PublishView, type PublishTab } from "@/features/sections/publish/publish-view";
+import { useChecklist } from "@/features/sections/publish/use-checklist";
+import { AutoRetest } from "@/features/sections/publish/auto-retest";
 import { PreviewPanel } from "@/features/preview/preview-panel";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import { EmptyState } from "@/components/ds/empty-state";
@@ -45,6 +53,11 @@ export default function ProjectPage() {
   const [previewDark, setPreviewDark] = useState(false);
   const [screen, setScreen] = useState<Screen | null>(null);
   const [contextOff, setContextOff] = useState(false);
+  const [publishTab, setPublishTab] = useState<PublishTab>("checklist");
+  const checklist = useChecklist(id);
+  const evalDone = checklist.data?.done ?? 0;
+  const evalTotal = checklist.data?.total ?? 8;
+  const canPublish = checklist.data?.canPublish ?? false;
 
   const menuRef = usePanelRef();
   const sideRef = usePanelRef();
@@ -84,6 +97,12 @@ export default function ProjectPage() {
   }
 
   const p = project.data;
+  const wide =
+    section === "data" ||
+    section === "assets" ||
+    section === "settings" ||
+    section === "versions" ||
+    section === "publish";
   const current = SECTIONS.find((s) => s.id === section)!;
   const sectionNameEn = {
     screens: "Screens",
@@ -163,23 +182,30 @@ export default function ProjectPage() {
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <span tabIndex={0} className="inline-flex rounded-lg" aria-describedby="publish-hint">
-              <Button disabled className="gap-3 rounded-lg">
+            <span tabIndex={canPublish ? -1 : 0} className="inline-flex rounded-lg" aria-describedby="publish-hint">
+              <Button
+                disabled={!canPublish}
+                className="gap-3 rounded-lg"
+                onClick={() => {
+                  setSection("publish");
+                  setPublishTab("release");
+                }}
+              >
                 <Sparkles /> {t("workspace.publish")}
                 <span className="flex items-center gap-1.5" aria-hidden>
                   <Progress
-                    value={(p.checklistDone / Math.max(1, p.checklistTotal)) * 100}
+                    value={(evalDone / Math.max(1, evalTotal)) * 100}
                     className="bg-primary-foreground/30 h-1.5 w-10"
                   />
                   <span className="t-small tabular-nums">
-                    {t("workspace.publishProgress", { done: p.checklistDone, total: p.checklistTotal })}
+                    {t("workspace.publishProgress", { done: evalDone, total: evalTotal })}
                   </span>
                 </span>
               </Button>
             </span>
           </TooltipTrigger>
           <TooltipContent id="publish-hint">
-            {t("workspace.publishHint", { done: p.checklistDone, total: p.checklistTotal })}
+            {canPublish ? t("sec.publish.allGreen") : t("workspace.publishHint", { done: evalDone, total: evalTotal })}
           </TooltipContent>
         </Tooltip>
 
@@ -256,9 +282,26 @@ export default function ProjectPage() {
         <ResizeHandle />
 
         <Panel id="preview" minSize="30%">
-          <section aria-label={t("workspace.previewLabel")} className="h-full">
+          {/* De preview blijft draaien (alleen verborgen) als je een brede sectie opent. */}
+          <section aria-label={t("workspace.previewLabel")} className={cn("h-full", wide && "hidden")}>
             <PreviewPanel projectId={p.id} device={device} dark={previewDark} />
           </section>
+          {wide && (
+            <section aria-label={t(`workspace.sections.${section}.name`)} className="bg-background h-full">
+              {section === "data" && <DataView projectId={p.id} />}
+              {section === "assets" && <AssetsView projectId={p.id} />}
+              {section === "settings" && <SettingsView project={p} />}
+              {section === "versions" && <VersionsView project={p} />}
+              {section === "publish" && (
+                <PublishView
+                  project={p}
+                  tab={publishTab}
+                  onTab={setPublishTab}
+                  goto={(sec) => setSection(sec === "preview" ? "screens" : (sec as SectionId))}
+                />
+              )}
+            </section>
+          )}
         </Panel>
         <ResizeHandle />
 
@@ -292,15 +335,17 @@ export default function ProjectPage() {
                           setContextOff(false);
                         }}
                       />
+                    ) : section === "theme" ? (
+                      <ThemePanel projectId={p.id} />
                     ) : (
                       <>
                         <p className="t-body text-muted-foreground">{t(`workspace.sections.${section}.desc`)}</p>
                         <div className="bg-muted/50 mt-4 rounded-xl border border-dashed p-4">
                           <p className="t-body flex items-center gap-2 font-medium">
                             <current.icon aria-hidden className="text-primary-text size-4" />{" "}
-                            {t("workspace.comingSoon")}
+                            {t(`workspace.sections.${section}.name`)}
                           </p>
-                          <p className="t-small text-muted-foreground mt-1">{t("workspace.comingSoonBody")}</p>
+                          <p className="t-small text-muted-foreground mt-1">{t("workspace.askInChat")}</p>
                         </div>
                       </>
                     )}
@@ -315,6 +360,7 @@ export default function ProjectPage() {
           </Pane>
         </Panel>
       </Group>
+      <AutoRetest projectId={p.id} />
     </div>
   );
 }

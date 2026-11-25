@@ -2,7 +2,7 @@
 
 Een lichtgewicht desktop-app (Tauri 2 + React) waarmee niet-technische mensen een **Flutter-app** (iOS en Android) bouwen door te chatten met hun **eigen Claude Code-installatie**. De gebruiker houdt alle code: een gewone Flutter-projectmap met git. Denk "FlutterFlow, maar alleen AI en veel lichter".
 
-> Status: **Fase 0–3** zijn klaar (fundament, projecten + wizard, chat + MCP, live preview). Linkermenu-secties en publiceren volgen in fase 4–5. Zie [DECISIONS.md](DECISIONS.md) voor gemaakte keuzes en wat nog niet is geverifieerd.
+> Status: **Alle fasen 0–5** zijn gebouwd (fundament, projecten + wizard, chat + MCP, live preview, linkermenu, publiceren met checklist-poort en AI-testrun). Android eerst; iOS-publiceren is een ontworpen interface zonder implementatie. Lees _Nog niet geverifieerd_ in DECISIONS.md voordat je erop vertrouwt. Zie [DECISIONS.md](DECISIONS.md) voor gemaakte keuzes en wat nog niet is geverifieerd.
 
 ## Principes
 
@@ -43,6 +43,9 @@ src-tauri/              Rust-backend
   mcp.rs                lokale MCP-server (project_status, list_screens, get/set_theme, create_snapshot, bump_version, get_checklist, preview_*)
   preview.rs            flutter run (web-server/apparaat), logparser, hot restart via notify, apparaten
   screenshot.rs         headless Edge/Chrome → PNG voor preview_screenshot
+  checklist.rs          checklist-poort (puur, getest) · testrun.rs AI-testrunner + Dart-crawler
+  signing.rs · publish.rs  keystore (keytool), App Bundle, Fastlane-upload, iOS-interface
+  platform.rs · assets.rs · screens.rs · meta.rs · keychain.rs · integrations.rs  instellingen, iconen, schermenboom, vermelding, geheimen, Supabase/Firebase
   permissions.rs        bevestigingen in de UI voor netwerk/commando's/buiten-project
   studio_tools.rs       de implementatie van de MCP-tools
   install.rs            vaste lijst begeleide installaties (de UI kiest nooit zelf een commando)
@@ -64,3 +67,7 @@ Echte-CLI-rooktest (kost een paar tokens van je eigen account): `cargo test --ma
 De preview draait `flutter run -d web-server` en toont de app in het telefoonframe; elke wijziging in `lib/` herlaadt hem vanzelf. Bouwfouten verschijnen als banner met "Laat Claude dit oplossen". Voor een echte telefoon: knop "Echte telefoon" (USB of draadloos, met uitleg).
 
 Extra rooktests (alleen met echte Chromium): `STUDIO_BROWSER=<pad> STUDIO_BROWSER_NO_SANDBOX=1 cargo test --manifest-path src-tauri/Cargo.toml -- --ignored real_browser real_screenshot_tool`.
+
+## Browserdemo en e2e
+
+`npm run build:demo` bouwt een statische demo (gesimuleerde backend, scenario-kiezer bovenin) in `dist-demo/`. De scripts in `e2e/` draaien de hele UI in Chromium tegen die mock (zie `e2e/README.md`).

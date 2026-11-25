@@ -87,7 +87,7 @@ pub fn system_prompt(language: &str) -> String {
          The user is not a developer: explain in plain {lang}, avoid jargon, keep changes small and focused, and always answer in {lang}. \
          Read STUDIO.md first and keep it up to date when the app's behavior or an important decision changes. \
          Use the `studio` MCP tools to inspect and steer the project (project_status, list_screens, get_theme/set_theme, \
-         create_snapshot, bump_version, get_checklist, preview_status, preview_screenshot). \
+         create_snapshot, bump_version, get_checklist, get_store_listing/set_store_listing, preview_status, preview_screenshot). \
          Prefer set_theme over hand-editing colors. After code changes run `flutter analyze` and fix problems. \
          Never put secrets (API keys, passwords, signing keys) in project files."
     )
