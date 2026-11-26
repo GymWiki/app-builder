@@ -260,6 +260,11 @@ pub fn select_box(vm_ws: &str, page_ws: &str, project_dir: &Path, viewport: (u32
     for (px, py) in sample_points(bbox) {
         let (x, y) = (px / 100.0 * viewport.0 as f64, py / 100.0 * viewport.1 as f64);
         let step = (|| -> AppResult<()> {
+            // Vangnet: de preview is de échte app. Staat de selectiemodus niet meer aan (bv. na een hot restart tijdens het meten), dan
+            // zou een klik de app zelf bedienen: dan stoppen we vóór de klik.
+            if ext(&mut vm, "show", json!({}))?["enabled"] != "true" {
+                return Err(AppError::CommandFailed("select mode is not active; not clicking".into()));
+            }
             for ty in ["mousePressed", "mouseReleased"] {
                 page.call("Input.dispatchMouseEvent", json!({ "type": ty, "x": x, "y": y, "button": "left", "clickCount": 1 }))?;
             }

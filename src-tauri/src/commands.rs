@@ -285,6 +285,10 @@ pub fn chat_send(
 #[tauri::command]
 pub async fn preview_select(state: State<'_, AppState>, project_id: String, bbox: [f64; 4]) -> AppResult<serde_json::Value> {
     let (_, dir) = project_and_dir(&state, &project_id)?;
+    // Terwijl Claude aan het werk is verandert de app (hot restart): dan geen klikken in de preview; de UI valt terug op vak + screenshot.
+    if state.chat.is_running(&project_id) {
+        return Err(AppError::Invalid("wait until Claude has finished".into()));
+    }
     let screens: Vec<(String, String)> = crate::studio_tools::list_screens(&dir)?.into_iter().map(|s| (s.class, s.file)).collect();
     let bbox = [bbox[0].clamp(0.0, 100.0), bbox[1].clamp(0.0, 100.0), bbox[2].clamp(1.0, 100.0), bbox[3].clamp(1.0, 100.0)];
     let preview = state.preview.clone();
