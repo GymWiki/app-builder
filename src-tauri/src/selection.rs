@@ -41,12 +41,6 @@ pub struct Selection {
 }
 
 impl Selection {
-    /// Toegestane regelbereiken: de uitdrukking van elke gekozen widget (inclusief het bestand, zodat bijvoorbeeld imports
-    /// bovenin niet meetellen als afwijking... zie `deviations`).
-    pub fn ranges(&self) -> Vec<(String, usize, usize)> {
-        self.targets.iter().map(|t| (t.file.clone(), t.start_line, t.end_line)).collect()
-    }
-
     /// Vaste feiten voor Claude (Engels).
     pub fn prompt(&self) -> String {
         let mut s = String::from("The user marked part of the live preview and wants ONLY that part changed.\n");
@@ -190,6 +184,5 @@ mod tests {
         };
         let p = s.prompt();
         assert!(p.contains("PrimaryButton \"Open list\" — lib/home_screen.dart lines 22–25") && p.contains("shared component") && p.contains("inside Column (lib/home_screen.dart:15)") && p.contains("Change only code inside those line ranges"));
-        assert_eq!(s.ranges(), vec![("lib/home_screen.dart".to_string(), 22, 25)]);
     }
 }

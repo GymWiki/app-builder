@@ -343,12 +343,15 @@ impl RunScope {
     }
 }
 
+/// Bestand, eerste en laatste regel (1-gebaseerd, inclusief).
+pub type Range = (String, usize, usize);
+
 /// Het lopende werkgebied per project; gedeeld tussen de chat-run en de MCP-server.
 #[derive(Default)]
 pub struct ScopeRegistry {
     runs: Mutex<HashMap<String, RunScope>>,
     /// Door de gebruiker gekozen regelbereiken (bestand, begin, eind) voor de volgende run; de controle achteraf gebruikt ze.
-    selections: Mutex<HashMap<String, Vec<(String, usize, usize)>>>,
+    selections: Mutex<HashMap<String, Vec<Range>>>,
 }
 
 impl ScopeRegistry {

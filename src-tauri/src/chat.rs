@@ -380,8 +380,8 @@ impl ChatManager {
                 let diff = gitops::diff_u0_since(&dir, base).unwrap_or_default();
                 let hunks = crate::selection::parse_hunks(&diff);
                 let in_diff: std::collections::HashSet<&str> = hunks.iter().map(|h| h.file.as_str()).collect();
-                let new_files: Vec<String> = gitops::changed_since(&dir, base).unwrap_or_default().into_iter().filter(|f| !in_diff.contains(f.as_str()) && dir.join(f).is_file() && !f.starts_with(".studio/")).collect();
-                let hunks: Vec<_> = hunks.into_iter().filter(|h| !h.file.starts_with(".studio/")).collect();
+                let new_files: Vec<String> = gitops::changed_since(&dir, base).unwrap_or_default().into_iter().filter(|f| !in_diff.contains(f.as_str()) && dir.join(f).is_file() && (f.starts_with("lib/") || f.starts_with("test/") || f.starts_with("assets/") || f == "pubspec.yaml")).collect();
+                let hunks: Vec<_> = hunks.into_iter().filter(|h| h.file.starts_with("lib/") || h.file.starts_with("test/") || h.file.starts_with("assets/") || h.file == "pubspec.yaml").collect();
                 let src = |f: &str| std::fs::read_to_string(dir.join(f)).ok();
                 let out = crate::selection::deviations(ranges, &hunks, &new_files, &src);
                 if !out.is_empty() {
@@ -774,6 +774,26 @@ mod tests {
         let stdin = std::fs::read_to_string(bin.join("stdin.txt")).unwrap();
         assert!(stdin.contains("undid your changes to lib/core/theme/app_theme.dart") && stdin.contains("breid_bereik_uit"));
         assert_eq!(db.runs_summary(&p.id, 5).unwrap().denied_edits, 2);
+    }
+
+    /// Een gekozen vak is een signaal, geen blokkade: een wijziging erbuiten blijft staan maar wordt gelogd; erbinnen geen melding.
+    #[cfg(unix)]
+    #[test]
+    fn a_change_outside_the_selected_box_is_logged_but_kept() {
+        use std::os::unix::fs::PermissionsExt;
+        let home = "lib/features/home/home_screen.dart";
+        for (range_end, expect_signal) in [(2usize, true), (100000usize, false)] {
+            let (bin, proj, db, p, ctx, mgr) = scoped_fixture(false);
+            let claude = bin.join("claude");
+            std::fs::write(&claude, "#!/bin/sh\nd=$(dirname \"$0\")\nif [ \"$1\" = \"--help\" ]; then cat \"$d/help.txt\"; exit 0; fi\ncat >> \"$d/stdin.txt\"\necho '// edit' >> \"$PWD/lib/features/home/home_screen.dart\"\ncat \"$d/stream.jsonl\"\n").unwrap();
+            std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+            ctx.scopes.set_selection(&p.id, vec![(home.to_string(), 1, range_end)]);
+            mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+            let st = statuses(&db, &p.id);
+            assert_eq!(st.iter().any(|s| s.starts_with("selection_exceeded:")), expect_signal, "{st:?}");
+            assert!(std::fs::read_to_string(proj.join(home)).unwrap().contains("// edit"), "never reverted");
+            assert!(ctx.scopes.take_selection(&p.id).is_none(), "the selection is used up by the run");
+        }
     }
 
     /// Een geheim komt nooit in de chat, de opgeslagen berichten of de prompt voor het model, ook niet als de gebruiker
