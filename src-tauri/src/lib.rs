@@ -1,5 +1,6 @@
 mod extent;
 mod config;
+mod preflight;
 mod derive;
 mod purchases;
 mod purchases_flow;
@@ -229,6 +230,7 @@ pub fn run() {
             commands::secret_delete,
             commands::data_setup_prompt,
             commands::checklist_evaluate,
+            commands::preflight_fix,
             commands::store_screenshots_list,
             commands::store_screenshot_capture,
             commands::store_screenshot_import,

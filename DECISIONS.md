@@ -402,3 +402,11 @@ Doel: het getekende vak betrouwbaar omzetten naar widgets, zonder hulpbestand in
 - **UX-test** `e2e/ux.cjs`: thema = 1 handeling voor de kleur, 3 voor kleur + lettertype + stijl, geen chatknop, overzicht toont 0 AI/0 chatbeurten.
 - **`derive.rs`** (naam → bundle-ID-deel) bestaat met tests maar is nog niet aangesloten (project-aanmaak gebruikt al org + slug); staat vooraan voor de volgende stappen.
 - **Nog te doen uit Fase 13** (zie `docs/ux-audit.md`): preflight-framework met "Los voor mij op", achtergrondtaken met voortgang/annuleren, Data & Auth/Instellingen/Assets/Talen/Aankopen op de configuratiemotor, globale standaardwaarden, meer UX-tests.
+
+## Fase 13 (stap 3): preflight met "Los voor mij op"
+
+- **De checklist is het preflight-framework.** Elk punt krijgt `fixable`: de ontbrekende onderdelen die Studio zelf kan oplossen (`src-tauri/src/preflight.rs`, tabel `FIXABLE`): versie in `pubspec.yaml` (1.0.0+1), lege winkelvelden uit naam en beschrijving van het project (titel ≤ 30, korte tekst ≤ 80 op een woordgrens, lange tekst), het onthouden standaard-e-mailadres, en `CHANGELOG.md` uit de momentopnames sinds de laatste publicatie. Alleen lege velden worden gevuld; niets wordt overschreven.
+- **Bewust niet automatisch:** juridische teksten en links, privacyvragen, iconen, Play/Apple-accounts, ondertekening, bundle-ID (de afleidregel bestaat, maar zonder eigen organisatie levert hij weer `com.example` op). Dat blijft een sprong naar het veld of een eerlijke uitleg.
+- **Eén klik:** "Los dit voor mij op" per punt en "Los alles op wat kan" bovenaan; vooraf een automatische momentopname (terug te draaien bij Versies), daarna wordt de checklist opnieuw berekend. Geen chat, geen AI: elke opgeloste regel telt als deterministische actie in de ontwikkelaarsmeting.
+- **Onthouden over projecten heen (begin):** het eerste ingevulde contact-e-mailadres wordt lokaal als instelling `contact_email` bewaard en in volgende projecten door de preflight ingevuld. Merkkleuren, lettertypen, UI-kit en taal als globale standaard zijn nog niet gedaan.
+- **UX-test** (`e2e/ux.cjs`): alles wat oplosbaar is in Publiceren kost één handeling en geen chatbeurt.

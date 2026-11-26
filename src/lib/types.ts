@@ -239,6 +239,8 @@ export interface ChecklistItemState {
   status: "done" | "todo" | "failed";
   missing: string[];
   next: string | null;
+  /** Ontbrekende onderdelen die Studio zelf kan oplossen. */
+  fixable: string[];
 }
 export interface Evaluation {
   items: ChecklistItemState[];

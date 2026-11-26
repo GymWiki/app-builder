@@ -26,6 +26,8 @@ pub struct Facts {
     pub missing_secrets: Vec<crate::vault::MissingSecret>,
     /// Aantal geheimen dat in de projectbestanden is gevonden (lekcontrole).
     pub leaks: usize,
+    /// Is er een onthouden standaard-e-mailadres (uit een eerder project)? Dan is `contact_email` oplosbaar.
+    pub default_email: bool,
     /// Alleen als de app producten heeft: de extra punten voor aankopen.
     pub purchases: Option<PurchasesFacts>,
 }
@@ -69,6 +71,8 @@ pub struct ItemState {
     pub missing: Vec<String>,
     /// Volgende actie: naam van een sectie of tab ("settings", "assets", "data", "publish:legal", …).
     pub next: Option<String>,
+    /// Ontbrekende onderdelen die Studio zelf kan oplossen ("Los voor mij op").
+    pub fixable: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -88,6 +92,7 @@ fn item(key: &str, blocking: bool, missing: Vec<&str>, next: &str) -> ItemState 
         status: if done { "done" } else { "todo" }.into(),
         missing: missing.into_iter().map(String::from).collect(),
         next: (!done).then(|| next.to_string()),
+        fixable: vec![],
     }
 }
 
@@ -284,6 +289,10 @@ pub fn evaluate(m: &Meta, f: &Facts) -> Evaluation {
     let unchecked: Vec<&str> = f.native_features.iter().filter(|k| !m.publishing.manual_checks.get(*k).copied().unwrap_or(false)).map(String::as_str).collect();
     items.push(item("native_manual", false, unchecked, "publish:test"));
 
+    for it in items.iter_mut() {
+        it.fixable = it.missing.iter().filter(|m| crate::preflight::is_fixable(&it.key, m) || (f.default_email && it.key == "store_listing" && m.as_str() == "contact_email")).cloned().collect();
+    }
+
     let blocking: Vec<&ItemState> = items.iter().filter(|i| i.blocking).collect();
     let done = blocking.iter().filter(|i| i.status == "done").count();
     Evaluation { can_publish: done == blocking.len(), done, total: blocking.len(), items: items.clone() }
@@ -337,6 +346,20 @@ mod tests {
 
     fn get<'a>(e: &'a Evaluation, k: &str) -> &'a ItemState {
         e.items.iter().find(|i| i.key == k).unwrap()
+    }
+
+    #[test]
+    fn what_studio_can_fix_itself_is_marked_fixable() {
+        let (m, mut f) = {
+            let m = Meta::default();
+            (m, Facts::default())
+        };
+        f.changelog = false;
+        let e = evaluate(&m, &f);
+        assert_eq!(get(&e, "version_changelog").fixable, vec!["changelog"]);
+        assert_eq!(get(&e, "app_basics").fixable, vec!["version"]);
+        assert_eq!(get(&e, "store_listing").fixable, vec!["title", "short_description", "full_description"]);
+        assert!(get(&e, "legal").fixable.is_empty(), "legal texts and links are never fixed silently");
     }
 
     #[test]

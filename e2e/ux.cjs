@@ -33,6 +33,18 @@ const ok = (c, m) => {
   );
   ok((await p.getByRole("region", { name: "Chat with Claude" }).count()) === 0, "the chat is not even visible on this page");
 
+  // Publiceren: wat Studio zelf kan oplossen gaat met één klik, zonder chat
+  await p.goto("http://localhost:1420/?mock=ready#/project/friday_scores");
+  await p.getByRole("navigation", { name: "Project menu" }).getByRole("button", { name: /^Publish/ }).click();
+  const fixAll = p.getByRole("button", { name: "Fix everything I can" });
+  await fixAll.waitFor();
+  const before = actions;
+  await act(() => fixAll.click());
+  await p.getByText(/things? fixed/).first().waitFor();
+  ok(actions - before === 1, "fixing everything fillable takes one action");
+  ok((await fixAll.count()) === 0, "nothing fixable is left afterwards");
+  ok((await p.getByRole("region", { name: "Chat with Claude" }).count()) === 0, "no chat turn needed");
+
   // Meting: in de ontwikkelaarsmodus staat dat Studio het zelf deed, zonder AI
   await p.goto("http://localhost:1420/?mock=ready#/settings");
   const ver = p.getByText(/^Studio \d/).first();
@@ -41,7 +53,7 @@ const ok = (c, m) => {
   await ov.waitFor();
   const text = await ov.innerText();
   ok(/theme\s+3\s+0\s+0/.test(text.replace(/\n/g, " ").replace(/\s+/g, " ")), "overview: theme = 3 done by Studio, 0 AI calls, 0 chat turns: " + text.replace(/\n/g, " "));
-  ok(/Estimated tokens saved: 24,000/.test(text), "token saving is estimated");
+  ok(/Estimated tokens saved: 56,000/.test(text), "token saving is estimated");
   await p.screenshot({ path: `${S}/52-ux-overview.png` });
   ok(errs.length === 0, "no console errors " + errs.join("|"));
   await b.close();

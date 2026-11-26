@@ -493,6 +493,13 @@ const platform = {
 };
 const applied = (what: string) => ({ applied: [what], skipped: [] as { target: string; reason: string }[] });
 
+const MOCK_FIXABLE = new Set([
+  "app_basics:version",
+  "store_listing:title",
+  "store_listing:short_description",
+  "store_listing:full_description",
+  "version_changelog:changelog",
+]);
 function mockEvaluate(id: string) {
   const m = metaOf(id);
   const l = m.listing;
@@ -512,6 +519,7 @@ function mockEvaluate(id: string) {
     status: missing.length ? "todo" : "done",
     missing,
     next: missing.length ? next : null,
+    fixable: missing.filter((m) => MOCK_FIXABLE.has(`${key}:${m}`)),
   });
   /** Punt met ontbrekende geheimen uit de (gesimuleerde) kluis: `secret:<integratie>.<veld>` en een knop naar dat kopje. */
   const secretItem = (projectId: string, key: string, other: string[], otherNext: string, secretFirst = false) => {
@@ -1073,6 +1081,25 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       return;
     case "data_setup_prompt":
       return "Set up the data layer for this app.";
+    case "preflight_fix": {
+      const id = args.projectId as string;
+      const item = args.item as string | null;
+      const fixed: string[] = [];
+      const m = metaOf(id);
+      const e = mockEvaluate(id);
+      for (const it of e.items) {
+        if (item && it.key !== item) continue;
+        for (const f of it.fixable) {
+          if (f === "title") m.listing.title = projects.find((p) => p.id === id)?.name ?? "My app";
+          else if (f === "short_description") m.listing.shortDescription = "Keep score of your games with friends";
+          else if (f === "full_description") m.listing.fullDescription = "Keep score of your games with friends and see who wins the season.";
+          else if (f === "changelog") fs.changelog = true;
+          fixed.push(f);
+        }
+      }
+      uxCounts.publish = { ...(uxCounts.publish ?? {}), deterministic: (uxCounts.publish?.deterministic ?? 0) + fixed.length };
+      return fixed;
+    }
     case "checklist_evaluate":
       return mockEvaluate(args.projectId as string);
     case "store_screenshots_list":

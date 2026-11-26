@@ -1288,7 +1288,14 @@
       },
       "secretMissing": "Geheimen ontbreken: {{integration}} › {{field}}",
       "leaksMissing": "{{n}} geheim(en) gevonden in je bestanden",
-      "secretProblem": "{{integration}}: een sleutel is verlopen of werkt niet meer"
+      "secretProblem": "{{integration}}: een sleutel is verlopen of werkt niet meer",
+      "fixForMe": "Los dit voor mij op",
+      "fixAll": "Los alles op wat kan",
+      "fixAllHelp_one": "Studio kan nu {{count}} ding voor je invullen.",
+      "fixAllHelp_other": "Studio kan nu {{count}} dingen voor je invullen.",
+      "fixed_one": "{{count}} ding opgelost. Er is eerst een momentopname gemaakt.",
+      "fixed_other": "{{count}} dingen opgelost. Er is eerst een momentopname gemaakt.",
+      "fixedNone": "Niets dat automatisch kan. Vul in wat nog ontbreekt."
     },
     "integrations": {
       "title": "Integraties",

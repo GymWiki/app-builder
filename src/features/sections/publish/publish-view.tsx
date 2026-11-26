@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+import { toastError } from "@/lib/toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -34,6 +36,22 @@ export function PublishView({
   const evalQ = useChecklist(id);
   const metaQ = useQuery({ queryKey: ["meta", id], queryFn: () => api.metaGet(id) });
   const [saveError, setSaveError] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  // "Los voor mij op": Studio lost zelf op wat het kan (versie, winkelvelden uit de beschrijving, changelog).
+  const fix = (item: string | null) => {
+    setFixing(true);
+    api
+      .preflightFix(id, item)
+      .then(async (fixed) => {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["checklist", id] }),
+          qc.invalidateQueries({ queryKey: ["meta", id] }),
+        ]);
+        toast.success(fixed.length > 0 ? t("sec.publish.fixed", { count: fixed.length }) : t("sec.publish.fixedNone"));
+      })
+      .catch((e) => toastError(e, t))
+      .finally(() => setFixing(false));
+  };
 
   const refresh = () =>
     Promise.all([
@@ -91,7 +109,7 @@ export function PublishView({
       </div>
       <div id="ptab-panel" role="tabpanel" aria-labelledby={`ptab-${tab}`}>
         {!meta || !evaluation ? null : tab === "checklist" ? (
-          <ChecklistTab evaluation={evaluation} onNext={onNext} />
+          <ChecklistTab evaluation={evaluation} onNext={onNext} onFix={fix} fixing={fixing} />
         ) : tab === "test" ? (
           <TestTab projectId={id} meta={meta} onMeta={saveMeta} />
         ) : tab === "listing" ? (

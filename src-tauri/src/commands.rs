@@ -28,7 +28,7 @@ pub struct AppState {
     pub jobs: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
-const SETTING_KEYS: [&str; 5] = ["projects_dir", "setup_completed", "org", "dev_mode", "model_override"];
+const SETTING_KEYS: [&str; 6] = ["projects_dir", "setup_completed", "org", "dev_mode", "model_override", "contact_email"];
 const DEFAULT_ORG: &str = "com.example";
 
 fn default_projects_dir(app: &AppHandle) -> PathBuf {
@@ -764,7 +764,13 @@ pub fn meta_save(state: State<'_, AppState>, project_id: String, meta: crate::me
     meta.last_published_commit = current.last_published_commit;
     meta.last_published_version = current.last_published_version;
     meta.last_published_build = current.last_published_build;
-    crate::meta::save(&dir, &meta)
+    crate::meta::save(&dir, &meta)?;
+    // Eén keer invullen: het eerste e-mailadres wordt onthouden voor volgende projecten (alleen lokaal in de instellingen).
+    let email = meta.listing.contact_email.trim();
+    if !email.is_empty() && state.db.setting_get("contact_email")?.is_none_or(|e| e.is_empty()) {
+        state.db.setting_set("contact_email", email)?;
+    }
+    Ok(())
 }
 
 /// Geheimen: alleen zetten, controleren of ze bestaan en verwijderen. De waarde komt nooit terug.
@@ -820,6 +826,7 @@ fn gather_facts(state: &AppState, p: &Project, dir: &std::path::Path) -> crate::
         native_features: crate::testrun::native_features(&pubspec),
         missing_secrets: crate::vault::global().missing_secrets(&p.id),
         leaks: crate::leak::scan(dir, &crate::scrub::known_values()).len(),
+        default_email: state.db.setting_get("contact_email").ok().flatten().is_some_and(|e| !e.is_empty()),
         purchases: purchases_facts(state, p, dir),
     }
 }
@@ -866,6 +873,61 @@ fn evaluate_and_store(state: &AppState, p: &Project, dir: &std::path::Path) -> A
 pub fn checklist_evaluate(state: State<'_, AppState>, project_id: String) -> AppResult<crate::checklist::Evaluation> {
     let (p, dir) = project_and_dir(&state, &project_id)?;
     evaluate_and_store(&state, &p, &dir)
+}
+
+/// "Los voor mij op": lost de ontbrekende punten op die Studio zelf kan (versie, winkelvelden uit de beschrijving, changelog).
+/// `item` = één checklistpunt, leeg = alles wat oplosbaar is. Vooraf komt een momentopname; er is geen AI voor nodig.
+#[tauri::command]
+pub fn preflight_fix(state: State<'_, AppState>, project_id: String, item: Option<String>) -> AppResult<Vec<String>> {
+    let (p, dir) = project_and_dir(&state, &project_id)?;
+    let e = evaluate_and_store(&state, &p, &dir)?;
+    let todo: Vec<(String, String)> = e
+        .items
+        .iter()
+        .filter(|i| item.as_deref().is_none_or(|k| k == i.key))
+        .flat_map(|i| i.fixable.iter().map(|f| (i.key.clone(), f.clone())))
+        .collect();
+    if todo.is_empty() {
+        return Ok(vec![]);
+    }
+    let _ = crate::studio_tools::create_snapshot(&state.db, &p, "Before fixing the checklist", "auto");
+    let mut fixed = vec![];
+    let mut meta = crate::meta::load(&dir)?;
+    let mut meta_changed = false;
+    for (key, what) in todo {
+        match (key.as_str(), what.as_str()) {
+            ("app_basics", "version") => {
+                if crate::preflight::fix_version(&dir)? {
+                    fixed.push(what);
+                }
+            }
+            ("store_listing", "title" | "short_description" | "full_description" | "contact_email") => {
+                let email = state.db.setting_get("contact_email")?.unwrap_or_default();
+                for f in crate::preflight::fix_listing(&mut meta, &p.name, &p.description, &email) {
+                    if !fixed.contains(&f) {
+                        fixed.push(f);
+                    }
+                }
+                meta_changed = true;
+            }
+            ("version_changelog", "changelog") => {
+                let mut lines = crate::gitops::log_since(&dir, meta.last_published_commit.as_deref()).or_else(|_| crate::gitops::log_since(&dir, None)).unwrap_or_default();
+                lines.retain(|l| !l.starts_with("Before ") && !l.starts_with("Start:"));
+                if crate::preflight::fix_changelog(&dir, &p.name, &p.version, &lines)? {
+                    fixed.push(what);
+                }
+            }
+            _ => {}
+        }
+    }
+    if meta_changed {
+        crate::meta::save(&dir, &meta)?;
+    }
+    for _ in &fixed {
+        let _ = state.db.ux_record(Some(&p.id), "publish", "deterministic");
+    }
+    evaluate_and_store(&state, &p, &dir)?;
+    Ok(fixed)
 }
 
 // ───────────── winkelschermafdrukken ─────────────

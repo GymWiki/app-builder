@@ -1,5 +1,5 @@
 import type { TFunction } from "i18next";
-import { AlertCircle, CheckCircle2, Circle } from "lucide-react";
+import { AlertCircle, CheckCircle2, Circle, Wand2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -31,7 +31,17 @@ function nextLabel(next: string, t: T): string {
 }
 
 /** Eén punt: titel, wat er mist en de volgende actie. */
-function Item({ it, onNext }: { it: ChecklistItemState; onNext: (n: string) => void }) {
+function Item({
+  it,
+  onNext,
+  onFix,
+  fixing,
+}: {
+  it: ChecklistItemState;
+  onNext: (n: string) => void;
+  onFix: (item: string | null) => void;
+  fixing: boolean;
+}) {
   const { t } = useTranslation();
   const done = it.status === "done";
   const Icon = done ? CheckCircle2 : it.status === "failed" ? AlertCircle : Circle;
@@ -57,10 +67,19 @@ function Item({ it, onNext }: { it: ChecklistItemState; onNext: (n: string) => v
               ))}
             </ul>
           )}
-          {!done && it.next && (
-            <Button size="xs" variant="outline" className="mt-2.5" onClick={() => onNext(it.next!)}>
-              {nextLabel(it.next, t)}
-            </Button>
+          {!done && (it.next || it.fixable.length > 0) && (
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {it.fixable.length > 0 && (
+                <Button size="xs" disabled={fixing} onClick={() => onFix(it.key)}>
+                  <Wand2 /> {t("sec.publish.fixForMe")}
+                </Button>
+              )}
+              {it.next && (
+                <Button size="xs" variant="outline" onClick={() => onNext(it.next!)}>
+                  {nextLabel(it.next, t)}
+                </Button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -68,8 +87,19 @@ function Item({ it, onNext }: { it: ChecklistItemState; onNext: (n: string) => v
   );
 }
 
-export function ChecklistTab({ evaluation, onNext }: { evaluation: Evaluation; onNext: (n: string) => void }) {
+export function ChecklistTab({
+  evaluation,
+  onNext,
+  onFix,
+  fixing = false,
+}: {
+  evaluation: Evaluation;
+  onNext: (n: string) => void;
+  onFix: (item: string | null) => void;
+  fixing?: boolean;
+}) {
   const { t } = useTranslation();
+  const fixableCount = evaluation.items.reduce((n, i) => n + (i.status === "done" ? 0 : i.fixable.length), 0);
   const required = evaluation.items.filter((i) => i.blocking);
   const advice = evaluation.items.filter((i) => !i.blocking);
   return (
@@ -86,12 +116,20 @@ export function ChecklistTab({ evaluation, onNext }: { evaluation: Evaluation; o
           </span>
         </div>
         {evaluation.canPublish && <p className="text-success t-body font-medium">{t("sec.publish.allGreen")}</p>}
+        {fixableCount > 0 && (
+          <div className="bg-accent/50 flex flex-wrap items-center gap-3 rounded-xl border p-3">
+            <p className="t-small min-w-0 flex-1">{t("sec.publish.fixAllHelp", { count: fixableCount })}</p>
+            <Button size="sm" disabled={fixing} onClick={() => onFix(null)}>
+              <Wand2 /> {t("sec.publish.fixAll")}
+            </Button>
+          </div>
+        )}
       </div>
       <section>
         <h3 className="t-heading mb-2">{t("sec.publish.required")}</h3>
         <ul className="space-y-2.5">
           {required.map((i) => (
-            <Item key={i.key} it={i} onNext={onNext} />
+            <Item key={i.key} it={i} onNext={onNext} onFix={onFix} fixing={fixing} />
           ))}
         </ul>
       </section>
@@ -99,7 +137,7 @@ export function ChecklistTab({ evaluation, onNext }: { evaluation: Evaluation; o
         <h3 className="t-heading mb-2">{t("sec.publish.advice")}</h3>
         <ul className="space-y-2.5">
           {advice.map((i) => (
-            <Item key={i.key} it={i} onNext={onNext} />
+            <Item key={i.key} it={i} onNext={onNext} onFix={onFix} fixing={fixing} />
           ))}
         </ul>
       </section>

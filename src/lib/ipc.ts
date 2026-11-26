@@ -177,6 +177,7 @@ export const api = {
   secretHas: (projectId: string, name: string) => call<boolean>("secret_has", { projectId, name }),
   secretDelete: (projectId: string, name: string) => call<void>("secret_delete", { projectId, name }),
   dataSetupPrompt: (projectId: string) => call<string>("data_setup_prompt", { projectId }),
+  preflightFix: (projectId: string, item: string | null) => call<string[]>("preflight_fix", { projectId, item }),
   checklistEvaluate: (projectId: string) => call<Evaluation>("checklist_evaluate", { projectId }),
 
   storeScreenshotsList: (projectId: string) => call<string[]>("store_screenshots_list", { projectId }),

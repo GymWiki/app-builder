@@ -1288,7 +1288,14 @@
       },
       "secretMissing": "Secrets missing: {{integration}} › {{field}}",
       "leaksMissing": "{{n}} secret(s) found in your files",
-      "secretProblem": "{{integration}}: a key has expired or no longer works"
+      "secretProblem": "{{integration}}: a key has expired or no longer works",
+      "fixForMe": "Fix this for me",
+      "fixAll": "Fix everything I can",
+      "fixAllHelp_one": "Studio can fill in {{count}} thing for you right now.",
+      "fixAllHelp_other": "Studio can fill in {{count}} things for you right now.",
+      "fixed_one": "{{count}} thing fixed. A snapshot was saved first.",
+      "fixed_other": "{{count}} things fixed. A snapshot was saved first.",
+      "fixedNone": "Nothing to fix automatically. Fill in what’s still missing."
     },
     "integrations": {
       "title": "Integrations",
