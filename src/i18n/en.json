@@ -547,7 +547,8 @@
       "scope_reverted": "A change outside this task was undone to keep the rest of the app safe.",
       "leak_blocked": "Saving a version was paused: a secret was found in your files. See Secrets.",
       "model": "class {{cls}} · tier {{tier}} · model {{model}} · {{reason}}",
-      "model_escalated": "escalated to {{model}} after a failed check"
+      "model_escalated": "escalated to {{model}} after a failed check",
+      "selection_exceeded": "Claude also changed something outside the marked box."
     }
   },
   "preview": {
@@ -616,7 +617,23 @@
       "back": "Select whole page",
       "tooSmallTitle": "Drag to draw a box.",
       "tooSmallBody": "Hold the mouse button down and pull to cover what you want to change.",
-      "chip": "Only inside the box on {{name}}"
+      "chip": "Only inside the box on {{name}}",
+      "looking": "Looking at what is in the box…",
+      "oneText": "{{kind}} “{{text}}” on {{screen}}.",
+      "one": "{{kind}} on {{screen}}.",
+      "many": "{{count}} elements on {{screen}}.",
+      "kinds": {
+        "button": "Button",
+        "text": "Text",
+        "listItem": "List item",
+        "icon": "Icon",
+        "image": "Image",
+        "input": "Input field",
+        "switch": "Switch",
+        "bar": "Bar",
+        "other": "{{widget}}"
+      },
+      "exceeded": "Claude also changed something outside the marked box."
     }
   },
   "demo": {

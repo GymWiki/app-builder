@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, FolderSearch, ListTree, PanelLeft, PanelRight, Settings, Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router";
 import { ChatPanel, type ChatContext } from "@/features/chat/chat-panel";
@@ -29,6 +29,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { qk } from "@/hooks";
 import { api, onEvent } from "@/lib/ipc";
 import { friendlyError } from "@/lib/errors";
+import { rangesOf, summarize } from "@/lib/selection-label";
+import type { Selection } from "@/lib/types";
+import { usePreview } from "@/features/preview/preview-store";
 import { cn } from "@/lib/utils";
 import { DEVICES, type DeviceId } from "./phone-frame";
 import { SECTIONS, type SectionId } from "./sections";
@@ -56,6 +59,33 @@ export default function ProjectPage() {
   const [screen, setScreen] = useState<PickedScreen | null>(null);
   const [contextOff, setContextOff] = useState(false);
   const [pick, setPick] = useState<PickBox | null>(null);
+  const [info, setInfo] = useState<{ selection: Selection; prompt: string } | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const selectSeq = useRef(0);
+  const inspect = usePreview((s) => s.state.mode === "inspect");
+
+  /** Vak gewijzigd: laat de widget inspector zoeken welke widgets erin staan (alleen in inspect-modus; anders blijft het bij vak + screenshot). */
+  const changePick = (box: PickBox | null, projectId: string) => {
+    const seq = ++selectSeq.current;
+    setPick(box);
+    setInfo(null);
+    void api.chatSetSelection(projectId, []).catch(() => undefined);
+    if (!box || !inspect) {
+      setSelecting(false);
+      return;
+    }
+    setSelecting(true);
+    api
+      .previewSelect(projectId, [box.x, box.y, box.w, box.h])
+      .then((r) => {
+        if (seq !== selectSeq.current) return;
+        setInfo(r);
+        void api.chatSetSelection(projectId, rangesOf(r.selection)).catch(() => undefined);
+      })
+      // Mislukt het, dan gebruiken we stilletjes de eerdere methode (vak + screenshot), zonder foutmelding.
+      .catch(() => undefined)
+      .finally(() => seq === selectSeq.current && setSelecting(false));
+  };
   const [publishTab, setPublishTab] = useState<PublishTab>("checklist");
   const [jump, setJump] = useState<JumpTarget | null>(null);
   const checklist = useChecklist(id);
@@ -137,14 +167,29 @@ export default function ProjectPage() {
   const p = project.data;
   const onScreens = section === "screens";
   // Wat de gebruiker nu bekijkt gaat automatisch mee naar Claude (een gekozen scherm gaat voor het menu).
+  const elementLabel = (sel: Selection) => {
+    const m = summarize(sel);
+    if (m.kind === "many") return t("preview.pick.many", { count: m.count, screen: m.screen ?? "" });
+    return t(m.text ? "preview.pick.oneText" : "preview.pick.one", {
+      kind: t(`preview.pick.kinds.${m.element}`, { widget: m.widget }),
+      text: m.text,
+      screen: m.screen ?? "",
+    });
+  };
   const context: ChatContext | null =
     contextOff || !screen
       ? null
       : pick
         ? {
             kind: "element",
-            label: t("chat.context.element", { name: screen.class }),
-            prompt: `The user drew a box on the live preview of the screen "${screen.class}" (${screen.file}): left ${pick.x}%, top ${pick.y}%, width ${pick.w}%, height ${pick.h}% of the phone screen. Only change what lies inside that box. First call preview_screenshot with region {"x":${pick.x},"y":${pick.y},"width":${pick.w},"height":${pick.h}} to see the whole screen and the boxed part, and work out which widgets are in the box. Leave everything outside the box exactly as it is, including layout and spacing around it. If the request cannot be done without touching things outside the box, do not do it: say what would have to change and ask the user to draw a bigger box or select the whole page.`,
+            label:
+              info && info.selection.targets.length > 0
+                ? elementLabel(info.selection)
+                : t("chat.context.element", { name: screen.class }),
+            prompt:
+              info && info.selection.targets.length > 0
+                ? info.prompt
+                : `The user drew a box on the live preview of the screen "${screen.class}" (${screen.file}): left ${pick.x}%, top ${pick.y}%, width ${pick.w}%, height ${pick.h}% of the phone screen. Only change what lies inside that box. First call preview_screenshot with region {"x":${pick.x},"y":${pick.y},"width":${pick.w},"height":${pick.h}} to see the whole screen and the boxed part, and work out which widgets are in the box. Leave everything outside the box exactly as it is, including layout and spacing around it. If the request cannot be done without touching things outside the box, do not do it: say what would have to change and ask the user to draw a bigger box or select the whole page.`,
           }
         : {
             kind: "page",
@@ -330,7 +375,7 @@ export default function ProjectPage() {
                   selected={screen?.class ?? null}
                   onSelect={(sc) => {
                     setScreen(sc);
-                    setPick(null);
+                    changePick(null, p.id);
                     setContextOff(false);
                   }}
                 />
@@ -347,8 +392,10 @@ export default function ProjectPage() {
                   route={screen?.route}
                   screenName={screen?.class ?? null}
                   pick={screen ? pick : null}
+                  selection={info?.selection ?? null}
+                  selecting={selecting}
                   onPick={(pt) => {
-                    setPick(pt);
+                    changePick(pt, p.id);
                     if (pt) setContextOff(false);
                   }}
                 />
@@ -370,7 +417,7 @@ export default function ProjectPage() {
                 <ChatPanel
                   projectId={p.id}
                   context={context}
-                  onDismissContext={() => (pick ? setPick(null) : setContextOff(true))}
+                  onDismissContext={() => (pick ? changePick(null, p.id) : setContextOff(true))}
                 />
               </Pane>
             </Panel>

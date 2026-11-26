@@ -347,11 +347,24 @@ impl RunScope {
 #[derive(Default)]
 pub struct ScopeRegistry {
     runs: Mutex<HashMap<String, RunScope>>,
+    /// Door de gebruiker gekozen regelbereiken (bestand, begin, eind) voor de volgende run; de controle achteraf gebruikt ze.
+    selections: Mutex<HashMap<String, Vec<(String, usize, usize)>>>,
 }
 
 impl ScopeRegistry {
     pub fn set(&self, project_id: &str, s: RunScope) {
         self.runs.lock().unwrap_or_else(|e| e.into_inner()).insert(project_id.to_string(), s);
+    }
+    pub fn set_selection(&self, project_id: &str, ranges: Vec<(String, usize, usize)>) {
+        let mut m = self.selections.lock().unwrap_or_else(|e| e.into_inner());
+        if ranges.is_empty() {
+            m.remove(project_id);
+        } else {
+            m.insert(project_id.to_string(), ranges);
+        }
+    }
+    pub fn take_selection(&self, project_id: &str) -> Option<Vec<(String, usize, usize)>> {
+        self.selections.lock().unwrap_or_else(|e| e.into_inner()).remove(project_id)
     }
     pub fn take(&self, project_id: &str) -> Option<RunScope> {
         self.runs.lock().unwrap_or_else(|e| e.into_inner()).remove(project_id)

@@ -9,11 +9,19 @@ const initial: PreviewState = {
   url: null,
   problems: [],
   reloads: 0,
+  mode: "iframe",
 };
 
-export const usePreview = create<{ state: PreviewState; busy: boolean; refresh: () => Promise<void> }>((set) => ({
+export const usePreview = create<{
+  state: PreviewState;
+  busy: boolean;
+  /** Laatste beeld uit de beeldstroom (inspect-modus), als data-URL. */
+  frame: string | null;
+  refresh: () => Promise<void>;
+}>((set) => ({
   state: initial,
   busy: false,
+  frame: null,
   refresh: async () => set({ state: await api.previewState() }),
 }));
 
@@ -23,6 +31,14 @@ export function initPreviewListener(): () => void {
     .getState()
     .refresh()
     .catch(() => undefined);
-  const un = onEvent<PreviewState>("preview-state", (state) => usePreview.setState({ state }));
-  return () => void un.then((f) => f());
+  const un = onEvent<PreviewState>("preview-state", (state) =>
+    usePreview.setState((s) => ({ state, frame: state.status === "stopped" ? null : s.frame })),
+  );
+  const frames = onEvent<{ data: string; mime?: string }>("preview-frame", (f) =>
+    usePreview.setState({ frame: `data:${f.mime ?? "image/jpeg"};base64,${f.data}` }),
+  );
+  return () => {
+    void un.then((f) => f());
+    void frames.then((f) => f());
+  };
 }

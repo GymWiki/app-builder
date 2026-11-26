@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toAppError, AppError } from "./errors";
 import type {
+  Selection,
   VersionInfo,
   AppInfo,
   Applied,
@@ -92,6 +93,11 @@ export const api = {
   previewStart: (projectId: string, target: string) => call<void>("preview_start", { projectId, target }),
   previewStop: () => call<void>("preview_stop"),
   previewState: () => call<PreviewState>("preview_state"),
+  previewSelect: (projectId: string, bbox: [number, number, number, number]) =>
+    call<{ selection: Selection; prompt: string }>("preview_select", { projectId, bbox }),
+  previewViewport: (width: number, height: number) => call<void>("preview_viewport", { width, height }),
+  chatSetSelection: (projectId: string, ranges: [string, number, number][]) =>
+    call<void>("chat_set_selection", { projectId, ranges }),
   previewLog: () => call<string[]>("preview_log"),
   previewReload: () => call<void>("preview_reload"),
   previewDevices: () => call<Device[]>("preview_devices"),

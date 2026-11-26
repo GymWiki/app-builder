@@ -547,7 +547,8 @@
       "scope_reverted": "Een aanpassing buiten deze taak is teruggedraaid om de rest van de app veilig te houden.",
       "leak_blocked": "Het opslaan van een versie is gepauzeerd: er is een geheim gevonden in je bestanden. Zie Geheimen.",
       "model": "klasse {{cls}} · niveau {{tier}} · model {{model}} · {{reason}}",
-      "model_escalated": "opgeschaald naar {{model}} na een mislukte controle"
+      "model_escalated": "opgeschaald naar {{model}} na een mislukte controle",
+      "selection_exceeded": "Claude heeft ook iets buiten het gemarkeerde vak aangepast."
     }
   },
   "preview": {
@@ -616,7 +617,23 @@
       "back": "Hele pagina kiezen",
       "tooSmallTitle": "Sleep om een vak te tekenen.",
       "tooSmallBody": "Houd de muisknop ingedrukt en trek over wat je wilt aanpassen.",
-      "chip": "Alleen binnen het vak op {{name}}"
+      "chip": "Alleen binnen het vak op {{name}}",
+      "looking": "Bekijken wat er in het vak staat…",
+      "oneText": "{{kind}} “{{text}}” op {{screen}}.",
+      "one": "{{kind}} op {{screen}}.",
+      "many": "{{count}} elementen op {{screen}}.",
+      "kinds": {
+        "button": "Knop",
+        "text": "Tekst",
+        "listItem": "Lijstitem",
+        "icon": "Icoon",
+        "image": "Afbeelding",
+        "input": "Invoerveld",
+        "switch": "Schakelaar",
+        "bar": "Balk",
+        "other": "{{widget}}"
+      },
+      "exceeded": "Claude heeft ook iets buiten het gemarkeerde vak aangepast."
     }
   },
   "demo": {

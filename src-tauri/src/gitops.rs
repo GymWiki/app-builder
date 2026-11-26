@@ -24,6 +24,11 @@ pub fn changed_since(dir: &Path, base: &str) -> AppResult<Vec<String>> {
     Ok(out)
 }
 
+/// `git diff -U0` sinds `base` (alleen bijgehouden bestanden): de ruwe tekst, voor het bepalen van de gewijzigde regels.
+pub fn diff_u0_since(dir: &Path, base: &str) -> AppResult<String> {
+    git(dir, &["diff", "-U0", "--no-color", "--no-ext-diff", base])
+}
+
 /// Zet losse bestanden terug naar de staat van `base` (nieuwe bestanden worden verwijderd).
 pub fn restore_files(dir: &Path, base: &str, files: &[String]) -> AppResult<()> {
     for f in files {

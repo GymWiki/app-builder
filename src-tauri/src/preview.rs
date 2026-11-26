@@ -42,12 +42,19 @@ pub struct PreviewState {
     pub url: Option<String>,
     pub problems: Vec<Problem>,
     pub reloads: u32,
+    /// `iframe` (web-server, geen inspector) of `inspect` (Chrome van `flutter run`, het scherm komt als beeldstroom).
+    pub mode: String,
 }
 
 #[derive(Default)]
 pub struct Inner {
     pub state: PreviewState,
     pub log: Vec<String>,
+    /// VM-service van de draaiende app (alleen in `inspect`-modus).
+    pub vm_ws: Option<String>,
+    pub web_port: u16,
+    pub cdp_port: u16,
+    pub viewport: (u32, u32),
     capture: Option<(usize, usize)>, // (probleemindex, resterende regels)
 }
 
@@ -122,6 +129,9 @@ impl Inner {
             }
         }
 
+        if let Some(i) = line.find("Debug service listening on ws://") {
+            self.vm_ws = Some(line[i + 25..].trim().to_string());
+        }
         if line.starts_with("Launching ") {
             self.state.problems.clear();
             self.set_status("starting");
@@ -171,6 +181,8 @@ impl Inner {
 // ───────────── proces ─────────────
 
 struct Running {
+    /// Stuurt een nieuw formaat (in CSS-pixels) naar de beeldstroom.
+    viewport_tx: Option<std::sync::mpsc::Sender<(u32, u32)>>,
     child: Arc<Mutex<Child>>,
     stdin: Arc<Mutex<Option<ChildStdin>>>,
     stopping: Arc<std::sync::atomic::AtomicBool>,
@@ -257,9 +269,10 @@ impl PreviewManager {
     pub fn start(&self, flutter: &Path, project_id: &str, dir: &Path, target: &str) -> AppResult<()> {
         self.stop();
         let web = target == "web";
-        let help = proc::run(flutter, &["run", "--help"], Some(dir), Duration::from_secs(120))?.combined();
+        let help = proc::run(flutter, &["run", "--help", "-v"], Some(dir), Duration::from_secs(120))?.combined();
         let mut args: Vec<String> = vec!["run".into()];
         let mut url = None;
+        let mut inspect: Option<(std::path::PathBuf, u16, u16)> = None;
         if web {
             for f in ["--web-port", "--web-hostname"] {
                 if !help.contains(f) {
@@ -267,7 +280,22 @@ impl PreviewManager {
                 }
             }
             let port = free_port()?;
-            args.extend(["-d".into(), "web-server".into(), "--web-hostname=127.0.0.1".into(), format!("--web-port={port}")]);
+            // Met een browser op de computer draaien we de app in die (headless) browser: alleen daar heeft Flutter een VM-service,
+            // en dus de widget inspector. Zonder browser (of met STUDIO_PREVIEW_IFRAME=1) de oude web-server-variant in een iframe.
+            let browser = crate::screenshot::find_browser().filter(|_| std::env::var("STUDIO_PREVIEW_IFRAME").is_err() && help.contains("--web-browser-debug-port"));
+            if let Some(b) = browser {
+                let dbg = free_port()?;
+                args.extend(["-d".into(), "chrome".into(), "--web-hostname=127.0.0.1".into(), format!("--web-port={port}"), format!("--web-browser-debug-port={dbg}"), "--web-browser-flag=--headless=new".into()]);
+                if std::env::var("STUDIO_BROWSER_NO_SANDBOX").is_ok() {
+                    args.push("--web-browser-flag=--no-sandbox".into());
+                }
+                if std::env::var("STUDIO_OFFLINE_WEB").is_ok() {
+                    args.push("--no-web-resources-cdn".into());
+                }
+                inspect = Some((b, port, dbg));
+            } else {
+                args.extend(["-d".into(), "web-server".into(), "--web-hostname=127.0.0.1".into(), format!("--web-port={port}")]);
+            }
             url = Some(format!("http://127.0.0.1:{port}"));
         } else {
             if !target.chars().all(|c| c.is_ascii_alphanumeric() || "-_.:".contains(c)) {
@@ -278,12 +306,15 @@ impl PreviewManager {
 
         {
             let mut i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-            *i = Inner { state: PreviewState { project_id: Some(project_id.into()), status: "starting".into(), target: target.into(), url: None, problems: vec![], reloads: 0 }, ..Default::default() };
+            *i = Inner { state: PreviewState { project_id: Some(project_id.into()), status: "starting".into(), target: target.into(), url: None, problems: vec![], reloads: 0, mode: if inspect.is_some() { "inspect".into() } else { "iframe".into() } }, web_port: inspect.as_ref().map(|i| i.1).unwrap_or(0), cdp_port: inspect.as_ref().map(|i| i.2).unwrap_or(0), viewport: (390, 844), ..Default::default() };
         }
         self.publish();
 
         let mut cmd = proc::command(flutter);
         cmd.args(&args).current_dir(dir).stdin(Stdio::piped());
+        if let Some((b, _, _)) = &inspect {
+            cmd.env("CHROME_EXECUTABLE", b);
+        }
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
@@ -376,7 +407,8 @@ impl PreviewManager {
 
         // Bestanden in lib/ bekijken: elke wijziging (van Claude of handmatig) herlaadt de preview.
         let watcher = self.watch(dir, web, &stdin);
-        *self.run.lock().unwrap_or_else(|e| e.into_inner()) = Some(Running { child, stdin, stopping, _watcher: watcher, web });
+        let viewport_tx = inspect.as_ref().map(|(_, web_port, cdp_port)| spawn_screencast(*cdp_port, *web_port, self.emit.clone(), stopping.clone()));
+        *self.run.lock().unwrap_or_else(|e| e.into_inner()) = Some(Running { viewport_tx, child, stdin, stopping, _watcher: watcher, web });
         Ok(())
     }
 
@@ -420,6 +452,26 @@ impl PreviewManager {
         Some(w)
     }
 
+    /// Nieuw formaat voor het scherm in de preview (CSS-pixels). Geldt ook voor het omzetten van een vak naar widgets.
+    pub fn set_viewport(&self, w: u32, h: u32) {
+        let (w, h) = (w.clamp(200, 2000), h.clamp(300, 3000));
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).viewport = (w, h);
+        if let Some(tx) = self.run.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|r| r.viewport_tx.as_ref()) {
+            let _ = tx.send((w, h));
+        }
+    }
+
+    /// Zet een vak (procenten van het telefoonscherm) om in widgets uit de code van het project, via de widget inspector.
+    pub fn select_box(&self, project_dir: &Path, bbox: [f64; 4], screens: &[(String, String)]) -> AppResult<crate::selection::Selection> {
+        let (vm, web_port, cdp_port, viewport, mode) = {
+            let i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            (i.vm_ws.clone(), i.web_port, i.cdp_port, i.viewport, i.state.mode.clone())
+        };
+        let vm = vm.filter(|_| mode == "inspect").ok_or_else(|| AppError::NotFound("inspector".into()))?;
+        let page = crate::inspect::page_target(cdp_port, web_port)?;
+        crate::inspect::select_box(&vm, &page, project_dir, viewport, bbox, screens)
+    }
+
     /// Handmatig herladen (knop "Vernieuwen").
     pub fn reload(&self) -> AppResult<()> {
         let run = self.run.lock().unwrap_or_else(|e| e.into_inner());
@@ -430,6 +482,60 @@ impl PreviewManager {
         s.flush()?;
         Ok(())
     }
+}
+
+/// Draad die het scherm van de app (de pagina in Chrome) als JPEG-beelden doorstuurt. Stuurt hooguit ~8 beelden per seconde
+/// naar de UI, maar bevestigt elk beeld meteen (anders stopt Chrome met sturen).
+fn spawn_screencast(cdp_port: u16, web_port: u16, emit: EmitFn, stopping: Arc<std::sync::atomic::AtomicBool>) -> std::sync::mpsc::Sender<(u32, u32)> {
+    use crate::inspect::{page_target, viewport_params, Rpc};
+    use serde_json::json;
+    let (tx, rx) = channel::<(u32, u32)>();
+    std::thread::spawn(move || {
+        let stop = || stopping.load(std::sync::atomic::Ordering::SeqCst);
+        let deadline = Instant::now() + Duration::from_secs(180);
+        let url = loop {
+            if stop() || Instant::now() > deadline {
+                return;
+            }
+            match page_target(cdp_port, web_port) {
+                Ok(u) => break u,
+                Err(_) => std::thread::sleep(Duration::from_millis(500)),
+            }
+        };
+        let Ok(mut rpc) = Rpc::connect(&url, Duration::from_millis(200)) else { return };
+        let start = |rpc: &mut Rpc| rpc.call("Page.startScreencast", json!({ "format": "jpeg", "quality": 70, "everyNthFrame": 1 })).is_ok();
+        if rpc.call("Page.enable", json!({})).is_err() || !start(&mut rpc) {
+            return;
+        }
+        let mut last = Instant::now() - Duration::from_secs(1);
+        while !stop() {
+            let mut resized = None;
+            while let Ok(v) = rx.try_recv() {
+                resized = Some(v);
+            }
+            if let Some((w, h)) = resized {
+                let _ = rpc.call("Emulation.setDeviceMetricsOverride", viewport_params(w, h));
+                let _ = rpc.call("Page.stopScreencast", json!({}));
+                let _ = start(&mut rpc);
+            }
+            match rpc.read() {
+                Ok(Some(m)) if m["method"] == "Page.screencastFrame" => {
+                    let p = &m["params"];
+                    if let Some(sid) = p["sessionId"].as_u64() {
+                        let _ = rpc.send("Page.screencastFrameAck", json!({ "sessionId": sid }));
+                    }
+                    if last.elapsed() >= Duration::from_millis(120) {
+                        last = Instant::now();
+                        emit("preview-frame", json!({ "data": p["data"], "width": p["metadata"]["deviceWidth"], "height": p["metadata"]["deviceHeight"] }));
+                    }
+                }
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        rpc.close();
+    });
+    tx
 }
 
 /// Aangesloten apparaten uit `flutter devices --machine`.
@@ -723,6 +829,66 @@ mod tests {
     }
 
     /// Echte Flutter: `STUDIO_TEST_PROJECT=<map> cargo test real_preview -- --ignored --nocapture`
+    /// Echte keten: preview in Chrome (inspect-modus), beeldstroom, vak → widgets via de inspector, en na een regelverschuiving
+    /// (hot restart) opnieuw. Vereist Flutter, Chrome en een testproject zoals `experiments/inspector/probe`.
+    #[test]
+    #[ignore]
+    fn real_inspect_flow() {
+        let dir = std::path::PathBuf::from(std::env::var("STUDIO_TEST_PROJECT").expect("STUDIO_TEST_PROJECT"));
+        let flutter = proc::find("flutter").expect("flutter on PATH");
+        let frames = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let f2 = frames.clone();
+        let mgr = PreviewManager::new(Arc::new(move |n, _| {
+            if n == "preview-frame" {
+                f2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        }));
+        mgr.start(&flutter, "p", &dir, "web").unwrap();
+        assert_eq!(mgr.state().mode, "inspect");
+        let end = Instant::now() + Duration::from_secs(280);
+        while Instant::now() < end && !(mgr.state().status == "running" && frames.load(std::sync::atomic::Ordering::SeqCst) > 0) {
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        println!("running, frames so far: {}", frames.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(frames.load(std::sync::atomic::Ordering::SeqCst) > 0, "the screencast delivers frames");
+        mgr.set_viewport(500, 644);
+        std::thread::sleep(Duration::from_secs(3));
+        let screens = vec![("HomeScreen".to_string(), "lib/home_screen.dart".to_string())];
+
+        // 1. de knop "Open list" (gedeeld component PrimaryButton) wordt de aanroep op het scherm
+        let sel = mgr.select_box(&dir, [3.0, 25.4, 22.0, 5.0], &screens).unwrap();
+        println!("selection 1: {}", sel.prompt());
+        let t = sel.targets.iter().find(|t| t.widget == "PrimaryButton").expect("PrimaryButton");
+        assert_eq!((t.file.as_str(), t.start_line, t.end_line, t.via_shared), ("lib/home_screen.dart", 22, 25, true));
+        assert_eq!(t.text.as_deref(), Some("Open list"));
+        assert_eq!(sel.screen.as_deref(), Some("HomeScreen"));
+
+        // 2. een vak om twee teksten: beide, zonder de omvattende Column
+        let sel = mgr.select_box(&dir, [3.0, 10.5, 40.0, 12.0], &screens).unwrap();
+        println!("selection 2: {}", sel.prompt());
+        let texts: Vec<_> = sel.targets.iter().map(|t| (t.widget.as_str(), t.start_line)).collect();
+        assert!(texts.contains(&("Text", 18)) && texts.contains(&("Text", 20)), "{texts:?}");
+        assert!(!texts.iter().any(|(w, _)| *w == "Column"), "the surrounding Column is dropped: {texts:?}");
+
+        // 3. regels verschuiven + hot restart: de feiten zijn weer actueel
+        let file = dir.join("lib/home_screen.dart");
+        let original = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(&file, format!("// extra 1\n// extra 2\n{original}")).unwrap();
+        let before = mgr.state().reloads;
+        let end = Instant::now() + Duration::from_secs(90);
+        while Instant::now() < end && mgr.state().reloads <= before {
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        std::thread::sleep(Duration::from_secs(2));
+        let sel = mgr.select_box(&dir, [3.0, 25.4, 22.0, 5.0], &screens);
+        std::fs::write(&file, &original).unwrap();
+        let sel = sel.unwrap();
+        let t = sel.targets.iter().find(|t| t.widget == "PrimaryButton").unwrap();
+        println!("after shift: {} lines {}-{}", t.file, t.start_line, t.end_line);
+        assert_eq!((t.start_line, t.end_line), (24, 27));
+        mgr.stop();
+    }
+
     /// Start de web-preview, wacht tot hij draait, breekt de code (bouwfout), herstelt, en stopt.
     #[test]
     #[ignore]

@@ -123,6 +123,31 @@ export interface PreviewState {
   url: string | null;
   problems: PreviewProblem[];
   reloads: number;
+  /** `inspect` = het scherm komt als beeldstroom uit de Chrome van `flutter run` (widget inspector beschikbaar); `iframe` = oude web-server. */
+  mode?: "iframe" | "inspect";
+}
+
+export interface SelectionLink {
+  widget: string;
+  file: string;
+  line: number;
+  column: number;
+}
+export interface SelectionTarget {
+  widget: string;
+  text: string | null;
+  file: string;
+  startLine: number;
+  endLine: number;
+  chain: SelectionLink[];
+  viaShared: boolean;
+}
+/** Wat er in het getekende vak staat, volgens de widget inspector. */
+export interface Selection {
+  screen: string | null;
+  screenFile: string | null;
+  targets: SelectionTarget[];
+  bbox: [number, number, number, number] | null;
 }
 
 export interface Device {

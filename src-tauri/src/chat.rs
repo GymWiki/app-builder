@@ -195,6 +195,8 @@ impl ChatManager {
             let _ = ctx.db.setting_set(&current_key, s);
         }
         let scope_state = RunScope::new(&index, &decision);
+        // Een vak dat de gebruiker op de preview tekende: het bereik waarbinnen Claude hoort te blijven (controle achteraf).
+        let selection_ranges = ctx.scopes.take_selection(project_id);
         let key = decision.screen.clone().unwrap_or_else(|| decision.level.as_str().to_string());
         let session = match ctx.db.session_for_scope(project_id, &key, self.engine.id()) {
             Ok(s) => s,
@@ -367,6 +369,25 @@ impl ChatManager {
                     if !ok {
                         break;
                     }
+                }
+            }
+        }
+
+        // 3c. Is Claude binnen het gekozen vak gebleven? Een afwijking is geen fout maar een signaal: het wordt gelogd (alleen zichtbaar in
+        // de ontwikkelaarsmodus) en het bestaande bereik-systeem blijft bepalen wat verder mag.
+        if let (Some(ranges), Some(base)) = (selection_ranges.as_ref(), base.as_ref()) {
+            if ok {
+                let diff = gitops::diff_u0_since(&dir, base).unwrap_or_default();
+                let hunks = crate::selection::parse_hunks(&diff);
+                let in_diff: std::collections::HashSet<&str> = hunks.iter().map(|h| h.file.as_str()).collect();
+                let new_files: Vec<String> = gitops::changed_since(&dir, base).unwrap_or_default().into_iter().filter(|f| !in_diff.contains(f.as_str()) && dir.join(f).is_file() && !f.starts_with(".studio/")).collect();
+                let hunks: Vec<_> = hunks.into_iter().filter(|h| !h.file.starts_with(".studio/")).collect();
+                let src = |f: &str| std::fs::read_to_string(dir.join(f)).ok();
+                let out = crate::selection::deviations(ranges, &hunks, &new_files, &src);
+                if !out.is_empty() {
+                    let detail = out.iter().take(8).map(|d| format!("{}:{}", d.file, d.line)).collect::<Vec<_>>().join(", ");
+                    log::info!("selection exceeded in {project_id}: {detail}");
+                    emit_event(Some(&sid), &ChatEvent::Status { code: "selection_exceeded".into(), detail: Some(detail) });
                 }
             }
         }

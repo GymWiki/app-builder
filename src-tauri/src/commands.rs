@@ -279,6 +279,29 @@ pub fn chat_send(
     state.chat.send(state.chat_ctx.clone(), project_id, text, context, language, crate::modelsel::Purpose::parse(purpose.as_deref()))
 }
 
+/// Het vak dat de gebruiker tekende → de widgets (uit de eigen code) die erin staan, met vaste feiten voor Claude.
+#[tauri::command]
+pub async fn preview_select(state: State<'_, AppState>, project_id: String, bbox: [f64; 4]) -> AppResult<serde_json::Value> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let screens: Vec<(String, String)> = crate::studio_tools::list_screens(&dir)?.into_iter().map(|s| (s.class, s.file)).collect();
+    let bbox = [bbox[0].clamp(0.0, 100.0), bbox[1].clamp(0.0, 100.0), bbox[2].clamp(1.0, 100.0), bbox[3].clamp(1.0, 100.0)];
+    let preview = state.preview.clone();
+    let sel = blocking(move || preview.select_box(&dir, bbox, &screens)).await?;
+    Ok(serde_json::json!({ "selection": sel, "prompt": sel.prompt() }))
+}
+
+/// Legt vast binnen welke regels Claude in de volgende opdracht moet blijven (leeg = geen vak). Wordt bij de start van die opdracht gebruikt en gewist.
+#[tauri::command]
+pub fn chat_set_selection(state: State<'_, AppState>, project_id: String, ranges: Vec<(String, usize, usize)>) {
+    state.chat_ctx.scopes.set_selection(&project_id, ranges);
+}
+
+/// Formaat van het scherm in de preview (CSS-pixels), voor de beeldstroom en het omzetten van een vak.
+#[tauri::command]
+pub fn preview_viewport(state: State<'_, AppState>, width: u32, height: u32) {
+    state.preview.set_viewport(width, height);
+}
+
 #[tauri::command]
 pub fn chat_cancel(state: State<'_, AppState>, project_id: String) {
     state.perms.deny_all(&project_id);

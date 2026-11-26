@@ -64,7 +64,7 @@ function mockVersionInfo(p?: Project) {
     willChange: next.join(".") !== (p?.version ?? "1.0.0") || build !== (p?.buildNumber ?? 1),
   };
 }
-let projects: Project[] = ["ready", "nodevices", "noscreens"].includes(scenario)
+let projects: Project[] = ["ready", "nodevices", "noscreens", "inspect"].includes(scenario)
   ? [
       mk("friday_scores", "Friday Scores", "scoreboard", "testing", 12, 4),
       mk("water_tracker", "Water Tracker", "tracker", "draft", 60 * 26, 1),
@@ -227,12 +227,34 @@ type MockPreview = {
   url: string | null;
   problems: unknown[];
   reloads: number;
+  mode: string;
 };
-let preview: MockPreview = { projectId: null, status: "stopped", target: "web", url: null, problems: [], reloads: 0 };
+let preview: MockPreview = {
+  projectId: null,
+  status: "stopped",
+  target: "web",
+  url: null,
+  problems: [],
+  reloads: 0,
+  mode: "iframe",
+};
 const setPreview = (p: Partial<MockPreview>) => {
   preview = { ...preview, ...p };
   emit("preview-state", preview);
 };
+/** Beeldstroom van de demo (inspect-modus): een tekening van de app, elke halve seconde opnieuw verstuurd. */
+let framesTimer: ReturnType<typeof setInterval> | null = null;
+function startMockFrames() {
+  if (framesTimer) clearInterval(framesTimer);
+  const svg =
+    "<svg xmlns='http://www.w3.org/2000/svg' width='360' height='740'><rect width='360' height='740' fill='white'/><rect width='360' height='56' fill='#4f46e5'/><text x='16' y='34' fill='white' font-family='sans-serif' font-size='18'>Friday Scores</text><text x='180' y='170' font-size='72' text-anchor='middle' font-family='sans-serif'>7</text><rect x='140' y='200' width='80' height='36' rx='18' fill='#e0e7ff'/><text x='180' y='224' font-size='16' text-anchor='middle' font-family='sans-serif'>+1</text></svg>";
+  const send = () => emit("preview-frame", { data: btoa(svg), mime: "image/svg+xml", width: 360, height: 740 });
+  send();
+  framesTimer = setInterval(
+    () => (preview.status === "stopped" ? framesTimer && clearInterval(framesTimer) : send()),
+    500,
+  );
+}
 const MOCK_PAGE =
   "data:text/html," +
   encodeURIComponent(
@@ -566,6 +588,7 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
         url: null,
         problems: [],
         reloads: 0,
+        mode: scenario === "inspect" && args.target === "web" ? "inspect" : "iframe",
       });
       await sleep(900);
       if (id === "water_tracker" && args.target === "web") {
@@ -581,12 +604,40 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
             },
           ],
         });
-      } else setPreview({ status: "running", url: args.target === "web" ? MOCK_PAGE : null });
+      } else {
+        setPreview({ status: "running", url: args.target === "web" ? MOCK_PAGE : null });
+        if (preview.mode === "inspect") startMockFrames();
+      }
       return;
     }
     case "preview_stop":
       setPreview({ status: "stopped", url: null, problems: [] });
       return;
+    case "preview_viewport":
+    case "chat_set_selection":
+      return;
+    case "preview_select": {
+      // Nagebootst: bovenin de titel van de app, daaronder het getal en de knop.
+      const y = (args.bbox as number[])[1] ?? 0;
+      const file = "lib/home_screen.dart";
+      const t =
+        y < 12
+          ? { widget: "Text", text: "Friday Scores", file, startLine: 12, endLine: 12 }
+          : y < 30
+            ? { widget: "Text", text: "7", file, startLine: 24, endLine: 24 }
+            : { widget: "PrimaryButton", text: "+1", file, startLine: 30, endLine: 33 };
+      await sleep(400);
+      const selection = {
+        screen: "HomeScreen",
+        screenFile: file,
+        bbox: args.bbox,
+        targets: [{ ...t, chain: [], viaShared: t.widget === "PrimaryButton" }],
+      };
+      return {
+        selection,
+        prompt: `The user marked part of the live preview and wants ONLY that part changed.\n1. ${t.widget} "${t.text}" — ${t.file} lines ${t.startLine}–${t.endLine}`,
+      };
+    }
     case "preview_state":
       return preview;
     case "preview_log":

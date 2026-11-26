@@ -11,6 +11,9 @@ import { toastError } from "@/lib/toast";
 import type { Device, PreviewStatus } from "@/lib/types";
 import { DeviceDialog } from "./device-dialog";
 import { usePreview } from "./preview-store";
+import { summarize } from "@/lib/selection-label";
+import type { Selection } from "@/lib/types";
+import { DEVICES } from "@/features/project/phone-frame";
 
 /** Het vak dat de gebruiker heeft getekend, in procenten van het telefoonscherm (0–100). */
 export interface PickBox {
@@ -37,6 +40,8 @@ export function PreviewPanel({
   screenName,
   pick,
   onPick,
+  selection,
+  selecting,
 }: {
   projectId: string;
   device: DeviceId;
@@ -48,9 +53,14 @@ export function PreviewPanel({
   /** Het gekozen element (positie in procenten van het telefoonscherm), of `null` = de hele pagina. */
   pick?: PickBox | null;
   onPick?: (p: PickBox | null) => void;
+  /** Wat de widget inspector in het vak vond (alleen in inspect-modus) en of dat nog wordt opgezocht. */
+  selection?: Selection | null;
+  selecting?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const state = usePreview((s) => s.state);
+  const frame = usePreview((s) => s.frame);
+  const inspect = state.mode === "inspect";
   const mine = state.projectId === projectId;
   const status: PreviewStatus = mine ? state.status : "stopped";
   const [pending, setPending] = useState(false);
@@ -85,6 +95,12 @@ export function PreviewPanel({
       .catch((e) => toastError(e, t));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  // In inspect-modus bepaalt het gekozen toestel de grootte van de pagina in Chrome (en dus wat het vak betekent).
+  const dims = DEVICES[device];
+  useEffect(() => {
+    if (inspect) void api.previewViewport(dims.w, dims.h).catch(() => undefined);
+  }, [inspect, dims.w, dims.h, state.status]);
 
   useEffect(() => {
     if (!showLog) return;
@@ -186,7 +202,23 @@ export function PreviewPanel({
               </>
             ) : pick ? (
               <>
-                <strong>{t("preview.pick.elementTitle")}</strong> {t("preview.pick.elementBody")}
+                <strong>
+                  {selecting
+                    ? t("preview.pick.looking")
+                    : selection && selection.targets.length > 0
+                      ? (() => {
+                          const m = summarize(selection);
+                          return m.kind === "many"
+                            ? t("preview.pick.many", { count: m.count, screen: m.screen ?? "" })
+                            : t(m.text ? "preview.pick.oneText" : "preview.pick.one", {
+                                kind: t(`preview.pick.kinds.${m.element}`, { widget: m.widget }),
+                                text: m.text,
+                                screen: m.screen ?? "",
+                              });
+                        })()
+                      : t("preview.pick.elementTitle")}
+                </strong>{" "}
+                {t("preview.pick.elementBody")}
               </>
             ) : (
               <>
@@ -204,7 +236,19 @@ export function PreviewPanel({
 
       <div className="min-h-0 flex-1">
         <PhoneFrame device={device} dark={dark}>
-          {active && !onDevice && state.url ? (
+          {active && !onDevice && state.url && inspect ? (
+            frame ? (
+              <img
+                src={frame}
+                alt=""
+                draggable={false}
+                className="pointer-events-none absolute inset-0 size-full bg-white select-none"
+              />
+            ) : (
+              <Loader2 aria-hidden className="absolute inset-0 m-auto size-8 animate-spin opacity-50" />
+            )
+          ) : null}
+          {active && !onDevice && state.url && !inspect ? (
             <iframe
               key={frameKey}
               src={route ? `${state.url.replace(/#.*$/, "")}#${route}` : state.url}

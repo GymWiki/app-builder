@@ -138,6 +138,15 @@ export function StatusLine({ item }: { item: Extract<Item, { kind: "status" }> }
       </p>
     );
   }
+  // Of Claude buiten het gemarkeerde vak is gekomen is een signaal voor ontwikkelaars, niet voor de gebruiker.
+  if (item.code === "selection_exceeded") {
+    if (!dev) return null;
+    return (
+      <p role="status" className="text-muted-foreground t-small text-center">
+        {t("chat.status.selection_exceeded")} <span className="font-mono">{item.detail}</span>
+      </p>
+    );
+  }
   const [level, screen] = (item.detail ?? "").split("|");
   const name = (screen ?? "").replace(/(Screen|Page)$/, "");
   const code = item.code === "scope" && !name ? "scope_app" : item.code;

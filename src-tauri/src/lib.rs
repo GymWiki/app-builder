@@ -1,3 +1,6 @@
+mod extent;
+mod inspect;
+mod selection;
 mod chat;
 mod checklist;
 mod assets;
@@ -180,6 +183,9 @@ pub fn run() {
             commands::theme_get,
             commands::theme_set,
             commands::screens_graph,
+            commands::preview_select,
+            commands::preview_viewport,
+            commands::chat_set_selection,
             commands::platform_get,
             commands::platform_set_name,
             commands::platform_set_bundle,
