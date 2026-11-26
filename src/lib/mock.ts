@@ -395,7 +395,6 @@ const applied = (what: string) => ({ applied: [what], skipped: [] as { target: s
 
 function mockEvaluate(id: string) {
   const m = metaOf(id);
-  const p = projects.find((x) => x.id === id);
   const l = m.listing;
   const q = m.questionnaire;
   const answered = [
@@ -472,14 +471,47 @@ function mockEvaluate(id: string) {
       "publish:signing",
       true,
     ),
-    mk(
-      "version_changelog",
-      true,
-      [...(m.lastPublishedVersion === p?.version ? ["version_bump"] : []), ...(fs.changelog ? [] : ["changelog"])],
-      "versions",
-    ),
+    mk("version_changelog", true, [...(fs.changelog ? [] : ["changelog"])], "versions"),
   ];
   items.push({ ...mk("no_leaks", true, leaks ? [`leaks:${leaks}`] : [], "leaks"), status: leaks ? "failed" : "done" });
+  // Aankopen: alleen als de app producten heeft (zoals de echte checklist).
+  const pu = purchasesOf(id);
+  if (pu.products.length > 0) {
+    const n = pu.products.length;
+    const created = (s: "apple" | "google") => pu.products.filter((x) => pur.rank(x.status[s]) >= 2).length;
+    const c = (k: string) => !!pu.confirmations[k];
+    const legalOk = !!m.legal.privacyUrl && !!m.legal.termsUrl;
+    items.push(
+      mk(
+        "purchases_products",
+        true,
+        [
+          ...(pu.appliedVersion > 0 ? [] : ["not_applied"]),
+          ...(pu.apple && created("apple") < n ? ["apple_products"] : []),
+          ...(pu.google && created("google") < n ? ["google_products"] : []),
+        ],
+        "purchases",
+      ),
+      mk(
+        "purchases_agreements",
+        true,
+        [
+          ...(pu.apple && !c("paid_apps_agreement") ? ["paid_apps_agreement"] : []),
+          ...(pu.apple && !c("tax_bank") ? ["tax_bank"] : []),
+          ...(pu.google && !c("merchant_account") ? ["merchant_account"] : []),
+        ],
+        "purchases",
+      ),
+      mk(
+        "purchases_paywall",
+        true,
+        [...(pu.appliedVersion > 0 ? [] : ["paywall"]), ...(legalOk ? [] : ["legal_links"])],
+        pu.appliedVersion > 0 && !legalOk ? "publish:legal" : "purchases",
+      ),
+      mk("purchases_tested", true, c("sandbox_tested") ? [] : ["sandbox"], "purchases"),
+      ...(pu.apple ? [mk("purchases_apple_submit", true, c("apple_submitted") ? [] : ["submit"], "purchases")] : []),
+    );
+  }
   const others = items.every((i) => i.status === "done");
   items.push({
     ...mk(

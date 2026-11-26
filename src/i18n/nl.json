@@ -985,6 +985,49 @@
           "title": "Geen geheimen in je bestanden",
           "desc": "Sleutels en wachtwoorden mogen nooit in de bestanden van je app staan.",
           "missing": {}
+        },
+        "purchases_products": {
+          "title": "Aankopen: producten in de winkels",
+          "desc": "De aankopen zitten in je app en de producten bestaan in elke winkel.",
+          "missing": {
+            "not_applied": "Voeg de aankopen toe aan je app (pagina Aankopen)",
+            "apple_products": "Maak de producten aan in de App Store",
+            "google_products": "Maak de producten aan in Google Play"
+          }
+        },
+        "purchases_agreements": {
+          "title": "Aankopen: overeenkomsten en betalingen",
+          "desc": "De winkels willen overeenkomsten en betaalgegevens voordat ze iets kunnen verkopen.",
+          "missing": {
+            "paid_apps_agreement": "Accepteer de overeenkomst voor betaalde apps (App Store)",
+            "tax_bank": "Vul belasting- en bankgegevens in (App Store)",
+            "merchant_account": "Stel een merchant-account in (Google Play)"
+          }
+        },
+        "purchases_paywall": {
+          "title": "Aankopen: de betaalmuur",
+          "desc": "De betaalmuur toont een prijs uit de winkel met periode, kan aankopen herstellen en linkt naar je voorwaarden en privacybeleid.",
+          "missing": {
+            "paywall": "Voeg de betaalmuur toe aan je app",
+            "restore_button": "Voeg een knop ‘Aankopen herstellen’ toe",
+            "store_price": "Toon de prijs uit de winkel",
+            "hardcoded_price": "Haal het vaste bedrag uit de betaalmuur",
+            "legal_links": "Voeg de links naar je voorwaarden en privacybeleid toe"
+          }
+        },
+        "purchases_tested": {
+          "title": "Aankopen: geprobeerd op een echte telefoon",
+          "desc": "Een testaankoop met een sandbox- of licentietester.",
+          "missing": {
+            "sandbox": "Probeer een testaankoop op een echte telefoon en vink het af"
+          }
+        },
+        "purchases_apple_submit": {
+          "title": "Aankopen: de eerste samen met de app ingediend (Apple)",
+          "desc": "Apple beoordeelt de eerste in-app aankoop samen met een appversie.",
+          "missing": {
+            "submit": "Dien de eerste aankoop in met een appversie en vink het af"
+          }
         }
       },
       "actions": {

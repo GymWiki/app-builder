@@ -985,6 +985,49 @@
           "title": "No secrets in your files",
           "desc": "Keys and passwords must never be saved inside your app's files.",
           "missing": {}
+        },
+        "purchases_products": {
+          "title": "Purchases: products in the stores",
+          "desc": "The purchases are in your app and the products exist in each store.",
+          "missing": {
+            "not_applied": "Add the purchases to your app (Purchases page)",
+            "apple_products": "Create the products in the App Store",
+            "google_products": "Create the products in Google Play"
+          }
+        },
+        "purchases_agreements": {
+          "title": "Purchases: agreements and payments",
+          "desc": "The stores need agreements and payment details before they can sell anything.",
+          "missing": {
+            "paid_apps_agreement": "Accept the paid apps agreement (App Store)",
+            "tax_bank": "Fill in tax and bank details (App Store)",
+            "merchant_account": "Set up a merchant account (Google Play)"
+          }
+        },
+        "purchases_paywall": {
+          "title": "Purchases: the paywall",
+          "desc": "The paywall shows a store price and period, can restore purchases and links to your terms and privacy policy.",
+          "missing": {
+            "paywall": "Add the paywall to your app",
+            "restore_button": "Add a ‘Restore purchases’ button",
+            "store_price": "Show the price from the store",
+            "hardcoded_price": "Remove the fixed price from the paywall",
+            "legal_links": "Add the links to your terms and privacy policy"
+          }
+        },
+        "purchases_tested": {
+          "title": "Purchases: tried on a real phone",
+          "desc": "A test purchase with a sandbox or license tester.",
+          "missing": {
+            "sandbox": "Try a test purchase on a real phone and tick it off"
+          }
+        },
+        "purchases_apple_submit": {
+          "title": "Purchases: first one submitted with the app (Apple)",
+          "desc": "Apple reviews the first in-app purchase together with an app version.",
+          "missing": {
+            "submit": "Submit the first purchase with an app version and tick it off"
+          }
         }
       },
       "actions": {

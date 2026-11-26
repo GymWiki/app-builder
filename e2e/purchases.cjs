@@ -143,6 +143,21 @@ const ok = (c, m) => {
     "the risk is repeated in the confirmation",
   );
   await p.screenshot({ path: `${S}/71-purchases-update.png`, fullPage: true });
+  await p.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  // Checklist: de aankoop-punten staan erin (alleen omdat er producten zijn)
+  await p.getByRole("navigation", { name: "Project menu" }).getByRole("button", { name: "Publish" }).click();
+  await p.getByRole("tab", { name: "Checklist" }).click();
+  await p.getByText("Purchases: products in the stores").waitFor();
+  ok(
+    await p.getByText("Purchases: the paywall").isVisible(),
+    "the checklist gets purchase items once there are products",
+  );
+  ok(
+    await p.getByText("Create the products in Google Play").first().isVisible(),
+    "…with plain-language gaps (Google Play product still to create)",
+  );
+  ok(await p.getByText("Accept the paid apps agreement (App Store)").first().isVisible(), "…and the store agreements");
+
   // De chat: over aankopen begint Claude niet zelf; Studio zet een concept klaar en opent de pagina.
   await p.goto("about:blank");
   await p.goto("http://localhost:1420/?mock=purchases#/project/water_tracker");

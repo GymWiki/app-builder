@@ -26,6 +26,26 @@ pub struct Facts {
     pub missing_secrets: Vec<crate::vault::MissingSecret>,
     /// Aantal geheimen dat in de projectbestanden is gevonden (lekcontrole).
     pub leaks: usize,
+    /// Alleen als de app producten heeft: de extra punten voor aankopen.
+    pub purchases: Option<PurchasesFacts>,
+}
+
+/// Wat de checklist over aankopen moet weten.
+#[derive(Debug, Clone, Default)]
+pub struct PurchasesFacts {
+    pub apple: bool,
+    pub google: bool,
+    pub products: usize,
+    /// Is "Add to app" gedaan (de code staat erin)?
+    pub applied: bool,
+    /// Aantal producten dat in de winkel is aangemaakt (status "aangemaakt" of verder).
+    pub apple_created: usize,
+    pub google_created: usize,
+    pub paywall_exists: bool,
+    pub restore_button: bool,
+    pub store_price: bool,
+    pub hardcoded_price: bool,
+    pub confirmations: std::collections::BTreeMap<String, bool>,
 }
 
 /// Ontbrekende geheimen van een checklistpunt als `secret:<integratie>.<veld>`; de eerste bepaalt waar de knop naartoe gaat.
@@ -192,6 +212,56 @@ pub fn evaluate(m: &Meta, f: &Facts) -> Evaluation {
         it.next = Some("leaks".into());
     }
     items.push(it);
+
+    // 7c. aankopen (alleen als de app producten heeft)
+    if let Some(pf) = f.purchases.as_ref().filter(|p| p.products > 0) {
+        let done = |k: &str| pf.confirmations.get(k).copied().unwrap_or(false);
+        let mut miss = vec![];
+        if !pf.applied {
+            miss.push("not_applied");
+        }
+        if pf.apple && pf.apple_created < pf.products {
+            miss.push("apple_products");
+        }
+        if pf.google && pf.google_created < pf.products {
+            miss.push("google_products");
+        }
+        items.push(item("purchases_products", true, miss, "purchases"));
+        let mut miss = vec![];
+        if pf.apple && !done("paid_apps_agreement") {
+            miss.push("paid_apps_agreement");
+        }
+        if pf.apple && !done("tax_bank") {
+            miss.push("tax_bank");
+        }
+        if pf.google && !done("merchant_account") {
+            miss.push("merchant_account");
+        }
+        items.push(item("purchases_agreements", true, miss, "purchases"));
+        let mut miss = vec![];
+        if !pf.paywall_exists {
+            miss.push("paywall");
+        } else {
+            if !pf.restore_button {
+                miss.push("restore_button");
+            }
+            if !pf.store_price {
+                miss.push("store_price");
+            }
+            if pf.hardcoded_price {
+                miss.push("hardcoded_price");
+            }
+        }
+        if m.legal.privacy_url.trim().is_empty() || m.legal.terms_url.trim().is_empty() {
+            miss.push("legal_links");
+        }
+        let next = if miss.contains(&"legal_links") && miss.len() == 1 { "publish:legal" } else { "purchases" };
+        items.push(item("purchases_paywall", true, miss, next));
+        items.push(item("purchases_tested", true, if done("sandbox_tested") { vec![] } else { vec!["sandbox"] }, "purchases"));
+        if pf.apple {
+            items.push(item("purchases_apple_submit", true, if done("apple_submitted") { vec![] } else { vec!["submit"] }, "purchases"));
+        }
+    }
 
     // 8. laatste bevestiging: pas geldig als al het andere groen is
     let others_done = items.iter().all(|i| i.status == "done");
@@ -437,5 +507,52 @@ mod tests {
         assert_eq!(it.missing, ["secret_problem:apple"]);
         assert_eq!(it.next.as_deref(), Some("secrets:apple"));
         assert!(!e.can_publish);
+    }
+
+    fn with_purchases(f: impl FnOnce(&mut PurchasesFacts)) -> Evaluation {
+        let (m, mut facts) = ready();
+        let mut pf = PurchasesFacts { apple: true, google: true, products: 2, ..Default::default() };
+        f(&mut pf);
+        facts.purchases = Some(pf);
+        evaluate(&m, &facts)
+    }
+
+    #[test]
+    fn purchase_items_only_appear_with_products_and_block_until_done() {
+        let (m, f) = ready();
+        let e = evaluate(&m, &f);
+        assert!(!e.items.iter().any(|i| i.key.starts_with("purchases_")) && e.can_publish, "no products: nothing changes");
+        let mut f0 = f.clone();
+        f0.purchases = Some(PurchasesFacts::default());
+        assert!(!evaluate(&m, &f0).items.iter().any(|i| i.key.starts_with("purchases_")), "zero products also adds nothing");
+        let e = with_purchases(|_| {});
+        let get = |k: &str| e.items.iter().find(|i| i.key == k).unwrap().clone();
+        assert!(!e.can_publish && e.items.iter().filter(|i| i.key.starts_with("purchases_")).count() == 5);
+        assert_eq!(get("purchases_products").missing, ["not_applied", "apple_products", "google_products"]);
+        assert_eq!(get("purchases_agreements").missing, ["paid_apps_agreement", "tax_bank", "merchant_account"]);
+        assert_eq!(get("purchases_paywall").missing, ["paywall"]);
+        assert_eq!(get("final_confirmation").missing, ["others"]);
+    }
+
+    #[test]
+    fn all_purchase_items_green_open_the_gate_and_each_rule_is_checked() {
+        let all: std::collections::BTreeMap<String, bool> = ["paid_apps_agreement", "tax_bank", "merchant_account", "sandbox_tested", "apple_submitted"].iter().map(|k| (k.to_string(), true)).collect();
+        let e = with_purchases(|p| {
+            *p = PurchasesFacts { apple: true, google: true, products: 2, applied: true, apple_created: 2, google_created: 2, paywall_exists: true, restore_button: true, store_price: true, hardcoded_price: false, confirmations: all.clone() };
+        });
+        assert!(e.items.iter().filter(|i| i.key.starts_with("purchases_")).all(|i| i.status == "done"), "{e:?}");
+        let bad = with_purchases(|p| {
+            *p = PurchasesFacts { apple: false, google: true, products: 1, applied: true, apple_created: 0, google_created: 1, paywall_exists: true, restore_button: false, store_price: false, hardcoded_price: true, confirmations: all.clone() };
+        });
+        let pw = bad.items.iter().find(|i| i.key == "purchases_paywall").unwrap();
+        assert_eq!(pw.missing, ["restore_button", "store_price", "hardcoded_price"]);
+        assert!(!bad.items.iter().any(|i| i.key == "purchases_apple_submit"), "Apple-only item is absent without Apple");
+        // geen link naar de voorwaarden → rechtstreeks naar het juridische deel
+        let (mut m, mut f) = ready();
+        m.legal.terms_url.clear();
+        f.purchases = Some(PurchasesFacts { apple: false, google: false, products: 1, applied: true, paywall_exists: true, restore_button: true, store_price: true, confirmations: all, ..Default::default() });
+        let e = evaluate(&m, &f);
+        let pw = e.items.iter().find(|i| i.key == "purchases_paywall").unwrap();
+        assert_eq!((pw.missing.as_slice(), pw.next.as_deref()), (&["legal_links".to_string()][..], Some("publish:legal")));
     }
 }

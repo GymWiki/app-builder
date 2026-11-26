@@ -665,7 +665,28 @@ fn gather_facts(state: &AppState, p: &Project, dir: &std::path::Path) -> crate::
         native_features: crate::testrun::native_features(&pubspec),
         missing_secrets: crate::vault::global().missing_secrets(&p.id),
         leaks: crate::leak::scan(dir, &crate::scrub::known_values()).len(),
+        purchases: purchases_facts(state, p, dir),
     }
+}
+
+/// Feiten over aankopen; `None` als de app geen producten heeft (dan verandert de checklist niet).
+fn purchases_facts(state: &AppState, p: &Project, dir: &std::path::Path) -> Option<crate::checklist::PurchasesFacts> {
+    use crate::purchases::StoreStatus as S;
+    let pu = purchases_load(state, &p.id, dir).ok().filter(|pu| !pu.products.is_empty())?;
+    let scan = crate::purchases_flow::scan_paywall(dir);
+    Some(crate::checklist::PurchasesFacts {
+        apple: pu.apple,
+        google: pu.google,
+        products: pu.products.len(),
+        applied: pu.applied_version > 0,
+        apple_created: pu.products.iter().filter(|x| x.status.apple >= S::Created).count(),
+        google_created: pu.products.iter().filter(|x| x.status.google >= S::Created).count(),
+        paywall_exists: scan.exists,
+        restore_button: scan.restore_button,
+        store_price: scan.store_price,
+        hardcoded_price: scan.hardcoded_price,
+        confirmations: pu.confirmations.clone(),
+    })
 }
 
 fn evaluate_and_store(state: &AppState, p: &Project, dir: &std::path::Path) -> AppResult<crate::checklist::Evaluation> {

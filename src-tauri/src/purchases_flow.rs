@@ -209,6 +209,45 @@ pub fn finalize(p: &mut Purchases) {
     p.applied_version += 1;
 }
 
+
+/// Wat de code van de betaalmuur laat zien (zoekt in `lib/features/paywall/`): herstelknop, prijs uit de winkel, en of er een vast bedrag in staat.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PaywallScan {
+    pub exists: bool,
+    pub restore_button: bool,
+    pub store_price: bool,
+    pub hardcoded_price: bool,
+}
+
+pub fn scan_paywall(dir: &std::path::Path) -> PaywallScan {
+    fn walk(d: &std::path::Path, out: &mut String, depth: usize) {
+        let Ok(rd) = std::fs::read_dir(d) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() && depth < 4 {
+                walk(&p, out, depth + 1);
+            } else if p.extension().is_some_and(|x| x == "dart") {
+                out.push_str(&std::fs::read_to_string(&p).unwrap_or_default());
+                out.push('\n');
+            }
+        }
+    }
+    let mut text = String::new();
+    walk(&dir.join("lib/features/paywall"), &mut text, 0);
+    if text.is_empty() {
+        return PaywallScan::default();
+    }
+    // Commentaar telt niet mee.
+    let code: String = text.lines().map(|l| l.split("//").next().unwrap_or("")).collect::<Vec<_>>().join("\n");
+    let hard = regex_lite::Regex::new(r"[€£]\s?\d|\d[.,]\d{2}\s?(EUR|USD|GBP|€|£)").map(|r| r.is_match(&code)).unwrap_or(false);
+    PaywallScan {
+        exists: true,
+        restore_button: ["restorePurchases", "restore_purchases", ".restore("].iter().any(|k| code.contains(k)),
+        store_price: ["priceString", "localizedPrice", "formattedPrice", "product.price", "storeProduct.price"].iter().any(|k| code.contains(k)),
+        hardcoded_price: hard,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,5 +318,19 @@ mod tests {
         assert_eq!((p.applied_version, p.products[1].status.apple, p.products[0].status.google), (1, StoreStatus::InApp, StoreStatus::Created));
         assert!(p.products[1].locked(), "the id is permanent from now on");
         assert!(super::super::purchases::plan(&p).is_empty());
+    }
+
+    #[test]
+    fn the_paywall_code_is_scanned_for_restore_store_prices_and_fixed_amounts() {
+        let d = std::env::temp_dir().join(format!("studio-paywall-{}", uuid::Uuid::new_v4()));
+        assert_eq!(scan_paywall(&d), PaywallScan::default());
+        std::fs::create_dir_all(d.join("lib/features/paywall")).unwrap();
+        let w = d.join("lib/features/paywall/paywall_screen.dart");
+        std::fs::write(&w, "// price: €9.99 (old)\nText(product.priceString);\nTextButton(onPressed: provider.restorePurchases, child: Text('Restore'));\n").unwrap();
+        assert_eq!(scan_paywall(&d), PaywallScan { exists: true, restore_button: true, store_price: true, hardcoded_price: false });
+        std::fs::write(&w, "Text('Only €4.99 per month');\n").unwrap();
+        let s = scan_paywall(&d);
+        assert!(s.hardcoded_price && !s.restore_button && !s.store_price);
+        std::fs::remove_dir_all(d).ok();
     }
 }
