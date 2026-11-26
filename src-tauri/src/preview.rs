@@ -129,8 +129,10 @@ impl Inner {
             }
         }
 
-        if let Some(i) = line.find("Debug service listening on ws://") {
-            self.vm_ws = Some(line[i + 25..].trim().to_string());
+        if line.contains("Debug service listening on ") {
+            if let Some(i) = line.find("ws://") {
+                self.vm_ws = Some(line[i..].trim().to_string());
+            }
         }
         if line.starts_with("Launching ") {
             self.state.problems.clear();
@@ -644,6 +646,12 @@ mod tests {
     }
 
     #[test]
+    fn the_vm_service_address_is_taken_from_the_chrome_device_output() {
+        let i = feed(&["Debug service listening on ws://127.0.0.1:35221/YuHntcXrtpI=/ws", "A Dart VM Service on Chrome is available at: http://127.0.0.1:35221/YuHntcXrtpI="]);
+        assert_eq!(i.vm_ws.as_deref(), Some("ws://127.0.0.1:35221/YuHntcXrtpI=/ws"));
+    }
+
+    #[test]
     fn real_flutter_3_50_web_server_output() {
         // Letterlijk uit een echte run (zie DECISIONS.md, fase 6).
         let mut i = feed(&[
@@ -849,6 +857,12 @@ mod tests {
         while Instant::now() < end && !(mgr.state().status == "running" && frames.load(std::sync::atomic::Ordering::SeqCst) > 0) {
             std::thread::sleep(Duration::from_millis(500));
         }
+        // De VM-service meldt zich pas als de app in de browser geladen is.
+        let end = Instant::now() + Duration::from_secs(120);
+        while Instant::now() < end && mgr.inner.lock().unwrap().vm_ws.is_none() {
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        assert!(mgr.inner.lock().unwrap().vm_ws.is_some(), "VM service address\n{}", mgr.log().iter().rev().take(15).rev().cloned().collect::<Vec<_>>().join("\n"));
         println!("running, frames so far: {}", frames.load(std::sync::atomic::Ordering::SeqCst));
         assert!(frames.load(std::sync::atomic::Ordering::SeqCst) > 0, "the screencast delivers frames");
         mgr.set_viewport(500, 644);
