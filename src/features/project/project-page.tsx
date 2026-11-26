@@ -16,7 +16,7 @@ import type { JumpTarget } from "@/features/integrations/use-integrations";
 import { PublishView, type PublishTab } from "@/features/sections/publish/publish-view";
 import { useChecklist } from "@/features/sections/publish/use-checklist";
 import { AutoRetest } from "@/features/sections/publish/auto-retest";
-import { PreviewPanel, type PickPoint } from "@/features/preview/preview-panel";
+import { PreviewPanel, type PickBox } from "@/features/preview/preview-panel";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import { EmptyState } from "@/components/ds/empty-state";
 import { Panel as Pane } from "@/components/ds/card";
@@ -55,7 +55,7 @@ export default function ProjectPage() {
   const [previewDark, setPreviewDark] = useState(false);
   const [screen, setScreen] = useState<PickedScreen | null>(null);
   const [contextOff, setContextOff] = useState(false);
-  const [pick, setPick] = useState<PickPoint | null>(null);
+  const [pick, setPick] = useState<PickBox | null>(null);
   const [publishTab, setPublishTab] = useState<PublishTab>("checklist");
   const [jump, setJump] = useState<JumpTarget | null>(null);
   const checklist = useChecklist(id);
@@ -144,7 +144,7 @@ export default function ProjectPage() {
         ? {
             kind: "element",
             label: t("chat.context.element", { name: screen.class }),
-            prompt: `The user is pointing at ONE element of the screen "${screen.class}" (${screen.file}) in the live preview: at ${pick.x}% from the left and ${pick.y}% from the top of the phone screen. Use the preview_screenshot tool to look at the page, find the element at that spot and change only that element (and what belongs to it). Do not change the rest of the screen unless the user explicitly asks.`,
+            prompt: `The user drew a box on the live preview of the screen "${screen.class}" (${screen.file}): left ${pick.x}%, top ${pick.y}%, width ${pick.w}%, height ${pick.h}% of the phone screen. Only change what lies inside that box. First call preview_screenshot with region {"x":${pick.x},"y":${pick.y},"width":${pick.w},"height":${pick.h}} to see the whole screen and the boxed part, and work out which widgets are in the box. Leave everything outside the box exactly as it is, including layout and spacing around it. If the request cannot be done without touching things outside the box, do not do it: say what would have to change and ask the user to draw a bigger box or select the whole page.`,
           }
         : {
             kind: "page",

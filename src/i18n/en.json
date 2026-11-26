@@ -462,7 +462,7 @@
       "screen": "Whole page: {{name}}",
       "section": "Section: {{name}}",
       "remove": "Don’t include this context",
-      "element": "Only one element in {{name}}"
+      "element": "Only inside the box on {{name}}"
     },
     "tool": {
       "read": {
@@ -608,12 +608,15 @@
       "ios": "iPhones can only be used from a Mac with Xcode. Studio will support this together with iOS publishing."
     },
     "pick": {
-      "layer": "Click to choose an element for the chat. The app itself does not react here.",
+      "layer": "Drag to draw a box around what you want to change. The app itself does not react here.",
       "pageTitle": "Whole page: {{name}}.",
-      "pageBody": "Everything you ask applies to this whole page. Click something in the app to change only that element. Trying out the app is what “Test run” is for.",
-      "elementTitle": "Only the marked element.",
-      "elementBody": "Claude will only change that one element, not the rest of the page.",
-      "back": "Select whole page"
+      "pageBody": "Everything you ask applies to this whole page. Drag a box in the app to change only what is inside it. Trying out the app is what “Test run” is for.",
+      "elementTitle": "Only inside the box.",
+      "elementBody": "Claude only changes what is inside the marked box and leaves the rest of the page alone.",
+      "back": "Select whole page",
+      "tooSmallTitle": "Drag to draw a box.",
+      "tooSmallBody": "Hold the mouse button down and pull to cover what you want to change.",
+      "chip": "Only inside the box on {{name}}"
     }
   },
   "demo": {

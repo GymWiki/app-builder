@@ -85,6 +85,20 @@ pub fn capture(url: &str, w: u32, h: u32, scale: u32, work_dir: &Path) -> AppRes
 }
 
 /// Minimale base64 (RFC 4648) voor MCP-afbeeldingen; voorkomt een extra dependency.
+/// Snijdt een vak uit een PNG. `x, y, w, h` zijn procenten (0–100) van de afbeelding; het vak wordt binnen de afbeelding gehouden.
+pub fn crop_percent(png: &[u8], x: f64, y: f64, w: f64, h: f64) -> AppResult<Vec<u8>> {
+    let img = image::load_from_memory(png).map_err(|e| AppError::Invalid(format!("screenshot is not a valid image: {e}")))?;
+    let (iw, ih) = (img.width() as f64, img.height() as f64);
+    let clamp = |v: f64| v.clamp(0.0, 100.0) / 100.0;
+    let (px, py) = (clamp(x) * iw, clamp(y) * ih);
+    let pw = (clamp(w) * iw).min(iw - px).max(1.0);
+    let ph = (clamp(h) * ih).min(ih - py).max(1.0);
+    let cropped = img.crop_imm(px as u32, py as u32, pw as u32, ph as u32);
+    let mut out = std::io::Cursor::new(Vec::new());
+    cropped.write_to(&mut out, image::ImageFormat::Png).map_err(|e| AppError::CommandFailed(format!("encoding screenshot: {e}")))?;
+    Ok(out.into_inner())
+}
+
 pub fn base64(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut s = String::with_capacity(data.len().div_ceil(3) * 4);
@@ -100,6 +114,23 @@ pub fn base64(data: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cropping_a_percentage_box_keeps_the_right_pixels() {
+        let mut img = image::RgbaImage::new(100, 200);
+        for (x, y, p) in img.enumerate_pixels_mut() {
+            *p = if x >= 50 && y >= 100 { image::Rgba([255, 0, 0, 255]) } else { image::Rgba([0, 0, 255, 255]) };
+        }
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(img).write_to(&mut buf, image::ImageFormat::Png).unwrap();
+        let out = crop_percent(&buf.into_inner(), 50.0, 50.0, 50.0, 50.0).unwrap();
+        let c = image::load_from_memory(&out).unwrap();
+        assert_eq!((c.width(), c.height()), (50, 100));
+        assert!(c.to_rgba8().pixels().all(|p| p.0 == [255, 0, 0, 255]), "only the bottom-right quarter");
+        // een vak dat buiten het beeld valt wordt ingekort in plaats van te falen
+        let big = crop_percent(&out, 90.0, 90.0, 50.0, 50.0).unwrap();
+        assert!(image::load_from_memory(&big).unwrap().width() <= 5);
+    }
+
     use super::*;
 
     #[test]

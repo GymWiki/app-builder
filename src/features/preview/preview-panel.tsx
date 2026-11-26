@@ -12,11 +12,14 @@ import type { Device, PreviewStatus } from "@/lib/types";
 import { DeviceDialog } from "./device-dialog";
 import { usePreview } from "./preview-store";
 
-/** Plek van een aangeklikt element, in procenten van het telefoonscherm (0–100). */
-export interface PickPoint {
+/** Het vak dat de gebruiker heeft getekend, in procenten van het telefoonscherm (0–100). */
+export interface PickBox {
   x: number;
   y: number;
+  w: number;
+  h: number;
 }
+const MIN_BOX = 4; // kleiner dan dit (in %) telt als een klik, niet als een vak
 
 const TONE: Record<PreviewStatus, Tone> = {
   stopped: "neutral",
@@ -43,8 +46,8 @@ export function PreviewPanel({
   /** Naam van de gekozen pagina (voor de melding onder de werkbalk). */
   screenName?: string | null;
   /** Het gekozen element (positie in procenten van het telefoonscherm), of `null` = de hele pagina. */
-  pick?: PickPoint | null;
-  onPick?: (p: PickPoint | null) => void;
+  pick?: PickBox | null;
+  onPick?: (p: PickBox | null) => void;
 }) {
   const { t, i18n } = useTranslation();
   const state = usePreview((s) => s.state);
@@ -55,6 +58,8 @@ export function PreviewPanel({
   const [showLog, setShowLog] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [frameKey, setFrameKey] = useState(0);
+  const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const [tooSmall, setTooSmall] = useState(false);
   const chatRunning = useChat((s) => s.byProject[projectId]?.running ?? false);
   const onDevice = mine && state.target !== "web";
 
@@ -175,7 +180,11 @@ export function PreviewPanel({
           )}
         >
           <span className="min-w-0 flex-1">
-            {pick ? (
+            {tooSmall && !pick ? (
+              <>
+                <strong>{t("preview.pick.tooSmallTitle")}</strong> {t("preview.pick.tooSmallBody")}
+              </>
+            ) : pick ? (
               <>
                 <strong>{t("preview.pick.elementTitle")}</strong> {t("preview.pick.elementBody")}
               </>
@@ -205,33 +214,68 @@ export function PreviewPanel({
             />
           ) : null}
           {active && !onDevice && state.url ? (
-            // Klikken in de app doen hier niets (dat hoort bij "Testrun"): ze kiezen alleen een element voor de chat.
+            // Klikken in de app doen hier niets (dat hoort bij "Testrun"): met slepen teken je een vak voor de chat.
             <div
               data-testid="pick-layer"
               aria-label={t("preview.pick.layer")}
               title={t("preview.pick.layer")}
-              className="absolute inset-0 z-10 cursor-crosshair"
-              onClick={(e) => {
+              className="absolute inset-0 z-10 cursor-crosshair touch-none select-none"
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                e.currentTarget.setPointerCapture(e.pointerId);
                 const r = e.currentTarget.getBoundingClientRect();
-                onPick?.({
-                  x: Math.round(((e.clientX - r.left) / r.width) * 100),
-                  y: Math.round(((e.clientY - r.top) / r.height) * 100),
+                const x = ((e.clientX - r.left) / r.width) * 100;
+                const y = ((e.clientY - r.top) / r.height) * 100;
+                setTooSmall(false);
+                setDrag({ x0: x, y0: y, x1: x, y1: y });
+              }}
+              onPointerMove={(e) => {
+                if (!drag) return;
+                const r = e.currentTarget.getBoundingClientRect();
+                const clamp = (v: number) => Math.min(100, Math.max(0, v));
+                setDrag({
+                  ...drag,
+                  x1: clamp(((e.clientX - r.left) / r.width) * 100),
+                  y1: clamp(((e.clientY - r.top) / r.height) * 100),
                 });
               }}
+              onPointerUp={() => {
+                if (!drag) return;
+                const box = {
+                  x: Math.round(Math.min(drag.x0, drag.x1)),
+                  y: Math.round(Math.min(drag.y0, drag.y1)),
+                  w: Math.round(Math.abs(drag.x1 - drag.x0)),
+                  h: Math.round(Math.abs(drag.y1 - drag.y0)),
+                };
+                setDrag(null);
+                if (box.w < MIN_BOX || box.h < MIN_BOX) setTooSmall(true);
+                else onPick?.(box);
+              }}
+              onPointerCancel={() => setDrag(null)}
             >
-              {pick && (
-                <span
-                  aria-hidden
-                  className="border-warning bg-warning/25 pointer-events-none absolute size-9 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-lg"
-                  style={{ left: `${pick.x}%`, top: `${pick.y}%` }}
-                />
-              )}
-              {!pick && screenName && (
-                <span
-                  aria-hidden
-                  className="border-primary pointer-events-none absolute inset-0 border-2 border-dashed"
-                />
-              )}
+              {(() => {
+                const live = drag
+                  ? {
+                      x: Math.min(drag.x0, drag.x1),
+                      y: Math.min(drag.y0, drag.y1),
+                      w: Math.abs(drag.x1 - drag.x0),
+                      h: Math.abs(drag.y1 - drag.y0),
+                    }
+                  : pick;
+                return live ? (
+                  <span
+                    aria-hidden
+                    data-testid="pick-box"
+                    className="border-warning pointer-events-none absolute rounded-sm border-2 shadow-[0_0_0_9999px_rgba(0,0,0,0.38)]"
+                    style={{ left: `${live.x}%`, top: `${live.y}%`, width: `${live.w}%`, height: `${live.h}%` }}
+                  />
+                ) : screenName ? (
+                  <span
+                    aria-hidden
+                    className="border-primary pointer-events-none absolute inset-0 border-2 border-dashed"
+                  />
+                ) : null;
+              })()}
             </div>
           ) : (
             <div className="grid h-full place-items-center px-6 text-center">

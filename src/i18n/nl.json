@@ -462,7 +462,7 @@
       "screen": "Hele pagina: {{name}}",
       "section": "Onderdeel: {{name}}",
       "remove": "Deze context niet meesturen",
-      "element": "Alleen één element in {{name}}"
+      "element": "Alleen binnen het vak op {{name}}"
     },
     "tool": {
       "read": {
@@ -608,12 +608,15 @@
       "ios": "iPhones kunnen alleen vanaf een Mac met Xcode. Studio ondersteunt dit samen met publiceren voor iOS."
     },
     "pick": {
-      "layer": "Klik om een element voor de chat te kiezen. De app zelf reageert hier niet.",
+      "layer": "Sleep om een vak te tekenen rond wat je wilt aanpassen. De app zelf reageert hier niet.",
       "pageTitle": "Hele pagina: {{name}}.",
-      "pageBody": "Alles wat je vraagt geldt voor de hele pagina. Klik op iets in de app om alleen dat element aan te passen. De app uitproberen doe je met “Testrun”.",
-      "elementTitle": "Alleen het gemarkeerde element.",
-      "elementBody": "Claude past alleen dat ene element aan, niet de rest van de pagina.",
-      "back": "Hele pagina kiezen"
+      "pageBody": "Alles wat je vraagt geldt voor de hele pagina. Sleep een vak in de app om alleen aan te passen wat erin staat. De app uitproberen doe je met “Testrun”.",
+      "elementTitle": "Alleen binnen het vak.",
+      "elementBody": "Claude past alleen aan wat binnen het gemarkeerde vak valt en laat de rest van de pagina met rust.",
+      "back": "Hele pagina kiezen",
+      "tooSmallTitle": "Sleep om een vak te tekenen.",
+      "tooSmallBody": "Houd de muisknop ingedrukt en trek over wat je wilt aanpassen.",
+      "chip": "Alleen binnen het vak op {{name}}"
     }
   },
   "demo": {

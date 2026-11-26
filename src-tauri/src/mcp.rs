@@ -50,7 +50,7 @@ pub fn tool_list() -> Value {
         {"name":"set_theme","description":"Set the app's seed color and regenerate lib/app_theme.dart.",
          "inputSchema":{"type":"object","properties":{"seedColor":{"type":"string","description":"Hex color like #4F46E5"}},"required":["seedColor"]}},
         {"name":"preview_status","description":"Whether the live preview is running, its URL and any build/runtime problems.","inputSchema":no_args},
-        {"name":"preview_screenshot","description":"Screenshot (PNG) of the running live preview, so you can check your own result.","inputSchema":{"type":"object","properties":{"width":{"type":"integer","description":"Default 390"},"height":{"type":"integer","description":"Default 844"}}}},
+        {"name":"preview_screenshot","description":"Screenshot (PNG) of the running live preview, so you can check your own result.","inputSchema":{"type":"object","properties":{"width":{"type":"integer","description":"Default 390"},"height":{"type":"integer","description":"Default 844"},"region":{"type":"object","description":"Optional box in percent of the screen (x, y, width, height). Returns a second, cropped image of just that box.","properties":{"x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number"},"height":{"type":"number"}}}}}},
         {"name":"create_snapshot","description":"Save the current state of the project as a restorable snapshot (git commit).",
          "inputSchema":{"type":"object","properties":{"label":{"type":"string","description":"Short description of what changed"}},"required":["label"]}},
         {"name":"bump_version","description":"Increase the app version in pubspec.yaml (and Studio).",
@@ -112,9 +112,21 @@ fn call_tool(deps: &Deps, project_id: &str, name: &str, args: &Value) -> Value {
             };
             let n = |k: &str, d: u32| args.get(k).and_then(Value::as_u64).map(|v| v as u32).unwrap_or(d);
             return match screenshot::capture(&url, n("width", 390), n("height", 844), 1, &deps.work_dir) {
-                Ok(png) => json!({"content":[
-                    {"type":"image","data":screenshot::base64(&png),"mimeType":"image/png"},
-                    {"type":"text","text":"Screenshot of the live preview."}]}),
+                Ok(png) => {
+                    let f = |k: &str| args.get("region").and_then(|r| r.get(k)).and_then(Value::as_f64);
+                    let crop = match (f("x"), f("y"), f("width"), f("height")) {
+                        (Some(x), Some(y), Some(w), Some(h)) => screenshot::crop_percent(&png, x, y, w, h).ok(),
+                        _ => None,
+                    };
+                    let mut content = vec![json!({"type":"image","data":screenshot::base64(&png),"mimeType":"image/png"})];
+                    let mut note = "Screenshot of the live preview.".to_string();
+                    if let Some(c) = crop {
+                        content.push(json!({"type":"image","data":screenshot::base64(&c),"mimeType":"image/png"}));
+                        note = "Two images: the whole screen, then only the region the user marked.".into();
+                    }
+                    content.push(json!({"type":"text","text":note}));
+                    json!({ "content": content })
+                }
                 Err(AppError::ToolMissing(_)) => text_result(&json!("No Chrome or Edge browser was found on this computer, so screenshots are unavailable. Ask the user to describe what they see."), true),
                 Err(e) => text_result(&json!(crate::logging::redact(&e.to_string())), true),
             };

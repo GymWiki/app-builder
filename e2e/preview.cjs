@@ -28,12 +28,26 @@ const ok = (c, m) => {
   );
   const layer = p.getByTestId("pick-layer");
   const lb = await layer.boundingBox();
+  // een gewone klik (of te klein vak) kiest niets en bedient de app niet
   await p.mouse.click(lb.x + lb.width * 0.5, lb.y + lb.height * 0.4);
-  await p.getByTestId("pick-banner").getByText("Only the marked element.").waitFor();
-  ok(true, "clicking marks one element and says so clearly");
+  await p.getByTestId("pick-banner").getByText("Drag to draw a box.").waitFor();
+  ok((await p.locator("[data-kind=element]").count()) === 0, "a plain click selects nothing");
+  // slepen tekent het vak
+  await p.mouse.move(lb.x + lb.width * 0.2, lb.y + lb.height * 0.3);
+  await p.mouse.down();
+  await p.mouse.move(lb.x + lb.width * 0.5, lb.y + lb.height * 0.45, { steps: 5 });
+  ok(await p.getByTestId("pick-box").isVisible(), "the box is drawn while dragging");
+  await p.mouse.move(lb.x + lb.width * 0.8, lb.y + lb.height * 0.6, { steps: 5 });
+  await p.mouse.up();
+  await p.getByTestId("pick-banner").getByText("Only inside the box.").waitFor();
+  const bb = await p.getByTestId("pick-box").boundingBox();
   ok(
-    (await p.locator('[data-kind="element"]').innerText()).includes("Only one element in HomeScreen"),
-    "chat chip shows that only an element is selected",
+    Math.abs(bb.width - lb.width * 0.6) < lb.width * 0.03 && Math.abs(bb.height - lb.height * 0.3) < lb.height * 0.03,
+    "the box covers exactly what was dragged",
+  );
+  ok(
+    (await p.locator("[data-kind=element]").innerText()).includes("Only inside the box on HomeScreen"),
+    "chat chip says the AI only touches the box",
   );
   ok(await frame.getByText("7", { exact: true }).isVisible(), "the click did not reach the app");
   await p.screenshot({ path: `${S}/35-element-selected.png` });
