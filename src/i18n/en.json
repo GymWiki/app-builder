@@ -329,7 +329,10 @@
       "issues": {
         "dart_old": "Your Flutter includes Dart {{dart}}. Studio needs Dart 3.9 or newer (Flutter 3.35 or newer)."
       },
-      "updateSteps": ["Open a terminal and run: flutter upgrade", "Choose “Check again”."]
+      "updateSteps": [
+        "Open a terminal and run: flutter upgrade",
+        "Choose “Check again”."
+      ]
     },
     "android": {
       "name": "Android toolchain",
@@ -361,7 +364,9 @@
           "Open the technical details below and look at the lines marked with ✗ or !.",
           "Fix them (Android Studio’s SDK Manager fixes most), then choose “Check again”."
         ],
-        "needs_flutter": ["Finish the Flutter SDK step above first."]
+        "needs_flutter": [
+          "Finish the Flutter SDK step above first."
+        ]
       },
       "acceptLicenses": "Accept licenses"
     },
@@ -386,7 +391,10 @@
           "Choose “Check again”."
         ]
       },
-      "updateSteps": ["In a terminal, run: claude update", "Choose “Check again”."]
+      "updateSteps": [
+        "In a terminal, run: claude update",
+        "Choose “Check again”."
+      ]
     },
     "claudeLogin": {
       "name": "Claude account",
@@ -589,20 +597,12 @@
   },
   "preview": {
     "title": "Live preview",
-    "start": "Start preview",
-    "stop": "Stop",
     "refresh": "Refresh",
     "realDevice": "Real phone",
     "status": {
-      "stopped": "Not running",
-      "starting": "Starting…",
-      "running": "Running",
       "reloading": "Updating…",
-      "error": "Problem"
+      "error": "Error"
     },
-    "emptyTitle": "See your app live",
-    "emptyBody": "Start the preview to run your app here. It updates by itself after every change.",
-    "startingBody": "Flutter is building your app. The first time can take a minute or two.",
     "onDevice": "Running on {{device}}",
     "onDeviceBody": "Look at your phone. Changes appear there by themselves.",
     "problem": {
@@ -670,7 +670,28 @@
         "other": "{{widget}}"
       },
       "exceeded": "Claude also changed something outside the marked box."
-    }
+    },
+    "testrun": "Start test run",
+    "loadingPage": "Loading page…",
+    "loadingBody": "Your app is being prepared. The first time can take a minute or two.",
+    "notLinked": {
+      "title": "This page isn’t connected to the app yet",
+      "body": "Nobody can reach “{{screen}}” from the app yet, so there is nothing to show here.",
+      "connect": "Connect",
+      "prompt": "Connect the screen {{screen}} to the app: add a route for it in the router and a sensible link or button to it from another screen. Only this screen. Keep STUDIO.md up to date."
+    },
+    "failure": {
+      "flutterMissing": "Flutter was not found",
+      "flutterMissingBody": "The preview needs Flutter on this computer.",
+      "check": "Check installation",
+      "startFailed": "The preview could not start",
+      "startFailedBody": "Something in the app stops it from building.",
+      "crashed": "The preview stopped working",
+      "crashedBody": "It stopped several times in a row.",
+      "fix": "Let Claude fix this"
+    },
+    "backToComputer": "Back to computer preview",
+    "follow": "Showing “{{name}}”"
   },
   "demo": {
     "banner": "Demo in your browser: a simulated backend. No real Flutter, Git or Claude is used.",

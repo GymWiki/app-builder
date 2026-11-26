@@ -32,6 +32,9 @@ import { api, onEvent } from "@/lib/ipc";
 import { friendlyError } from "@/lib/errors";
 import { rangesOf, summarize } from "@/lib/selection-label";
 import type { Selection } from "@/lib/types";
+import { pageForRoute } from "@/lib/routes";
+import { runTest } from "@/features/sections/publish/jobs-store";
+import { toastError } from "@/lib/toast";
 import { usePreview } from "@/features/preview/preview-store";
 import { cn } from "@/lib/utils";
 import { DEVICES, type DeviceId } from "./phone-frame";
@@ -65,6 +68,27 @@ export default function ProjectPage() {
   const [selecting, setSelecting] = useState(false);
   const selectSeq = useRef(0);
   const inspect = usePreview((s) => s.state.mode === "inspect");
+  const graph = useQuery({ queryKey: ["screens", id], queryFn: () => api.screensGraph(id) });
+  const nodes = graph.data?.nodes;
+  const followRef = useRef<{ nodes: typeof nodes; cls: string | null }>({ nodes, cls: null });
+  useEffect(() => {
+    followRef.current = { nodes, cls: screen?.class ?? null };
+  });
+
+  // Navigeert de gebruiker zelf in de preview, dan volgt de pagina-lijst. Routes vlak na onze eigen sprong (of tijdens het
+  // op de achtergrond vastleggen van schermafbeeldingen) zijn geen keuze van de gebruiker.
+  useEffect(
+    () =>
+      usePreview.subscribe((st, prev) => {
+        if (st.routeSeq === prev.routeSeq) return;
+        const { nodes: ns, cls } = followRef.current;
+        if (!ns || !st.route || st.crawling || Date.now() - st.navAt < 2500) return;
+        const page = pageForRoute(ns, st.route);
+        if (page && page.class !== cls)
+          setScreen({ class: page.class, file: page.file, line: page.line, route: page.previewRoute ?? page.route });
+      }),
+    [],
+  );
 
   /** Vak gewijzigd: laat de widget inspector zoeken welke widgets erin staan (alleen in inspect-modus; anders blijft het bij vak + screenshot). */
   const changePick = (box: PickBox | null, projectId: string) => {
@@ -401,8 +425,13 @@ export default function ProjectPage() {
                   projectId={p.id}
                   device={device}
                   dark={previewDark}
-                  route={screen?.route}
-                  screenName={screen?.class ?? null}
+                  screen={screen}
+                  nodes={nodes}
+                  onTestrun={() => {
+                    setSection("publish");
+                    setPublishTab("test");
+                    void runTest(p.id, checklist.refetch).catch((e) => toastError(e, t));
+                  }}
                   pick={screen ? pick : null}
                   selection={info?.selection ?? null}
                   selecting={selecting}

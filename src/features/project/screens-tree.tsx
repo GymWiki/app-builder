@@ -33,6 +33,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { usePreview } from "@/features/preview/preview-store";
 import { AskButton } from "@/features/sections/shared";
 import { api } from "@/lib/ipc";
 import type { Screen } from "@/lib/types";
@@ -71,6 +72,12 @@ export function ScreensTree({
 }) {
   const { t } = useTranslation();
   const q = useQuery({ queryKey: ["screens", projectId], queryFn: () => api.screensGraph(projectId) });
+  // Na elke wijziging door Claude (hot reload) kunnen pagina's en routes veranderd zijn: lijst en koppelingen volgen vanzelf.
+  const reloads = usePreview((s) => (s.state.projectId === projectId ? s.state.reloads : 0));
+  const refetchGraph = q.refetch;
+  useEffect(() => {
+    if (reloads > 0) void refetchGraph();
+  }, [reloads, refetchGraph]);
   const [state, setState] = useState<FolderState>(() => loadFolders(projectId));
   const [draft, setDraft] = useState<Draft | null>(null);
   const [toDelete, setToDelete] = useState<Folder | null>(null);
@@ -91,7 +98,7 @@ export function ScreensTree({
     const nodes = new Map(q.data.nodes.map((n) => [n.class, n]));
     const by = new Map<string, PickedScreen>();
     for (const r of [...rows, ...unlinked])
-      by.set(r.class, { class: r.class, file: r.file, line: r.line, route: nodes.get(r.class)?.route });
+      by.set(r.class, { class: r.class, file: r.file, line: r.line, route: nodes.get(r.class)?.previewRoute ?? nodes.get(r.class)?.route });
     return {
       order: [...rows, ...unlinked].map((r) => r.class),
       byClass: by,
@@ -114,7 +121,7 @@ export function ScreensTree({
   const empty = !q.isPending && order.length === 0 && view.folders.length === 0;
   const pick = (c: string) => {
     const sc = byClass.get(c);
-    if (sc) onSelect(selected === c ? null : sc);
+    if (sc) onSelect(sc);
   };
 
   const drop = (target: string | null) => {

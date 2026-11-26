@@ -12,11 +12,10 @@ const ok = (c, m) => {
   p.on("pageerror", (e) => errs.push(e.message));
   p.on("console", (m) => m.type() === "error" && errs.push(m.text()));
 
-  await p.goto("http://localhost:1420/?mock=ready#/project/friday_scores");
-  await p.getByText("Starting…").first().waitFor();
-  ok(true, "the preview starts by itself, no button needed");
+  // Terugvalmodus zonder eigen Chrome: de preview staat in een iframe (de hoofdroute, met screencast, staat in preview-pages.cjs).
+  await p.goto("http://localhost:1420/?mock=iframe#/project/friday_scores");
   await p.locator('iframe[title="Live preview"]').waitFor({ timeout: 6000 });
-  ok(await p.getByText("Running", { exact: true }).isVisible(), "running badge");
+  ok((await p.getByText("Running", { exact: true }).count()) === 0, "no status badge when everything is fine");
   const frame = p.frameLocator('iframe[title="Live preview"]');
   ok(await frame.getByText("Friday Scores").isVisible(), "app is shown in the phone frame");
   await p.screenshot({ path: `${S}/31-preview-running.png` });
@@ -59,9 +58,10 @@ const ok = (c, m) => {
   ok(true, "refresh keeps the preview");
   await p.getByRole("radio", { name: "Small phone" }).click();
   ok(await p.locator('iframe[title="Live preview"]').isVisible(), "device switch keeps preview");
-  await p.getByRole("button", { name: "Stop", exact: true }).click();
-  await p.getByText("See your app live").waitFor();
-  ok(true, "stop returns to empty state");
+  ok(
+    (await p.getByRole("button", { name: /^(Stop|Start preview)$/ }).count()) === 0,
+    "there is no start or stop control",
+  );
 
   // build error -> banner -> fix with Claude
   await p.goto("http://localhost:1420/?mock=ready#/project/water_tracker");

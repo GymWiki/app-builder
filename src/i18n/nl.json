@@ -329,7 +329,10 @@
       "issues": {
         "dart_old": "Je Flutter bevat Dart {{dart}}. Studio heeft Dart 3.9 of nieuwer nodig (Flutter 3.35 of nieuwer)."
       },
-      "updateSteps": ["Open een terminal en voer uit: flutter upgrade", "Kies “Opnieuw controleren”."]
+      "updateSteps": [
+        "Open een terminal en voer uit: flutter upgrade",
+        "Kies “Opnieuw controleren”."
+      ]
     },
     "android": {
       "name": "Android-toolchain",
@@ -361,7 +364,9 @@
           "Open hieronder de technische details en bekijk de regels met ✗ of !.",
           "Los ze op (de SDK Manager van Android Studio lost de meeste op) en kies “Opnieuw controleren”."
         ],
-        "needs_flutter": ["Rond eerst de Flutter SDK-stap hierboven af."]
+        "needs_flutter": [
+          "Rond eerst de Flutter SDK-stap hierboven af."
+        ]
       },
       "acceptLicenses": "Licenties accepteren"
     },
@@ -386,7 +391,10 @@
           "Kies “Opnieuw controleren”."
         ]
       },
-      "updateSteps": ["Voer in een terminal uit: claude update", "Kies “Opnieuw controleren”."]
+      "updateSteps": [
+        "Voer in een terminal uit: claude update",
+        "Kies “Opnieuw controleren”."
+      ]
     },
     "claudeLogin": {
       "name": "Claude-account",
@@ -589,20 +597,12 @@
   },
   "preview": {
     "title": "Live preview",
-    "start": "Preview starten",
-    "stop": "Stoppen",
     "refresh": "Vernieuwen",
     "realDevice": "Echte telefoon",
     "status": {
-      "stopped": "Niet actief",
-      "starting": "Bezig met starten…",
-      "running": "Actief",
       "reloading": "Bijwerken…",
-      "error": "Probleem"
+      "error": "Fout"
     },
-    "emptyTitle": "Zie je app live",
-    "emptyBody": "Start de preview om je app hier te laten draaien. Hij werkt zichzelf bij na elke wijziging.",
-    "startingBody": "Flutter bouwt je app. De eerste keer kan een minuut of twee duren.",
     "onDevice": "Draait op {{device}}",
     "onDeviceBody": "Kijk op je telefoon. Wijzigingen verschijnen daar vanzelf.",
     "problem": {
@@ -670,7 +670,28 @@
         "other": "{{widget}}"
       },
       "exceeded": "Claude heeft ook iets buiten het gemarkeerde vak aangepast."
-    }
+    },
+    "testrun": "Start testrun",
+    "loadingPage": "Pagina wordt geladen…",
+    "loadingBody": "Je app wordt klaargezet. De eerste keer kan dat een minuut of twee duren.",
+    "notLinked": {
+      "title": "Deze pagina is nog niet verbonden met de app",
+      "body": "Niemand komt vanuit de app bij “{{screen}}”, dus er is hier niets te laten zien.",
+      "connect": "Verbinden",
+      "prompt": "Verbind het scherm {{screen}} met de app: voeg er een route voor toe in de router en een zinnige link of knop ernaartoe vanaf een ander scherm. Alleen dit scherm. Houd STUDIO.md bij."
+    },
+    "failure": {
+      "flutterMissing": "Flutter is niet gevonden",
+      "flutterMissingBody": "De preview heeft Flutter op deze computer nodig.",
+      "check": "Controleer installatie",
+      "startFailed": "De preview kon niet starten",
+      "startFailedBody": "Iets in de app zorgt dat hij niet gebouwd kan worden.",
+      "crashed": "De preview is gestopt",
+      "crashedBody": "Hij viel meerdere keren achter elkaar uit.",
+      "fix": "Laat Claude dit oplossen"
+    },
+    "backToComputer": "Terug naar preview op de computer",
+    "follow": "“{{name}}” wordt getoond"
   },
   "demo": {
     "banner": "Demo in je browser: een gesimuleerde backend. Er wordt geen echte Flutter, Git of Claude gebruikt.",

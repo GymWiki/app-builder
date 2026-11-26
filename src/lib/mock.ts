@@ -139,7 +139,7 @@ const purchasesView = (id: string): PurchasesView =>
     projects.find((p) => p.id === id)?.bundleId ?? "com.example.app",
     purchasesApplying.has(id),
   );
-let projects: Project[] = ["ready", "nodevices", "noscreens", "inspect", "purchases"].includes(scenario)
+let projects: Project[] = ["ready", "nodevices", "noscreens", "inspect", "purchases", "iframe", "slowstart", "nopreview"].includes(scenario)
   ? [
       mk("friday_scores", "Friday Scores", "scoreboard", "testing", 12, 4),
       mk("water_tracker", "Water Tracker", "tracker", "draft", 60 * 26, 1),
@@ -346,24 +346,68 @@ const setPreview = (p: Partial<MockPreview>) => {
   preview = { ...preview, ...p };
   emit("preview-state", preview);
 };
-/** Beeldstroom van de demo (inspect-modus): een tekening van de app, elke halve seconde opnieuw verstuurd. */
+/** Beeldstroom van de demo (inspect-modus): een tekening van de pagina op de huidige route, elke halve seconde opnieuw verstuurd. */
 let framesTimer: ReturnType<typeof setInterval> | null = null;
+let mockRoute = "/";
+const ROUTE_TITLES: Record<string, string> = {
+  "/": "Friday Scores",
+  "/settings": "Settings",
+  "/profile": "Account",
+  "/item/1": "Item 1",
+};
+function mockFrameSvg(route: string): string {
+  const title = ROUTE_TITLES[route] ?? route;
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='360' height='740'><rect width='360' height='740' fill='white'/><rect width='360' height='56' fill='#4f46e5'/><text x='16' y='34' fill='white' font-family='sans-serif' font-size='18'>${title}</text><text x='180' y='170' font-size='72' text-anchor='middle' font-family='sans-serif'>7</text><rect x='140' y='200' width='80' height='36' rx='18' fill='#e0e7ff'/><text x='180' y='224' font-size='16' text-anchor='middle' font-family='sans-serif'>+1</text></svg>`;
+}
+const sendMockFrame = () =>
+  emit("preview-frame", { data: btoa(mockFrameSvg(mockRoute)), mime: "image/svg+xml", width: 360, height: 740 });
 function startMockFrames() {
   if (framesTimer) clearInterval(framesTimer);
-  const svg =
-    "<svg xmlns='http://www.w3.org/2000/svg' width='360' height='740'><rect width='360' height='740' fill='white'/><rect width='360' height='56' fill='#4f46e5'/><text x='16' y='34' fill='white' font-family='sans-serif' font-size='18'>Friday Scores</text><text x='180' y='170' font-size='72' text-anchor='middle' font-family='sans-serif'>7</text><rect x='140' y='200' width='80' height='36' rx='18' fill='#e0e7ff'/><text x='180' y='224' font-size='16' text-anchor='middle' font-family='sans-serif'>+1</text></svg>";
-  const send = () => emit("preview-frame", { data: btoa(svg), mime: "image/svg+xml", width: 360, height: 740 });
-  send();
+  mockRoute = "/";
+  emit("preview-route", { route: "/" });
+  sendMockFrame();
   framesTimer = setInterval(
-    () => (preview.status === "stopped" ? framesTimer && clearInterval(framesTimer) : send()),
+    () => (preview.status === "stopped" ? framesTimer && clearInterval(framesTimer) : sendMockFrame()),
     500,
   );
 }
+const mockShots = new Map<string, string>();
+// Alleen voor de demo-tests: een route-gebeurtenis alsof de gebruiker in de preview zelf navigeert.
+(window as unknown as { __mockEmit: typeof emit }).__mockEmit = emit;
 const MOCK_PAGE =
   "data:text/html," +
   encodeURIComponent(
     "<body style='margin:0;font:16px sans-serif'><div style='background:#4f46e5;color:#fff;padding:18px'>Friday Scores</div><div style='padding:24px;text-align:center'><div style='font-size:64px'>7</div><button>+1</button></div></body>",
   );
+
+async function mockPreviewStart(id: string, target: string) {
+  setPreview({
+    projectId: id,
+    status: "starting",
+    target,
+    url: null,
+    problems: [],
+    reloads: 0,
+    mode: scenario !== "iframe" && target === "web" ? "inspect" : "iframe",
+  });
+  await sleep(scenario === "slowstart" ? 3000 : 900);
+  if (id === "water_tracker" && target === "web") {
+    setPreview({
+      status: "error",
+      problems: [
+        {
+          file: "lib/main.dart",
+          line: 12,
+          message: "Expected ';' after this.",
+          excerpt: "lib/main.dart:12:5: Error: Expected ';' after this.\n  runApp(const MyApp())\n                       ^",
+        },
+      ],
+    });
+  } else {
+    setPreview({ status: "running", url: target === "web" ? MOCK_PAGE : null });
+    if (preview.mode === "inspect") startMockFrames();
+  }
+}
 
 // ── fase 4 en 5 ──
 const emptyMeta = () => ({
@@ -715,37 +759,24 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
         300,
       );
       return "mock-claude";
-    case "preview_start": {
-      const id = args.projectId as string;
-      setPreview({
-        projectId: id,
-        status: "starting",
-        target: args.target as string,
-        url: null,
-        problems: [],
-        reloads: 0,
-        mode: scenario === "inspect" && args.target === "web" ? "inspect" : "iframe",
-      });
-      await sleep(900);
-      if (id === "water_tracker" && args.target === "web") {
-        setPreview({
-          status: "error",
-          problems: [
-            {
-              file: "lib/main.dart",
-              line: 12,
-              message: "Expected ';' after this.",
-              excerpt:
-                "lib/main.dart:12:5: Error: Expected ';' after this.\n  runApp(const MyApp())\n                       ^",
-            },
-          ],
-        });
-      } else {
-        setPreview({ status: "running", url: args.target === "web" ? MOCK_PAGE : null });
-        if (preview.mode === "inspect") startMockFrames();
-      }
+    case "preview_start":
+      return mockPreviewStart(args.projectId as string, args.target as string);
+    case "preview_navigate": {
+      const r = args.route as string;
+      if (!/^\/[A-Za-z0-9_\-./:?=&%~]*$/.test(r)) throw new AppError("invalid", "invalid route");
+      if (preview.mode !== "inspect") throw new AppError("unsupported", "preview navigation");
+      mockRoute = r;
+      emit("preview-route", { route: r });
+      setTimeout(sendMockFrame, 150);
       return;
     }
+    case "preview_shot_save":
+      mockShots.set(`${args.projectId}:${args.screen}`, `data:image/jpeg;base64,${args.data}`);
+      return;
+    case "preview_shot_get":
+      return mockShots.get(`${args.projectId}:${args.screen}`) ?? null;
+    case "preview_shots_list":
+      return [...mockShots.keys()].filter((k) => k.startsWith(`${args.projectId}:`)).map((k) => k.split(":")[1]);
     case "preview_stop":
       setPreview({ status: "stopped", url: null, problems: [] });
       return;
@@ -903,7 +934,7 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
         : {
             home: "HomeScreen",
             nodes: [
-              { class: "HomeScreen", file: "lib/main.dart", line: 24, children: ["SettingsScreen"], route: "/" },
+              { class: "HomeScreen", file: "lib/main.dart", line: 24, children: ["SettingsScreen", "ProfileScreen", "ItemScreen"], route: "/" },
               {
                 class: "SettingsScreen",
                 file: "lib/settings_screen.dart",
@@ -912,6 +943,21 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
                 route: "/settings",
               },
               { class: "AboutPage", file: "lib/about_page.dart", line: 3, children: [] },
+              {
+                class: "ProfileScreen",
+                file: "lib/profile_screen.dart",
+                line: 2,
+                children: [],
+                route: "/profile",
+              },
+              {
+                class: "ItemScreen",
+                file: "lib/item_screen.dart",
+                line: 2,
+                children: [],
+                route: "/item/:id",
+                previewRoute: "/item/1",
+              },
               { class: "LonelyScreen", file: "lib/lonely.dart", line: 1, children: [] },
             ],
             unlinked: ["LonelyScreen"],
@@ -1132,6 +1178,10 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       if (cmd === "project_open") {
         emit("profile-status", { projectId: p.id, state: "working", reason: null });
         setTimeout(() => emit("profile-status", { projectId: p.id, state: "ready", reason: null }), 1500);
+        // De preview start vanzelf bij het openen van een project (net als in de echte app).
+        if (scenario !== "nopreview" && !(preview.projectId === p.id && preview.status !== "stopped")) {
+          void mockPreviewStart(p.id, "web");
+        }
       }
       return p;
     }
