@@ -826,9 +826,25 @@
       "firebaseNote": "Claude gebruikt je eigen Firebase-login (firebase-tools). Ben je nog niet ingelogd, vraag het Claude dan; hij vertelt je het commando.",
       "accountDeletion": "De app laat mensen hun account verwijderen",
       "accountDeletionHelp": "Google Play en de App Store eisen dit allebei als een app accounts heeft.",
-      "setup": "Laat Claude dit opzetten",
-      "setupHint": "Claude vraagt in de chat bij elke databaseactie je bevestiging.",
-      "saveFirst": "Opslaan…"
+      "setup": "Zet dit op",
+      "setupHint": "Studio voegt zelf de pakketten, startcode en het inlogscherm toe. Chat is niet nodig.",
+      "saveFirst": "Opslaan…",
+      "applied": "Data en inloggen staan klaar.",
+      "appliedTitle": "Gedaan door Studio",
+      "appliedBody_one": "Studio heeft dit zelf ingesteld ({{count}} bestand). Chat is niet nodig.",
+      "appliedBody_other": "Studio heeft dit zelf ingesteld ({{count}} bestanden). Chat is niet nodig.",
+      "pubAddFailed": "De pakketten konden niet worden gedownload. Controleer je internet en kies “Instellen” opnieuw.",
+      "accountDeletionAuto": "“Mijn account verwijderen” zit er al in, dus die vraag voor de winkels is al beantwoord.",
+      "customTables": "Eigen tabellen laten ontwerpen door Claude",
+      "customTablesHint": "Optioneel. Alleen nodig als je app zijn eigen soort gegevens bewaart.",
+      "notes": {
+        "auth_social_manual": "Inloggen met Google of Apple vraagt instellingen bij Google of Apple. Studio regelt e-mail en anoniem inloggen; vraag Claude om de rest als je dat nodig hebt.",
+        "firebase_options": "Firebase: log eenmalig in op je computer (voer “flutterfire configure” uit) zodat de platforminstellingen bestaan.",
+        "supabase_delete_sql": "Supabase: voer studio/data/supabase_delete_user.sql eenmalig uit in je project (SQL-editor) zodat “mijn account verwijderen” werkt.",
+        "local_no_accounts": "Een lokale database heeft geen accounts, dus de aangevinkte inlogmethodes worden genegeerd.",
+        "data_main_not_wired": "Je main.dart heeft een eigen vorm, dus Studio heeft hem niet aangepast. Roep initStudioData() aan vóór runApp.",
+        "data_router_not_wired": "Je router heeft een eigen vorm, dus de /login-pagina is nog niet gekoppeld."
+      }
     },
     "assets": {
       "title": "App-icoon en afbeeldingen",

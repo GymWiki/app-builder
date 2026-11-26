@@ -25,10 +25,11 @@ pub struct ThemeCfg {
 pub struct Config {
     pub version: u32,
     pub theme: ThemeCfg,
+    pub data: crate::data_gen::DataCfg,
 }
 impl Default for Config {
     fn default() -> Self {
-        Config { version: 1, theme: ThemeCfg::default() }
+        Config { version: 1, theme: ThemeCfg::default(), data: Default::default() }
     }
 }
 
@@ -45,6 +46,8 @@ pub struct Report {
     pub changed: Vec<Change>,
     /// Een nieuwe dependency is toegevoegd: `flutter pub get` moet nog draaien.
     pub needs_pub_get: bool,
+    /// Pakketten die nog met `flutter pub add` moeten (de juiste versie wordt dan door pub gekozen).
+    pub pub_add: Vec<String>,
     /// Gebruikt de app het gegenereerde thema?
     pub wired: bool,
     /// Wat Studio niet zelf kon (kort, in gewone taal-sleutels voor de UI).
@@ -241,9 +244,67 @@ fn theme_diff(dir: &Path, cfg: &Config) -> (Vec<(String, String, String)>, Vec<S
     (out, notes)
 }
 
+fn has_dep(dir: &Path, name: &str) -> bool {
+    std::fs::read_to_string(dir.join("pubspec.yaml")).is_ok_and(|t| t.lines().any(|l| l.trim_start().starts_with(&format!("{name}:"))))
+}
+
+/// Toepasser "Data & Auth": gegenereerde code + `main()` en route koppelen; pakketten worden apart gemeld.
+fn data_diff(dir: &Path, cfg: &Config) -> (Vec<(String, String, String)>, Vec<String>, Vec<String>) {
+    use crate::data_gen as g;
+    let d = &cfg.data;
+    let mut out = vec![];
+    let mut pkgs: Vec<String> = vec![];
+    let mut notes = g::notes(d);
+    if d.provider.is_empty() || d.provider == "none" {
+        return (out, vec![], pkgs);
+    }
+    pkgs = g::packages(d).into_iter().filter(|p| !has_dep(dir, p)).map(String::from).collect();
+    let mut put = |rel: &str, content: String, only_if_missing: bool| {
+        let want = crate::templates::adapt_material(dir, &content);
+        let cur = std::fs::read_to_string(dir.join(rel)).ok();
+        if cur.as_deref() != Some(want.as_str()) && !(only_if_missing && cur.is_some()) {
+            out.push(("data".to_string(), rel.to_string(), want));
+        }
+    };
+    if let Some(t) = g::init_dart(d) {
+        put(g::INIT, t, false);
+    }
+    if let Some(t) = g::auth_dart(d) {
+        put(g::AUTH, t, false);
+    }
+    if let Some(t) = g::login_dart(d) {
+        put(g::LOGIN, t, true);
+    }
+    if d.provider == "supabase" && g::has_accounts(d) {
+        put(g::DELETE_SQL, g::DELETE_USER_SQL.to_string(), false);
+    }
+    if let Ok(t) = std::fs::read_to_string(dir.join("lib/main.dart")) {
+        match g::wire_main(&t, "import 'core/data/studio_data.dart';") {
+            Some(new) => out.push(("data".into(), "lib/main.dart".into(), new)),
+            None if !t.contains("initStudioData") => notes.push("data_main_not_wired".into()),
+            None => {}
+        }
+    }
+    if g::has_accounts(d) {
+        if let Ok(t) = std::fs::read_to_string(dir.join("lib/core/navigation/app_router.dart")) {
+            match g::wire_router(&t) {
+                Some(new) => out.push(("data".into(), "lib/core/navigation/app_router.dart".into(), new)),
+                None if !t.contains("LoginScreen") => notes.push("data_router_not_wired".into()),
+                None => {}
+            }
+        }
+    }
+    (out, notes, pkgs)
+}
+
 /// Wat zou er veranderen? (zonder iets te schrijven.) Gebruikt voor de momentopname en de "afwijking"-melding.
 pub fn plan(dir: &Path, cfg: &Config) -> Vec<Change> {
     let mut v: Vec<Change> = theme_diff(dir, cfg).0.into_iter().map(|(area, file, _)| Change { area, file }).collect();
+    let (df, _, dp) = data_diff(dir, cfg);
+    v.extend(df.into_iter().map(|(area, file, _)| Change { area, file }));
+    if !dp.is_empty() {
+        v.push(Change { area: "data".into(), file: "pubspec.yaml".into() });
+    }
     let want = serde_json::to_string_pretty(cfg).map(|s| s + "\n").unwrap_or_default();
     if std::fs::read_to_string(dir.join(FILE)).ok().as_deref() != Some(want.as_str()) {
         v.push(Change { area: "config".into(), file: FILE.into() });
@@ -268,6 +329,20 @@ pub fn apply(dir: &Path, cfg: &Config) -> AppResult<Report> {
         rep.changed.push(Change { area, file: rel });
     }
     rep.notes = notes;
+    let (dfiles, dnotes, dpkgs) = data_diff(dir, cfg);
+    for (area, rel, content) in dfiles {
+        let p = dir.join(&rel);
+        if let Some(d) = p.parent() {
+            std::fs::create_dir_all(d)?;
+        }
+        std::fs::write(&p, content)?;
+        rep.changed.push(Change { area, file: rel });
+    }
+    rep.notes.extend(dnotes);
+    rep.pub_add = dpkgs;
+    if !rep.pub_add.is_empty() {
+        rep.needs_pub_get = true;
+    }
     if plan(dir, cfg).iter().any(|c| c.area == "config") {
         save(dir, cfg)?;
         rep.changed.push(Change { area: "config".into(), file: FILE.into() });
@@ -327,6 +402,43 @@ mod tests {
         let r = apply(&d, &c).unwrap();
         assert!(!r.wired && r.notes == vec!["theme_not_wired".to_string()]);
         assert!(std::fs::read_to_string(d.join("lib/app.dart")).unwrap().contains("ThemeData()"));
+    }
+
+    #[test]
+    fn data_and_login_are_generated_wired_and_idempotent() {
+        let d = tmp("data");
+        std::fs::create_dir_all(d.join("lib/core/navigation")).unwrap();
+        std::fs::write(d.join("lib/main.dart"), "import 'package:flutter/material.dart';\nimport 'app.dart';\n\nvoid main() => runApp(const App());\n").unwrap();
+        std::fs::write(d.join("lib/core/navigation/app_router.dart"), "import 'package:go_router/go_router.dart';\nfinal appRouter = GoRouter(\n  routes: [\n    GoRoute(path: '/', builder: (c, s) => const X()),\n  ],\n);\n").unwrap();
+        let mut c = Config::default();
+        c.data = crate::data_gen::DataCfg { provider: "supabase".into(), auth: vec!["email".into(), "google".into()] };
+        let r = apply(&d, &c).unwrap();
+        assert_eq!(r.pub_add, vec!["supabase_flutter"]);
+        assert!(r.notes.contains(&"auth_social_manual".to_string()));
+        for f in ["lib/core/data/studio_data.dart", "lib/core/data/auth_repository.dart", "lib/features/auth/login_screen.dart", "studio/data/supabase_delete_user.sql"] {
+            assert!(d.join(f).is_file(), "{f}");
+        }
+        assert!(std::fs::read_to_string(d.join("lib/main.dart")).unwrap().contains("await initStudioData();"));
+        assert!(std::fs::read_to_string(d.join("lib/core/navigation/app_router.dart")).unwrap().contains("'/login'"));
+        // een bewerkt inlogscherm blijft staan; gegenereerde bestanden worden teruggezet
+        std::fs::write(d.join("lib/features/auth/login_screen.dart"), "// mine\n").unwrap();
+        std::fs::write(d.join("lib/core/data/studio_data.dart"), "// hand edit\n").unwrap();
+        let r = apply(&d, &c).unwrap();
+        assert_eq!(r.changed.iter().filter(|c| c.area == "data").count(), 1);
+        assert_eq!(std::fs::read_to_string(d.join("lib/features/auth/login_screen.dart")).unwrap(), "// mine\n");
+        let r = apply(&d, &c).unwrap();
+        assert!(r.changed.is_empty(), "{:?}", r.changed);
+    }
+
+    #[test]
+    fn an_own_main_is_reported_not_rewritten() {
+        let d = tmp("ownmain");
+        std::fs::write(d.join("lib/main.dart"), "void main() { runApp(x); }\n").unwrap();
+        let mut c = Config::default();
+        c.data.provider = "local".into();
+        let r = apply(&d, &c).unwrap();
+        assert!(r.notes.contains(&"data_main_not_wired".to_string()));
+        assert_eq!(std::fs::read_to_string(d.join("lib/main.dart")).unwrap(), "void main() { runApp(x); }\n");
     }
 
     #[test]

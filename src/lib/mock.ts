@@ -944,6 +944,25 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       uxCounts.theme = { ...(uxCounts.theme ?? {}), deterministic: (uxCounts.theme?.deterministic ?? 0) + 1 };
       return { changed: [{ area: "theme", file: "lib/core/theme/app_theme.dart" }], needsPubGet: false, wired: true, notes: [], pubGetFailed: false };
     }
+    case "data_apply": {
+      const m = metaOf(args.projectId as string);
+      const prov = m.data.provider;
+      const accounts = (prov === "supabase" || prov === "firebase") && m.data.authMethods.some((a) => a === "email" || a === "anonymous");
+      const notes = [
+        ...(m.data.authMethods.some((a) => a === "google" || a === "apple") ? ["auth_social_manual"] : []),
+        ...(prov === "firebase" ? ["firebase_options"] : []),
+        ...(prov === "supabase" && accounts ? ["supabase_delete_sql"] : []),
+      ];
+      if (prov === "firebase" && accounts) m.legal.accountDeletion = true;
+      uxCounts.data = { ...(uxCounts.data ?? {}), deterministic: (uxCounts.data?.deterministic ?? 0) + (accounts ? 5 : 2) };
+      return {
+        changed: [{ area: "data", file: "lib/core/data/studio_data.dart" }, ...(accounts ? [{ area: "data", file: "lib/features/auth/login_screen.dart" }] : [])],
+        pubAdd: [],
+        notes,
+        pubAddFailed: false,
+        accountDeletionSet: prov === "firebase" && accounts,
+      };
+    }
     case "ux_summary": {
       const det = Object.values(uxCounts).reduce((n, m) => n + (m.deterministic ?? 0), 0);
       return { flows: uxCounts, avgTokensPerAiRun: 8000, estimatedTokensSaved: det * 8000 };

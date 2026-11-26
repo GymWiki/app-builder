@@ -54,8 +54,28 @@ function DataForm({ projectId, initial }: { projectId: string; initial: Meta }) 
       toastError(e, t);
     }
   };
+  const [applied, setApplied] = useState<Awaited<ReturnType<typeof api.dataApply>> | null>(null);
+  const [applying, setApplying] = useState(false);
+  // Studio zet het zelf op (pakketten, startcode, inloggen, route); de chat is hier niet nodig.
   const setup = async () => {
-    await save();
+    setApplying(true);
+    try {
+      await api.metaSave(projectId, draft);
+      const r = await api.dataApply(projectId);
+      setApplied(r);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["meta", projectId] }),
+        qc.invalidateQueries({ queryKey: ["checklist", projectId] }),
+      ]);
+      toast.success(t("sec.data.applied"));
+    } catch (e) {
+      toastError(e, t);
+    } finally {
+      setApplying(false);
+    }
+  };
+  // Alleen voor eigen tabellen en logica is de AI nodig, en dat is optioneel.
+  const customTables = async () => {
     try {
       ask(await api.dataSetupPrompt(projectId));
     } catch (e) {
@@ -177,13 +197,38 @@ function DataForm({ projectId, initial }: { projectId: string; initial: Meta }) 
         <Button onClick={() => void save()}>{t("sec.common.save")}</Button>
         {p !== "" && p !== "none" && (
           <>
-            <Button variant="outline" disabled={busy} onClick={() => void setup()}>
+            <Button variant="outline" disabled={applying} onClick={() => void setup()}>
               {t("sec.data.setup")}
             </Button>
             <span className="t-small text-muted-foreground">{t("sec.data.setupHint")}</span>
           </>
         )}
       </div>
+
+      {applied && (
+        <Card2 title={t("sec.data.appliedTitle")}>
+          <p className="t-small">{t("sec.data.appliedBody", { count: applied.changed.length })}</p>
+          {applied.pubAddFailed && (
+            <p role="alert" className="text-destructive t-small">
+              {t("sec.data.pubAddFailed")}
+            </p>
+          )}
+          {applied.accountDeletionSet && <p className="t-small">{t("sec.data.accountDeletionAuto")}</p>}
+          {applied.notes.length > 0 && (
+            <ul className="t-small text-muted-foreground list-disc space-y-1 pl-5">
+              {applied.notes.map((n) => (
+                <li key={n}>{t(`sec.data.notes.${n}`, { defaultValue: n })}</li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void customTables()}>
+              {t("sec.data.customTables")}
+            </Button>
+            <span className="t-small text-muted-foreground">{t("sec.data.customTablesHint")}</span>
+          </div>
+        </Card2>
+      )}
     </SectionPage>
   );
 }

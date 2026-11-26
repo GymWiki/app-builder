@@ -603,6 +603,55 @@ pub async fn theme_apply(state: State<'_, AppState>, project_id: String, patch: 
     .await
 }
 
+/// Data & Auth deterministisch toepassen vanuit de keuzes in de vermelding (`meta.data`): pakketten, init-code, auth-repository,
+/// inlogscherm en route, zonder AI. Eigen tabellen en logica blijven een aparte, optionele AI-taak.
+#[tauri::command]
+pub async fn data_apply(state: State<'_, AppState>, project_id: String) -> AppResult<serde_json::Value> {
+    let (p, dir) = project_and_dir(&state, &project_id)?;
+    let db = state.db.clone();
+    let preview = state.preview.clone();
+    blocking(move || {
+        let meta = crate::meta::load(&dir)?;
+        let mut cfg = crate::config::load(&dir);
+        cfg.data = crate::data_gen::DataCfg { provider: meta.data.provider.clone(), auth: meta.data.auth_methods.clone() };
+        if !crate::config::plan(&dir, &cfg).is_empty() {
+            let _ = crate::studio_tools::create_snapshot(&db, &p, "Before setting up data and login", "auto");
+        }
+        let rep = crate::config::apply(&dir, &cfg)?;
+        let mut pub_failed = false;
+        if !rep.pub_add.is_empty() {
+            pub_failed = match proc::find("flutter") {
+                Some(f) => {
+                    let mut args: Vec<&str> = vec!["pub", "add"];
+                    args.extend(rep.pub_add.iter().map(String::as_str));
+                    proc::run(&f, &args, Some(&dir), std::time::Duration::from_secs(240)).map(|o| o.status != Some(0)).unwrap_or(true)
+                }
+                None => true,
+            };
+        }
+        for _ in 0..rep.changed.len().max(1) {
+            let _ = db.ux_record(Some(&p.id), "data", "deterministic");
+        }
+        let _ = db.ux_record(Some(&p.id), "data", "setting_done");
+        // Firebase: "account verwijderen" zit in de gegenereerde code, dus de winkelvraag hoeft niet nog eens gesteld (Supabase heeft eerst de SQL-functie nodig).
+        let mut deletion_set = false;
+        if cfg.data.provider == "firebase" && crate::data_gen::has_accounts(&cfg.data) && !meta.legal.account_deletion {
+            let mut m2 = crate::meta::load(&dir)?;
+            m2.legal.account_deletion = true;
+            crate::meta::save(&dir, &m2)?;
+            deletion_set = true;
+        }
+        if !pub_failed {
+            let _ = preview.reload();
+        }
+        let mut v = serde_json::to_value(&rep)?;
+        v["pubAddFailed"] = serde_json::json!(pub_failed);
+        v["accountDeletionSet"] = serde_json::json!(deletion_set);
+        Ok(v)
+    })
+    .await
+}
+
 /// UX-meting voor de ontwikkelaarsmodus: wat gebeurde deterministisch en wat via de AI, en de geschatte tokenbesparing.
 #[tauri::command]
 pub fn ux_summary(state: State<'_, AppState>) -> AppResult<serde_json::Value> {

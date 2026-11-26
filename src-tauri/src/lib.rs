@@ -1,5 +1,6 @@
 mod extent;
 mod config;
+mod data_gen;
 mod preflight;
 mod derive;
 mod purchases;
@@ -189,6 +190,7 @@ pub fn run() {
             commands::theme_set,
             commands::theme_apply,
             commands::ux_summary,
+            commands::data_apply,
             commands::ux_event,
             commands::screens_graph,
             commands::engines_list,

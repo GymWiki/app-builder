@@ -826,9 +826,25 @@
       "firebaseNote": "Claude uses your own Firebase login (firebase-tools). If you aren’t signed in yet, ask Claude and it tells you the command.",
       "accountDeletion": "The app lets people delete their account",
       "accountDeletionHelp": "Google Play and the App Store both require this when an app has accounts.",
-      "setup": "Let Claude set this up",
-      "setupHint": "Claude confirms each database action with you in the chat.",
-      "saveFirst": "Saving…"
+      "setup": "Set this up",
+      "setupHint": "Studio adds the packages, start code and sign-in screen itself. No chat needed.",
+      "saveFirst": "Saving…",
+      "applied": "Data and login are set up.",
+      "appliedTitle": "Done by Studio",
+      "appliedBody_one": "Studio set this up itself ({{count}} file). No chat needed.",
+      "appliedBody_other": "Studio set this up itself ({{count}} files). No chat needed.",
+      "pubAddFailed": "The packages could not be downloaded. Check your internet connection and choose “Set up” again.",
+      "accountDeletionAuto": "“Delete my account” is built in, so that store question is already answered.",
+      "customTables": "Design my own tables with Claude",
+      "customTablesHint": "Optional. Only needed if your app stores its own kind of data.",
+      "notes": {
+        "auth_social_manual": "Sign in with Google or Apple needs settings from Google or Apple. Studio sets up email and anonymous sign-in; ask Claude for the rest if you need it.",
+        "firebase_options": "Firebase: sign in once on your computer (run “flutterfire configure”) so the platform settings exist.",
+        "supabase_delete_sql": "Supabase: run studio/data/supabase_delete_user.sql once in your project (SQL editor) so “delete my account” works.",
+        "local_no_accounts": "A local database has no accounts, so the login methods you ticked are ignored.",
+        "data_main_not_wired": "Your main.dart has its own form, so Studio didn’t change it. Call initStudioData() before runApp.",
+        "data_router_not_wired": "Your router has its own form, so the /login page isn’t connected yet."
+      }
     },
     "assets": {
       "title": "App icon and images",

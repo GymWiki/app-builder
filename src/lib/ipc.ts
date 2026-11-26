@@ -141,6 +141,14 @@ export const api = {
       "theme_apply",
       { projectId, patch },
     ),
+  dataApply: (projectId: string) =>
+    call<{
+      changed: { area: string; file: string }[];
+      pubAdd: string[];
+      notes: string[];
+      pubAddFailed: boolean;
+      accountDeletionSet: boolean;
+    }>("data_apply", { projectId }),
   uxSummary: () =>
     call<{ flows: Record<string, Record<string, number>>; avgTokensPerAiRun: number; estimatedTokensSaved: number }>(
       "ux_summary",

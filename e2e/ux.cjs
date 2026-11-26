@@ -45,6 +45,18 @@ const ok = (c, m) => {
   ok((await fixAll.count()) === 0, "nothing fixable is left afterwards");
   ok((await p.getByRole("region", { name: "Chat with Claude" }).count()) === 0, "no chat turn needed");
 
+  // Data & inloggen: provider kiezen, methode aanvinken, opzetten = 3 handelingen, zonder chat
+  await p.getByRole("navigation", { name: "Project menu" }).getByRole("button", { name: /^Data/ }).click();
+  const d0 = actions;
+  await act(() => p.getByRole("radio", { name: /Firebase/ }).click());
+  await act(() => p.getByLabel("Email and password").click());
+  await act(() => p.getByRole("button", { name: "Set this up" }).click());
+  await p.getByText("Studio set this up itself").waitFor();
+  ok(actions - d0 === 3, "connecting a database with login takes three actions");
+  ok(await p.getByText("“Delete my account” is built in").isVisible(), "the account-deletion question is answered automatically (asked only once)");
+  ok((await p.getByRole("region", { name: "Chat with Claude" }).count()) === 0, "no chat turn needed for data and login");
+  ok(await p.getByRole("button", { name: "Design my own tables with Claude" }).isVisible(), "the AI is offered only for custom tables, as an option");
+
   // Meting: in de ontwikkelaarsmodus staat dat Studio het zelf deed, zonder AI
   await p.goto("http://localhost:1420/?mock=ready#/settings");
   const ver = p.getByText(/^Studio \d/).first();
@@ -53,7 +65,7 @@ const ok = (c, m) => {
   await ov.waitFor();
   const text = await ov.innerText();
   ok(/theme\s+3\s+0\s+0/.test(text.replace(/\n/g, " ").replace(/\s+/g, " ")), "overview: theme = 3 done by Studio, 0 AI calls, 0 chat turns: " + text.replace(/\n/g, " "));
-  ok(/Estimated tokens saved: 56,000/.test(text), "token saving is estimated");
+  ok(/Estimated tokens saved: 96,000/.test(text), "token saving is estimated");
   await p.screenshot({ path: `${S}/52-ux-overview.png` });
   ok(errs.length === 0, "no console errors " + errs.join("|"));
   await b.close();
