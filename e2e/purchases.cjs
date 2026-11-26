@@ -144,11 +144,11 @@ const ok = (c, m) => {
   );
   await p.screenshot({ path: `${S}/71-purchases-update.png`, fullPage: true });
   // De chat: over aankopen begint Claude niet zelf; Studio zet een concept klaar en opent de pagina.
+  await p.goto("about:blank");
   await p.goto("http://localhost:1420/?mock=purchases#/project/water_tracker");
   await p.locator("textarea").first().fill("Ik wil een abonnement met een proefperiode");
   await p.keyboard.press("Enter");
-  await p.getByRole("heading", { name: "Purchases" }).first().waitFor({ timeout: 8000 });
-  await p.getByText("Pro", { exact: true }).first().waitFor();
+  await p.getByText("com.example.water_tracker.pro_yearly").first().waitFor({ timeout: 8000 });
   ok(
     await p.getByText("com.example.water_tracker.pro_yearly").first().isVisible(),
     "a purchase request in the chat opens the Purchases page with a draft",
