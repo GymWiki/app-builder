@@ -110,7 +110,7 @@ pub struct IntegrationStatus {
 pub const EXPIRY_WARNING_DAYS: i64 = 14;
 
 /// Integraties die een checklistpunt altijd nodig heeft, ook als de gebruiker ze niet zelf heeft aangezet (Android eerst).
-pub const BASELINE: &[(&str, &[&str])] = &[("accounts_signing", &["android_signing", "google_play"])];
+pub const BASELINE: &[(&str, &[&str])] = &[("accounts_signing", &["google_play"])];
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -389,11 +389,17 @@ impl Vault {
     }
 
     /// Omgevingsvariabelen voor een kortlevend subproces (build, upload). Bestanden worden tijdelijk ontsleuteld.
+    #[cfg(test)]
     pub fn env_for(&self, project_id: &str, integrations: &[&str], by: &str) -> AppResult<EnvBundle> {
+        self.env_for_fields(project_id, integrations, None, by)
+    }
+
+    /// Zoals `env_for`, maar met `only` alleen die velden (bv. de ondertekening zonder de Play-sleutel).
+    pub fn env_for_fields(&self, project_id: &str, integrations: &[&str], only: Option<&[&str]>, by: &str) -> AppResult<EnvBundle> {
         let mut bundle = EnvBundle { vars: vec![], files: vec![] };
         for id in integrations {
             let m = manifest::get(id).ok_or_else(|| AppError::NotFound((*id).into()))?;
-            for f in &m.velden {
+            for f in m.velden.iter().filter(|f| only.is_none_or(|o| o.contains(&f.id.as_str()))) {
                 let Some(var) = f.env_var.clone() else { continue };
                 if !self.has(project_id, id, &f.id) {
                     if let Some(d) = &f.standaard {
@@ -527,17 +533,49 @@ impl Vault {
 
     // ── oude Studio-opslag eenmalig overnemen ──
 
+    /// De ondertekening was eerst een eigen integratie (`android_signing`); die hoort nu bij Google Play.
+    /// Verplaatst de waarden (zonder ze te lezen of te ontsleutelen) naar de nieuwe plek.
+    pub fn migrate_signing(&self, project_id: &str) {
+        const OLD: &str = "android_signing";
+        for f in ["keystore", "alias", "keystore_password", "key_password"] {
+            let Ok(Some(meta)) = self.db.secret_meta_get(project_id, OLD, f) else { continue };
+            if self.db.secret_meta_get(project_id, "google_play", f).ok().flatten().is_none() {
+                let (ob, nb) = (Self::bkey(project_id, OLD, f), Self::bkey(project_id, "google_play", f));
+                for suffix in ["", "#key"] {
+                    if let Ok(Some(val)) = self.backend.get(&format!("{ob}{suffix}")) {
+                        let _ = self.backend.set(&format!("{nb}{suffix}"), &val);
+                    }
+                }
+                let (oe, ne) = (self.enc_path(project_id, OLD, f), self.enc_path(project_id, "google_play", f));
+                if oe.is_file() {
+                    if let Some(dir) = ne.parent() {
+                        let _ = std::fs::create_dir_all(dir);
+                    }
+                    let _ = std::fs::rename(&oe, &ne);
+                }
+                let _ = self.db.secret_meta_upsert(&SecretMeta { integration: "google_play".into(), ..meta.clone() });
+            }
+            let ob = Self::bkey(project_id, OLD, f);
+            let _ = self.backend.delete(&ob);
+            let _ = self.backend.delete(&format!("{ob}#key"));
+            let _ = std::fs::remove_file(self.enc_path(project_id, OLD, f));
+            let _ = self.db.secret_meta_delete(project_id, OLD, f);
+        }
+        let _ = self.db.integration_forget(OLD);
+    }
+
     /// Neemt een oude gewone keystore (`keystores/<project>/upload-keystore.jks`) en oude keychain-namen over.
     pub fn migrate_legacy(&self, project_id: &str) {
+        self.migrate_signing(project_id);
         let old = self.legacy_dir.join("keystores").join(project_id).join("upload-keystore.jks");
-        if old.is_file() && !self.has(project_id, "android_signing", "keystore") {
+        if old.is_file() && !self.has(project_id, "google_play", "keystore") {
             if let Ok(bytes) = std::fs::read(&old) {
-                if self.set_file(project_id, "android_signing", "keystore", "upload-keystore.jks", &bytes).is_ok() {
+                if self.set_file(project_id, "google_play", "keystore", "upload-keystore.jks", &bytes).is_ok() {
                     let _ = std::fs::remove_file(&old);
                 }
             }
         }
-        for (old_name, integration, field) in [("android_keystore_password", "android_signing", "keystore_password"), ("supabase_token", "supabase", "access_token"), ("play_service_account_json", "google_play", "service_account")] {
+        for (old_name, integration, field) in [("android_keystore_password", "google_play", "keystore_password"), ("supabase_token", "supabase", "access_token"), ("play_service_account_json", "google_play", "service_account")] {
             if self.has(project_id, integration, field) {
                 continue;
             }
@@ -780,13 +818,31 @@ mod tests {
     }
 
     #[test]
-    fn dependencies_that_are_off_are_reported() {
-        let (v, _, pid, _) = test_vault();
-        v.db().integration_set_enabled(&pid, "google_play", true).unwrap();
-        let st = v.status_of(&pid, manifest::get("google_play").unwrap()).unwrap();
-        assert_eq!(st.dependencies_off, vec!["android_signing"]);
-        v.db().integration_set_enabled(&pid, "android_signing", true).unwrap();
-        assert!(v.status_of(&pid, manifest::get("google_play").unwrap()).unwrap().dependencies_off.is_empty());
+    fn the_old_signing_integration_moves_into_google_play_without_losing_values() {
+        let (v, _, pid, dir) = test_vault();
+        // Opslag zoals de vorige versie die schreef: integratie `android_signing`.
+        let ob = |f: &str| Vault::bkey(&pid, "android_signing", f);
+        v.backend.set(&ob("keystore_password"), "pw-1234567890").unwrap();
+        v.db.secret_meta_upsert(&SecretMeta { scope: pid.clone(), integration: "android_signing".into(), field: "keystore_password".into(), kind: "text".into(), ..Default::default() }).unwrap();
+        v.backend.set(&ob("keystore"), "x").unwrap();
+        v.backend.set(&format!("{}#key", ob("keystore")), "k").unwrap();
+        let old_enc = v.enc_path(&pid, "android_signing", "keystore");
+        std::fs::create_dir_all(old_enc.parent().unwrap()).unwrap();
+        std::fs::write(&old_enc, b"ciphertext").unwrap();
+        v.db.secret_meta_upsert(&SecretMeta { scope: pid.clone(), integration: "android_signing".into(), field: "keystore".into(), kind: "file".into(), file_name: "up.jks".into(), ..Default::default() }).unwrap();
+        v.db.integration_set_enabled(&pid, "android_signing", true).unwrap();
+
+        v.migrate_signing(&pid);
+        v.migrate_signing(&pid); // tweede keer: niets te doen
+
+        assert_eq!(v.get_text(&pid, "google_play", "keystore_password").unwrap().as_deref(), Some("pw-1234567890"));
+        assert!(v.has(&pid, "google_play", "keystore"));
+        assert_eq!(std::fs::read(v.enc_path(&pid, "google_play", "keystore")).unwrap(), b"ciphertext");
+        assert_eq!(v.backend.get(&format!("{}#key", Vault::bkey(&pid, "google_play", "keystore"))).unwrap().as_deref(), Some("k"));
+        assert!(!old_enc.exists() && v.backend.get(&ob("keystore_password")).unwrap().is_none());
+        assert!(v.db.secret_meta_get(&pid, "android_signing", "keystore").unwrap().is_none());
+        assert!(v.db.integration_states(&pid).unwrap().iter().all(|s| s.integration != "android_signing"));
+        let _ = dir;
     }
 
     #[test]
@@ -801,10 +857,10 @@ mod tests {
     #[test]
     fn env_for_injects_values_and_temp_files_that_disappear() {
         let (v, _, pid, dir) = test_vault();
-        v.set_text(&pid, "android_signing", "keystore_password", "pw-1234567890").unwrap();
-        v.set_file(&pid, "android_signing", "keystore", "up.jks", &[0xFE, 0xED, 0xFE, 0xED, 9, 9, 9]).unwrap();
+        v.set_text(&pid, "google_play", "keystore_password", "pw-1234567890").unwrap();
+        v.set_file(&pid, "google_play", "keystore", "up.jks", &[0xFE, 0xED, 0xFE, 0xED, 9, 9, 9]).unwrap();
         let (path, vars) = {
-            let b = v.env_for(&pid, &["android_signing"], "build").unwrap();
+            let b = v.env_for(&pid, &["google_play"], "build").unwrap();
             let get = |k: &str| b.vars.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
             assert_eq!(get("STUDIO_KEYSTORE_PASSWORD").as_deref(), Some("pw-1234567890"));
             assert_eq!(get("STUDIO_KEY_ALIAS").as_deref(), Some("upload"), "the default alias is used when none is stored");
@@ -822,7 +878,7 @@ mod tests {
         assert!(!path.exists() && !path.parent().unwrap().exists(), "the decrypted copy is gone after the subprocess");
         assert_eq!(vars, 3);
         // "laatst gebruikt" wordt bijgehouden.
-        let m = v.meta(&pid, "android_signing", "keystore_password").unwrap();
+        let m = v.meta(&pid, "google_play", "keystore_password").unwrap();
         assert_eq!(m.used_by, "build");
         assert!(m.last_used.is_some());
     }
@@ -830,8 +886,8 @@ mod tests {
     #[test]
     fn backup_roundtrips_and_refuses_wrong_passphrases_and_garbage() {
         let (v, _, pid, _) = test_vault();
-        v.set_text(&pid, "android_signing", "keystore_password", "pw-1234567890").unwrap();
-        v.set_file(&pid, "android_signing", "keystore", "up.jks", &[0xFE, 0xED, 0xFE, 0xED, 1, 2, 3]).unwrap();
+        v.set_text(&pid, "google_play", "keystore_password", "pw-1234567890").unwrap();
+        v.set_file(&pid, "google_play", "keystore", "up.jks", &[0xFE, 0xED, 0xFE, 0xED, 1, 2, 3]).unwrap();
         v.set_text(&pid, "apple", "key_id", "ABCDE12345").unwrap();
         assert!(matches!(v.export(&pid, "short"), Err(AppError::Rejected { code, .. }) if code == "passphrase_short"));
         let blob = v.export(&pid, "correct horse battery").unwrap();
@@ -845,8 +901,8 @@ mod tests {
         damaged[l] ^= 1;
         assert!(v2.import(&pid2, "correct horse battery", &damaged).is_err());
         assert_eq!(v2.import(&pid2, "correct horse battery", &blob).unwrap(), 3);
-        assert_eq!(v2.get_text(&pid2, "android_signing", "keystore_password").unwrap().as_deref(), Some("pw-1234567890"));
-        assert_eq!(v2.get_file(&pid2, "android_signing", "keystore").unwrap().unwrap(), vec![0xFE, 0xED, 0xFE, 0xED, 1, 2, 3]);
+        assert_eq!(v2.get_text(&pid2, "google_play", "keystore_password").unwrap().as_deref(), Some("pw-1234567890"));
+        assert_eq!(v2.get_file(&pid2, "google_play", "keystore").unwrap().unwrap(), vec![0xFE, 0xED, 0xFE, 0xED, 1, 2, 3]);
         assert_eq!(v2.get_text(&pid2, "apple", "key_id").unwrap().as_deref(), Some("ABCDE12345"));
     }
 
@@ -860,21 +916,21 @@ mod tests {
         mem.0.lock().unwrap().insert(format!("{pid}:play_service_account_json"), String::from_utf8(SA.to_vec()).unwrap());
         v.migrate_legacy(&pid);
         assert!(!old.join("upload-keystore.jks").exists(), "no plaintext keystore left behind");
-        assert!(v.has(&pid, "android_signing", "keystore") && v.has(&pid, "android_signing", "keystore_password") && v.has(&pid, "google_play", "service_account"));
-        assert_eq!(v.get_text(&pid, "android_signing", "keystore_password").unwrap().as_deref(), Some("legacy-password-123"));
+        assert!(v.has(&pid, "google_play", "keystore") && v.has(&pid, "google_play", "keystore_password") && v.has(&pid, "google_play", "service_account"));
+        assert_eq!(v.get_text(&pid, "google_play", "keystore_password").unwrap().as_deref(), Some("legacy-password-123"));
         assert!(!mem.0.lock().unwrap().contains_key(&format!("{pid}:android_keystore_password")), "old keychain entry removed");
         v.migrate_legacy(&pid); // tweede keer: niets te doen
-        assert!(v.has(&pid, "android_signing", "keystore"));
+        assert!(v.has(&pid, "google_play", "keystore"));
     }
 
     #[test]
     fn switching_off_with_delete_removes_only_the_project_values_of_that_integration() {
         let (v, _, pid, _) = test_vault();
         v.set_text(&pid, "supabase", "url", "https://abcdefghijklmnopqrst.supabase.co").unwrap();
-        v.set_text(&pid, "android_signing", "alias", "upload").unwrap();
+        v.set_text(&pid, "google_play", "alias", "upload").unwrap();
         v.set_text(&pid, "apple", "key_id", "ABCDE12345").unwrap();
         assert_eq!(v.delete_integration(&pid, "supabase").unwrap(), 1);
-        assert!(!v.has(&pid, "supabase", "url") && v.has(&pid, "android_signing", "alias"));
+        assert!(!v.has(&pid, "supabase", "url") && v.has(&pid, "google_play", "alias"));
         assert_eq!(v.delete_integration(&pid, "apple").unwrap(), 0, "global values stay");
         assert!(v.has(&pid, "apple", "key_id"));
     }

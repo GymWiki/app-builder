@@ -772,7 +772,7 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
     case "signing_status":
       return {
         keytool: true,
-        keystore: vaultHas(args.projectId as string, "android_signing", "keystore"),
+        keystore: vaultHas(args.projectId as string, "google_play", "keystore"),
         keystorePath: null,
         gradleConfigured: fs.gradle,
         playKey: vaultHas(args.projectId as string, "google_play", "service_account"),

@@ -163,23 +163,25 @@ const SA = Buffer.from(
   await p.locator("#integration-firebase").getByText("Off", { exact: true }).waitFor();
   ok(true, "the switch-off dialog works with the keyboard and Cancel keeps it on");
 
-  // dependency: Google Play needs Android signing
+  // Google Play bevat nu ook de ondertekening: geen aparte integratie meer
   await menu("Integrations").click();
+  ok(
+    (await p.locator("#integration-android_signing").count()) === 0,
+    "Android signing is no longer a separate integration",
+  );
   await p.getByRole("switch", { name: "Google Play on or off" }).click();
-  await p.getByRole("alertdialog").getByText("Google Play needs more").waitFor();
-  await p.getByRole("alertdialog").getByRole("button", { name: "Switch on both" }).click();
   await p
-    .locator("#integration-android_signing")
+    .locator("#integration-google_play")
     .getByText(/On, secrets missing/)
     .waitFor();
-  ok(true, "switching on Google Play also offers (and does) Android signing");
+  ok(true, "switching on Google Play covers signing too");
 
   // checklist before: secrets missing with a jump button
   await menu("Publish").click();
   await p.getByRole("tab", { name: "Checklist" }).click();
   const item = p.locator("li", { hasText: "Accounts and signing" }).first();
   ok(
-    await item.getByText(/Secrets missing: Android signing › Upload keystore/).isVisible(),
+    await item.getByText(/Secrets missing: Google Play › Upload keystore/).isVisible(),
     "checklist: 'Secrets missing' names the integration and field",
   );
   ok(
@@ -187,18 +189,18 @@ const SA = Buffer.from(
     "checklist lists every missing secret once",
   );
   await item.getByRole("button", { name: "Add secrets" }).click();
-  await p.locator("#secrets-android_signing").getByRole("heading", { name: "Android signing" }).waitFor();
+  await p.locator("#secrets-google_play").getByRole("heading", { name: "Google Play" }).waitFor();
   ok(true, "the checklist button jumps to the right heading");
 
   // fill Android signing (generated) and Google Play (service account)
-  const as = p.locator("#secrets-android_signing");
+  const as = p.locator("#secrets-google_play");
   await as.getByRole("button", { name: "Create it for me" }).click();
   await as.getByLabel("Your name").fill("Jan Bakker");
   await as.getByRole("button", { name: "Create signing key" }).click();
   await p.getByText("Signing key created and saved.").waitFor();
   ok(
-    await as.getByText("Complete", { exact: true }).isVisible(),
-    "Android signing is complete after Studio created the key",
+    await p.getByText("Signing key created and saved.").isVisible(),
+    "the signing key is created inside the Google Play card",
   );
   const gp = p.locator("#secrets-google_play");
   await gp

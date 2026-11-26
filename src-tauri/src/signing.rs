@@ -43,7 +43,7 @@ pub fn find_keytool(flutter: Option<&Path>) -> Option<PathBuf> {
 }
 
 pub fn has_keystore(project_id: &str) -> bool {
-    crate::vault::global().has(project_id, "android_signing", "keystore")
+    crate::vault::global().has(project_id, "google_play", "keystore")
 }
 
 fn clean(s: &str, fallback: &str) -> String {
@@ -61,7 +61,7 @@ pub fn dname(name: &str, org: &str, country: &str) -> String {
 /// Bestaat er al een keystore, dan gebeurt er niets (overschrijven zou het updaten van de gepubliceerde app onmogelijk maken).
 pub fn create_keystore(keytool: &Path, data_dir: &Path, project_id: &str, dname: &str) -> AppResult<()> {
     let vault = crate::vault::global();
-    if vault.has(project_id, "android_signing", "keystore") {
+    if vault.has(project_id, "google_play", "keystore") {
         return Err(AppError::PathExists("keystore".into()));
     }
     let tmp = data_dir.join("tmp").join(uuid::Uuid::new_v4().simple().to_string());
@@ -98,15 +98,15 @@ pub fn create_keystore(keytool: &Path, data_dir: &Path, project_id: &str, dname:
         }
         let bytes = std::fs::read(&path)?;
         // Eerst het wachtwoord (en alias), dan het bestand; mislukt iets, dan ruimen we alles op.
-        vault.set_text(project_id, "android_signing", "keystore_password", &password)?;
-        vault.set_text(project_id, "android_signing", "alias", ALIAS)?;
-        vault.set_file(project_id, "android_signing", "keystore", "upload-keystore.jks", &bytes)?;
+        vault.set_text(project_id, "google_play", "keystore_password", &password)?;
+        vault.set_text(project_id, "google_play", "alias", ALIAS)?;
+        vault.set_file(project_id, "google_play", "keystore", "upload-keystore.jks", &bytes)?;
         Ok(())
     })();
     let _ = std::fs::remove_dir_all(&tmp);
     if result.is_err() {
         for f in ["keystore", "keystore_password", "alias"] {
-            let _ = vault.delete(project_id, "android_signing", f);
+            let _ = vault.delete(project_id, "google_play", f);
         }
     }
     result
@@ -123,13 +123,13 @@ pub fn gradle_configured(project_dir: &Path) -> bool {
 /// alleen zolang het resultaat in leven is.
 pub fn build_env(project_id: &str) -> AppResult<crate::vault::EnvBundle> {
     let v = crate::vault::global();
-    if !v.has(project_id, "android_signing", "keystore") {
+    if !v.has(project_id, "google_play", "keystore") {
         return Err(AppError::NotFound("keystore".into()));
     }
-    if !v.has(project_id, "android_signing", "keystore_password") {
+    if !v.has(project_id, "google_play", "keystore_password") {
         return Err(AppError::NotFound("keystore password".into()));
     }
-    let mut b = v.env_for(project_id, &["android_signing"], "build")?;
+    let mut b = v.env_for_fields(project_id, &["google_play"], Some(&["keystore", "alias", "keystore_password", "key_password"]), "build")?;
     // PKCS12: het sleutelwachtwoord is hetzelfde als het keystore-wachtwoord, tenzij er een eigen is ingesteld.
     if !b.vars.iter().any(|(k, _)| k == "STUDIO_KEY_PASSWORD") {
         if let Some(pw) = b.vars.iter().find(|(k, _)| k == "STUDIO_KEYSTORE_PASSWORD").map(|(_, v)| v.clone()) {

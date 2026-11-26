@@ -1191,7 +1191,7 @@ pub fn leak_move_to_vault(state: State<'_, AppState>, project_id: String, file: 
     let ext = name.rsplit_once('.').map(|(_, e)| e.to_string()).unwrap_or_default();
     let (integration, field) = match ext.as_str() {
         "p8" => ("apple", "private_key"),
-        "jks" | "keystore" | "p12" | "pfx" => ("android_signing", "keystore"),
+        "jks" | "keystore" | "p12" | "pfx" => ("google_play", "keystore"),
         _ => ("google_play", "service_account"),
     };
     let v = crate::vault::global();

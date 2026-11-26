@@ -1416,18 +1416,12 @@
     },
     "google_play": {
       "name": "Google Play",
-      "desc": "Hiermee kan Studio je Android-app als concept naar Google Play sturen.",
+      "desc": "Alles voor het publiceren op Android: je Google Play-koppeling en de sleutel waarmee je app wordt ondertekend.",
       "fields": {
         "service_account": {
           "label": "Servicekoppelingssleutel (JSON)",
           "help": "Maak in Google Cloud een serviceaccount, voeg een JSON-sleutel toe en nodig het e-mailadres daarvan uit in Play Console onder Gebruikers en rechten."
-        }
-      }
-    },
-    "android_signing": {
-      "name": "Android-ondertekening",
-      "desc": "De sleutel die bewijst dat updates van je app echt van jou komen.",
-      "fields": {
+        },
         "keystore": {
           "label": "Upload-keystore",
           "help": "Studio kan dit voor je aanmaken. Maak een back-up: raak je de keystore kwijt, dan kun je je gepubliceerde app niet meer bijwerken."

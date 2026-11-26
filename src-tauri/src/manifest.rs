@@ -87,7 +87,6 @@ pub struct Manifest {
 const SOURCES: &[&str] = &[
     include_str!("../../integrations/apple.json"),
     include_str!("../../integrations/google_play.json"),
-    include_str!("../../integrations/android_signing.json"),
     include_str!("../../integrations/supabase.json"),
     include_str!("../../integrations/firebase.json"),
     include_str!("../../integrations/local_db.json"),
@@ -269,7 +268,7 @@ mod tests {
         for m in all() {
             check(m, &ids()).unwrap_or_else(|e| panic!("{e}"));
         }
-        for id in ["apple", "google_play", "android_signing", "supabase", "firebase", "local_db", "github", "vercel"] {
+        for id in ["apple", "google_play", "supabase", "firebase", "local_db", "github", "vercel"] {
             assert!(get(id).is_some(), "{id}");
         }
         assert!(get("local_db").unwrap().velden.is_empty(), "local SQLite needs no secrets");
@@ -329,7 +328,7 @@ mod tests {
         assert_eq!(validate_text(field("apple", "key_id"), "abc").unwrap_err().code, "pattern");
         assert_eq!(validate_text(field("apple", "key_id"), "  ").unwrap_err().code, "empty");
         assert!(validate_text(field("apple", "issuer_id"), "69a6de7e-1234-47e3-e053-5b8c7c11a4d1").is_ok());
-        assert_eq!(validate_text(field("android_signing", "keystore_password"), "abc").unwrap_err(), Rejection { code: "too_short", detail: Some("6".into()) });
+        assert_eq!(validate_text(field("google_play", "keystore_password"), "abc").unwrap_err(), Rejection { code: "too_short", detail: Some("6".into()) });
         assert_eq!(validate_text(field("supabase", "url"), "supabase.co").unwrap_err().code, "pattern");
         assert!(validate_text(field("github", "token"), "github_pat_11AAAAAAAAAAAAAAAAAAAA_bbbbbbbb").is_ok());
         assert_eq!(validate_text(field("github", "token"), "password123").unwrap_err().code, "pattern");
@@ -377,6 +376,6 @@ mod tests {
         // Firebase: de afgeleide waarde komt uit een genest pad.
         let gs = field("firebase", "google_services_json");
         assert_eq!(validate_file(gs, "google-services.json", br#"{"project_info":{"project_id":"fb-1"}}"#).unwrap()["project_id"], "fb-1");
-        assert!(validate_file(field("android_signing", "keystore"), "my.jks", &[0xFE, 0xED, 0xFE, 0xED, 1, 2]).is_ok(), "binary keystores are fine");
+        assert!(validate_file(field("google_play", "keystore"), "my.jks", &[0xFE, 0xED, 0xFE, 0xED, 1, 2]).is_ok(), "binary keystores are fine");
     }
 }

@@ -66,7 +66,7 @@ pub fn tool_list() -> Value {
          "inputSchema":{"type":"object","properties":{"file":{"type":"string"}},"required":["file"]}},
         {"name":"breid_bereik_uit","description":"Ask for more files to edit when the task really needs a change outside the current scope (shared theme, widgets, models, other screens). Give a short reason; optionally specific files or a level (screen, shared, project). Call this BEFORE editing outside the scope.",
          "inputSchema":{"type":"object","properties":{"reason":{"type":"string"},"files":{"type":"array","items":{"type":"string"}},"level":{"type":"string","enum":["screen","shared","project"]}},"required":["reason"]}},
-        {"name":"integratie_status","description":"Status of one integration (apple, google_play, android_signing, supabase, firebase, local_db, github, vercel): whether it is on, which fields are filled in, which are missing, last test result. Never returns a secret value.",
+        {"name":"integratie_status","description":"Status of one integration (apple, google_play, supabase, firebase, local_db, github, vercel): whether it is on, which fields are filled in, which are missing, last test result. Never returns a secret value.",
          "inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}},
         {"name":"welke_geheimen_ontbreken","description":"Lists the required secrets that are still missing for this app (integration and field only). Never returns a value.","inputSchema":no_args},
         {"name":"vraag_gebruiker_om_geheim","description":"Opens the Secrets page in Studio at the right field so the USER can fill it in. You never see the value and must not ask the user to paste it into the chat.",
@@ -426,12 +426,12 @@ mod tests {
             "MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgMCPLEAKLINE01",
             "SERVICEACCOUNTKEYLINE0123456789abcdef",
         ];
-        vault.set_text(&pid, "android_signing", "keystore_password", secrets[0]).unwrap();
+        vault.set_text(&pid, "google_play", "keystore_password", secrets[0]).unwrap();
         vault.set_text(&pid, "github", "token", secrets[1]).unwrap();
         vault.set_file(&pid, "apple", "private_key", "AuthKey.p8", format!("-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----\n", secrets[2]).as_bytes()).unwrap();
         let sa = format!(r#"{{"type":"service_account","client_email":"bot@p.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----\n"}}"#, secrets[3]);
         vault.set_file(&pid, "google_play", "service_account", "sa.json", sa.as_bytes()).unwrap();
-        for id in ["android_signing", "github", "apple", "google_play"] {
+        for id in ["google_play", "github", "apple", "google_play"] {
             deps.db.integration_set_enabled(&pid, id, true).unwrap();
         }
 
@@ -471,20 +471,20 @@ mod tests {
         // 3. De statustools geven wel bruikbare metadata.
         let call = |name: &str, args: Value| -> Value { serde_json::from_str(&tool_text(&rpc(&deps, &pid, "tools/call", json!({"name":name,"arguments":args})))).unwrap() };
         let st = call("integratie_status", json!({"id":"google_play"}));
-        assert_eq!((st["state"].as_str(), st["enabled"].as_bool()), (Some("complete"), Some(true)));
+        assert_eq!((st["state"].as_str(), st["enabled"].as_bool()), (Some("incomplete"), Some(true)), "the signing keystore is still missing");
         assert_eq!(st["fields"][0]["derived"]["client_email"], "bot@p.iam.gserviceaccount.com", "non-secret derived data is fine");
         assert_eq!(st["fields"][0]["present"], true);
         let missing = call("welke_geheimen_ontbreken", json!({}));
         let list: Vec<String> = missing["missing"].as_array().unwrap().iter().map(|m| format!("{}.{}", m["integration"].as_str().unwrap(), m["field"].as_str().unwrap())).collect();
-        assert!(list.contains(&"android_signing.keystore".to_string()), "{list:?}");
+        assert!(list.contains(&"google_play.keystore".to_string()), "{list:?}");
         assert!(!list.contains(&"google_play.service_account".to_string()));
         // 4. Claude kan de gebruiker alleen vragen het in te vullen: de pagina opent, Claude blijft blind.
         sent.lock().unwrap().clear();
-        let r = call("vraag_gebruiker_om_geheim", json!({"integratie":"android_signing","veld":"keystore"}));
+        let r = call("vraag_gebruiker_om_geheim", json!({"integratie":"google_play","veld":"keystore"}));
         assert_eq!(r["ok"], true);
         let events = sent.lock().unwrap().clone();
         assert_eq!(events.len(), 1);
-        assert_eq!((events[0].0.as_str(), events[0].1["integration"].as_str(), events[0].1["field"].as_str()), ("open-secret", Some("android_signing"), Some("keystore")));
+        assert_eq!((events[0].0.as_str(), events[0].1["integration"].as_str(), events[0].1["field"].as_str()), ("open-secret", Some("google_play"), Some("keystore")));
         let bad = rpc(&deps, &pid, "tools/call", json!({"name":"vraag_gebruiker_om_geheim","arguments":{"integratie":"nope","veld":"x"}}));
         assert_eq!(bad["result"]["isError"], true);
     }

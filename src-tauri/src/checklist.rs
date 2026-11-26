@@ -299,7 +299,7 @@ mod tests {
             ("legal", Box::new(|m, _| m.legal.terms_url.clear())),
             ("ai_test_run", Box::new(|_, f| f.test_passed_fingerprint = None)),
             ("store_listing", Box::new(|_, f| f.screenshots = 1)),
-            ("accounts_signing", Box::new(|_, f| f.missing_secrets = vec![ms("android_signing", "keystore", true)])),
+            ("accounts_signing", Box::new(|_, f| f.missing_secrets = vec![ms("google_play", "keystore", true)])),
             ("no_leaks", Box::new(|_, f| f.leaks = 2)),
             ("version_changelog", Box::new(|_, f| f.changelog = false)),
         ];
@@ -390,11 +390,11 @@ mod tests {
     #[test]
     fn missing_secrets_point_to_the_right_heading_and_are_never_asked_twice() {
         let (m, mut f) = ready();
-        f.missing_secrets = vec![ms("android_signing", "keystore", true), ms("android_signing", "keystore_password", true), ms("google_play", "service_account", false)];
+        f.missing_secrets = vec![ms("google_play", "keystore", true), ms("google_play", "keystore_password", true), ms("google_play", "service_account", false)];
         let e = evaluate(&m, &f);
         let it = get(&e, "accounts_signing");
-        assert_eq!(it.missing, ["secret:android_signing.keystore", "secret:android_signing.keystore_password", "secret:google_play.service_account"]);
-        assert_eq!(it.next.as_deref(), Some("secrets:android_signing"), "the first gap decides where the button goes");
+        assert_eq!(it.missing, ["secret:google_play.keystore", "secret:google_play.keystore_password", "secret:google_play.service_account"]);
+        assert_eq!(it.next.as_deref(), Some("secrets:google_play"), "the first gap decides where the button goes");
         assert!(!it.missing.iter().any(|x| x == "keystore"), "the old duplicate key is gone");
         // Staat de integratie uit, dan wijst de knop naar het integratie-overzicht.
         f.missing_secrets = vec![ms("google_play", "service_account", false)];

@@ -9,7 +9,7 @@ use crate::vault;
 fn map(name: &str) -> AppResult<(&'static str, &'static str, bool)> {
     match name {
         "supabase_token" => Ok(("supabase", "access_token", false)),
-        "android_keystore_password" => Ok(("android_signing", "keystore_password", false)),
+        "android_keystore_password" => Ok(("google_play", "keystore_password", false)),
         "play_service_account_json" => Ok(("google_play", "service_account", true)),
         other => Err(AppError::Invalid(format!("unknown secret {other}"))),
     }

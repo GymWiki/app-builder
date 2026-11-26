@@ -455,7 +455,7 @@ export function SecretField({
         open={confirm === "replace"}
         title={t("sec.secrets.confirm.replaceTitle", { name: label })}
         body={t(
-          manifest.id === "android_signing" && field.id === "keystore"
+          manifest.id === "google_play" && field.id === "keystore"
             ? "sec.secrets.confirm.replaceKeystore"
             : "sec.secrets.confirm.replaceBody",
         )}
@@ -472,7 +472,7 @@ export function SecretField({
         open={confirm === "delete"}
         title={t("sec.secrets.confirm.deleteTitle", { name: label })}
         body={t(
-          manifest.id === "android_signing" && field.id === "keystore"
+          manifest.id === "google_play" && field.id === "keystore"
             ? "sec.secrets.confirm.deleteKeystore"
             : "sec.secrets.confirm.deleteBody",
         )}

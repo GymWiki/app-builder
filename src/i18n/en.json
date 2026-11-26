@@ -1416,18 +1416,12 @@
     },
     "google_play": {
       "name": "Google Play",
-      "desc": "Lets Studio upload your Android app to Google Play as a draft.",
+      "desc": "Everything for Android publishing: your Google Play connection and the key that signs your app.",
       "fields": {
         "service_account": {
           "label": "Service account key (JSON)",
           "help": "Create a service account in Google Cloud, add a JSON key, then invite its email address in Play Console under Users and permissions."
-        }
-      }
-    },
-    "android_signing": {
-      "name": "Android signing",
-      "desc": "The key that proves updates of your app come from you.",
-      "fields": {
+        },
         "keystore": {
           "label": "Upload keystore",
           "help": "Studio can create this for you. Make a backup: if the keystore is lost, you can no longer update your published app."

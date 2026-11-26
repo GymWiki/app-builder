@@ -269,3 +269,9 @@ Gecontroleerd tegen de actuele documentatie (web, november 2026); afwijkingen va
 - **Checklist:** "Verhoog de versie" blokkeert niet meer (Studio doet het zelf); het changelog-item blijft.
 - **Handmatig aanpassen** staat nu op de Versies-pagina (knop "Handmatig aanpassen…", dialoog met validatie), niet meer bij App-instellingen. De server weigert een buildnummer dat niet hoger is dan dat van de laatste upload. `last_published_build` is nieuw in `.studio/publish.json` (oude projecten zonder waarde: alleen de versieregel geldt).
 - **Niet getest:** een echte upload; de logica is getest met unit-tests (`next_release`) en de mock-e2e. iOS-uploads bestaan nog niet; dezelfde regels moeten daar straks ook gelden.
+
+## Android-ondertekening hoort bij Google Play
+
+- `android_signing` is geen losse (aan/uit-)integratie meer: de ondertekening is voor Android altijd nodig. De velden (keystore, alias, keystore-wachtwoord, sleutelwachtwoord) staan nu in de `google_play`-integratie (projectgebonden; de servicesleutel blijft globaal) en de afhankelijkheid is vervallen. De sleutel maken ("Maak het voor me") staat ook daar.
+- **Bestaande kluizen worden verplaatst** (`Vault::migrate_signing`, bij het openen van een project): keychain-items, versleutelde bestanden en metadata gaan van `android_signing` naar `google_play` zonder iets te ontsleutelen; de oude waarden worden daarna verwijderd. Getest met een nagebootste oude opslag, ook bij dubbel uitvoeren.
+- De release-build haalt alleen de vier ondertekeningsvelden uit de kluis (`env_for_fields`), dus de Play-servicesleutel komt niet in de omgeving van Gradle.

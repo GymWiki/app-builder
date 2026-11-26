@@ -1,6 +1,5 @@
 /** Gesimuleerde kluis voor de browser-demo en de e2e-tests. Zelfde regels als de Rust-kant (manifest, validatie, status). */
 import apple from "../../integrations/apple.json";
-import androidSigning from "../../integrations/android_signing.json";
 import firebase from "../../integrations/firebase.json";
 import github from "../../integrations/github.json";
 import googlePlay from "../../integrations/google_play.json";
@@ -17,16 +16,7 @@ import {
   type TestOutcome,
 } from "./integrations";
 
-const MANIFESTS = [
-  apple,
-  googlePlay,
-  androidSigning,
-  supabase,
-  firebase,
-  localDb,
-  github,
-  vercel,
-] as unknown as Manifest[];
+const MANIFESTS = [apple, googlePlay, supabase, firebase, localDb, github, vercel] as unknown as Manifest[];
 const by = (id: string) => {
   const m = MANIFESTS.find((x) => x.id === id);
   if (!m) throw new AppError("not_found", `integration ${id}`);
@@ -45,7 +35,7 @@ interface Stored {
 const values = new Map<string, Stored>();
 const enabled = new Set<string>();
 const tests = new Map<string, { at: string; ok: boolean; code: string }>();
-const BASELINE = ["android_signing", "google_play"];
+const BASELINE = ["google_play"];
 
 const keyOf = (projectId: string, integration: string, field: string) => {
   const f = by(integration).velden.find((x) => x.id === field);
@@ -116,7 +106,7 @@ export function vaultMissing(projectId: string) {
 export function vaultSetKeystore(projectId: string) {
   const now = new Date().toISOString();
   const put = (field: string, kind: "text" | "file", value: string, fileName = "") =>
-    values.set(keyOf(projectId, "android_signing", field), {
+    values.set(keyOf(projectId, "google_play", field), {
       kind,
       value,
       fileName,
@@ -139,7 +129,7 @@ export function mockLeaks(): Leak[] {
 /** De oude vaste geheimnamen (Data- en Accounts-pagina) horen bij dezelfde kluis als de Geheimen-pagina. */
 const LEGACY: Record<string, [string, string, boolean]> = {
   supabase_token: ["supabase", "access_token", false],
-  android_keystore_password: ["android_signing", "keystore_password", false],
+  android_keystore_password: ["google_play", "keystore_password", false],
   play_service_account_json: ["google_play", "service_account", true],
 };
 

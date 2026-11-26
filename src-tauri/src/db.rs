@@ -797,6 +797,12 @@ impl Db {
         Ok(())
     }
 
+    /// Verwijdert een integratie die niet meer bestaat uit alle projecten.
+    pub fn integration_forget(&self, integration: &str) -> AppResult<()> {
+        self.lock().execute("DELETE FROM integration_state WHERE integration=?1", params![integration])?;
+        Ok(())
+    }
+
     pub fn integration_states(&self, project_id: &str) -> AppResult<Vec<IntegrationState>> {
         let conn = self.lock();
         let mut st = conn.prepare("SELECT integration, enabled, last_tested, last_test_ok, last_test_code, expires_at FROM integration_state WHERE project_id=?1")?;

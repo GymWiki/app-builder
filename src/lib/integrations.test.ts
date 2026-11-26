@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import apple from "../../integrations/apple.json";
 import googlePlay from "../../integrations/google_play.json";
 import supabase from "../../integrations/supabase.json";
-import androidSigning from "../../integrations/android_signing.json";
 import firebase from "../../integrations/firebase.json";
 import { parseRejection, validateFile, validateText, type Manifest, type ManifestField } from "./integrations";
 
@@ -15,7 +14,7 @@ describe("text validation (same rules as the Rust side)", () => {
     expect(validateText(field(apple, "key_id"), "ABCDE12345")).toBeNull();
     expect(validateText(field(apple, "key_id"), "abc")?.code).toBe("pattern");
     expect(validateText(field(apple, "key_id"), "   ")?.code).toBe("empty");
-    expect(validateText(field(androidSigning, "keystore_password"), "abc")).toEqual({ code: "too_short", detail: "6" });
+    expect(validateText(field(googlePlay, "keystore_password"), "abc")).toEqual({ code: "too_short", detail: "6" });
     expect(validateText(field(supabase, "url"), "https://a.supabase.co\nhttps://b")?.code).toBe("multiline");
   });
 
@@ -57,7 +56,7 @@ describe("file validation", () => {
     expect(validateFile(p8, "AuthKey.p8", null, 5).rejection?.code).toBe("not_text");
     expect(validateFile(p8, "AuthKey.p8", "x", 0).rejection?.code).toBe("empty");
     expect(validateFile(p8, "AuthKey.p8", "x", 600 * 1024).rejection?.code).toBe("too_large");
-    expect(validateFile(field(androidSigning, "keystore"), "up.jks", null, 2000).rejection).toBeNull();
+    expect(validateFile(field(googlePlay, "keystore"), "up.jks", null, 2000).rejection).toBeNull();
     expect(
       validateFile(
         field(firebase, "google_services_json"),
@@ -79,7 +78,7 @@ describe("rejections from the backend", () => {
 
 describe("manifests", () => {
   it("every field of every manifest has a label and help key and a valid scope", () => {
-    for (const m of [apple, googlePlay, supabase, androidSigning, firebase] as unknown as Manifest[]) {
+    for (const m of [apple, googlePlay, supabase, firebase] as unknown as Manifest[]) {
       for (const f of m.velden) {
         expect(f.label).toMatch(/^integrations\./);
         expect(f.hulptekst).toMatch(/^integrations\./);
