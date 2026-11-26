@@ -1,0 +1,51 @@
+// UX-bewaking (Fase 13): kernflows mogen een maximum aantal handelingen kosten en nooit een chatbeurt nodig hebben.
+const { chromium } = require("playwright");
+const S = process.argv[2] || "./e2e-out";
+const ok = (c, m) => {
+  console.log((c ? "PASS " : "FAIL ") + m);
+  if (!c) process.exitCode = 1;
+};
+(async () => {
+  const b = await chromium.launch();
+  const ctx = await b.newContext({ viewport: { width: 1360, height: 860 }, locale: "en-US" });
+  const p = await ctx.newPage();
+  const errs = [];
+  p.on("pageerror", (e) => errs.push(e.message));
+  let actions = 0; // handelingen = klikken + invoer in deze flow
+  const act = async (fn) => {
+    actions++;
+    await fn();
+  };
+
+  await p.goto("http://localhost:1420/?mock=ready#/project/friday_scores");
+  await p.getByRole("button", { name: "Theme", exact: true }).first().click();
+  // Thema aanpassen: 1 handeling voor de kleur, nul chatbeurten
+  await act(() => p.getByRole("radio", { name: "#0D9488" }).click());
+  await p.getByText("Color updated. The preview refreshes by itself.").first().waitFor();
+  ok(actions <= 1, "changing the color takes one action");
+  // lettertype en stijl: ook één handeling, geen chat
+  await act(() => p.getByRole("radio", { name: "Lora" }).click());
+  await act(() => p.getByRole("radio", { name: "Minimal" }).click());
+  ok(actions <= 3, "color + font + look take three actions in total");
+  ok(
+    (await p.getByRole("button", { name: /Let Claude|Connect the theme|Ask Claude/ }).count()) === 0,
+    "no chat/AI button is needed to finish a theme setting",
+  );
+  ok((await p.getByRole("region", { name: "Chat with Claude" }).count()) === 0, "the chat is not even visible on this page");
+
+  // Meting: in de ontwikkelaarsmodus staat dat Studio het zelf deed, zonder AI
+  await p.goto("http://localhost:1420/?mock=ready#/settings");
+  const ver = p.getByText(/^Studio \d/).first();
+  for (let i = 0; i < 7; i++) await ver.click();
+  const ov = p.getByTestId("ux-overview");
+  await ov.waitFor();
+  const text = await ov.innerText();
+  ok(/theme\s+3\s+0\s+0/.test(text.replace(/\n/g, " ").replace(/\s+/g, " ")), "overview: theme = 3 done by Studio, 0 AI calls, 0 chat turns: " + text.replace(/\n/g, " "));
+  ok(/Estimated tokens saved: 24,000/.test(text), "token saving is estimated");
+  await p.screenshot({ path: `${S}/52-ux-overview.png` });
+  ok(errs.length === 0, "no console errors " + errs.join("|"));
+  await b.close();
+})().catch((e) => {
+  console.error("FAIL", e.message.split("\n")[0]);
+  process.exit(1);
+});

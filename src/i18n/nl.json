@@ -757,15 +757,14 @@
       "seed": "Hoofdkleur",
       "hex": "Kleurcode",
       "hexInvalid": "Gebruik een kleurcode zoals #4F46E5",
-      "apply": "Kleur toepassen",
       "applied": "Kleur aangepast. De preview ververst vanzelf.",
-      "notWired": "Deze app gebruikt het thema van Studio nog niet. Vraag Claude het te koppelen.",
+      "notWired": "Deze app heeft eigen themacode, dus het thema van Studio is niet gekoppeld. Vraag Claude het te koppelen.",
       "wire": "Thema koppelen",
       "wirePrompt": "Laat MaterialApp AppTheme.light en AppTheme.dark uit lib/app_theme.dart gebruiken en haal kleuren weg die elders met de hand zijn ingesteld.",
       "fontTitle": "Lettertype",
-      "fontHelp": "Claude voegt het lettertype toe als package en gebruikt het overal.",
+      "fontHelp": "Studio voegt het lettertype toe en gebruikt het overal. De preview werkt zichzelf bij.",
       "kitTitle": "Stijl",
-      "kitHelp": "Claude kiest een Flutter-package voor deze stijl en gebruikt die op alle schermen.",
+      "kitHelp": "Studio past deze stijl toe op knoppen, kaarten en de app-balk in alle schermen.",
       "fonts": {
         "Inter": "Inter",
         "Poppins": "Poppins",
@@ -779,7 +778,11 @@
         "minimal": "Minimalistisch"
       },
       "fontPrompt": "Gebruik het lettertype “{{font}}” voor de hele app (voeg het toe met het google_fonts-package of als asset) en zorg dat het themabestand het gebruikt.",
-      "kitPrompt": "Geef de hele app een “{{kit}}”-uitstraling. Kies een passend Flutter-package of thema-instellingen, pas het consequent toe op elk scherm en blijf AppTheme voor de kleuren gebruiken."
+      "kitPrompt": "Geef de hele app een “{{kit}}”-uitstraling. Kies een passend Flutter-package of thema-instellingen, pas het consequent toe op elk scherm en blijf AppTheme voor de kleuren gebruiken.",
+      "defaultFont": "Standaard",
+      "deviation": "Het thema is met de hand aangepast. Kies een kleur om het thema van Studio terug te zetten.",
+      "pubGetFailed": "Voor het lettertype is een download nodig die niet lukte. Controleer je internet en kies het lettertype opnieuw.",
+      "saved": "Opgeslagen"
     },
     "data": {
       "title": "Data en inloggen",
@@ -1725,6 +1728,15 @@
         "byClass": "Per klasse",
         "byModel": "Per model",
         "row": "{{name}}: {{runs}} runs, {{pct}}% geslaagd, {{clean}} meteen goed, {{esc}} opgeschaald, ${{cost}}, {{tokens}} tokens"
+      },
+      "ux": {
+        "title": "Studio versus AI per flow",
+        "none": "Nog niets gemeten.",
+        "flow": "Flow",
+        "deterministic": "Studio zelf",
+        "ai": "AI-aanroepen",
+        "chat": "Chatbeurten",
+        "saved": "Geschatte tokenbesparing: {{tokens}} (elke actie die Studio zelf deed, bij gemiddeld {{avg}} tokens per AI-run)."
       }
     }
   },

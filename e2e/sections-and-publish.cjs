@@ -70,6 +70,13 @@ const ok = (c, m) => {
     (await p.getByRole("radio", { name: "#0D9488" }).getAttribute("aria-checked")) === "true",
     "theme swatch applied and selected",
   );
+  // lettertype en stijl worden ook meteen toegepast, zonder chat
+  await p.getByRole("radio", { name: "Poppins" }).click();
+  await p.getByText("Saved", { exact: true }).first().waitFor();
+  ok((await p.getByRole("radio", { name: "Poppins" }).getAttribute("aria-checked")) === "true", "font applied without the chat");
+  await p.getByRole("radio", { name: "Rounded" }).click();
+  await p.waitForFunction(() => document.querySelector('[role=radio][aria-checked=true]') !== null);
+  ok((await p.getByRole("button", { name: /Let Claude|Connect the theme/ }).count()) === 0, "no chat button needed to finish the theme");
   await p.locator("#theme-hex").fill("nope");
   ok(await p.getByRole("alert").filter({ hasText: "color code like" }).isVisible(), "invalid color code explained");
   await p.screenshot({ path: `${S}/51-theme.png` });

@@ -169,6 +169,17 @@ const MIGRATIONS: &[&str] = &[
         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
     "#,
+    // v11 — UX-meting (fase 13): per flow wat deterministisch, via de AI of via de chat ging (geen inhoud, alleen tellers)
+    r#"
+    CREATE TABLE ux_events (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id TEXT,
+        flow       TEXT NOT NULL,
+        kind       TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX ux_events_flow ON ux_events(flow, kind);
+    "#,
 ];
 
 /// De verplichte (blokkerende) checklistpunten. Volgorde = weergavevolgorde.
@@ -461,6 +472,26 @@ impl Db {
         let mut out: Vec<String> = rows.iter().filter_map(|d| serde_json::from_str::<serde_json::Value>(d).ok().and_then(|v| v["text"].as_str().map(String::from))).collect();
         out.reverse();
         Ok(out)
+    }
+
+    /// Eén UX-gebeurtenis (`deterministic`, `ai`, `chat_turn`, `click`, `setting_done`) voor een flow (`theme`, `data`, ...).
+    pub fn ux_record(&self, project_id: Option<&str>, flow: &str, kind: &str) -> AppResult<()> {
+        if !flow.chars().all(|c| c.is_ascii_lowercase() || c == '_') || flow.is_empty() || flow.len() > 40 || !["deterministic", "ai", "chat_turn", "click", "setting_done"].contains(&kind) {
+            return Err(AppError::Invalid("invalid ux event".into()));
+        }
+        self.lock().execute("INSERT INTO ux_events(project_id, flow, kind) VALUES (?1, ?2, ?3)", params![project_id, flow, kind])?;
+        Ok(())
+    }
+
+    /// Tellers per flow en soort, plus het gemiddelde aantal tokens van een AI-run (voor de schatting van de besparing).
+    pub fn ux_summary(&self) -> AppResult<(Vec<(String, String, i64)>, i64)> {
+        let conn = self.lock();
+        let mut st = conn.prepare("SELECT flow, kind, COUNT(*) FROM ux_events GROUP BY flow, kind ORDER BY flow, kind")?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<Vec<_>, _>>()?;
+        let avg: i64 = conn
+            .query_row("SELECT COALESCE(CAST(AVG(tokens) AS INTEGER), 0) FROM runs WHERE tokens > 0 AND purpose = 'work'", [], |r| r.get(0))
+            .unwrap_or(0);
+        Ok((rows, avg))
     }
 
     pub fn purchases_store(&self, project_id: &str, json: &str) -> AppResult<()> {

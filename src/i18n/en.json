@@ -757,15 +757,14 @@
       "seed": "Main color",
       "hex": "Color code",
       "hexInvalid": "Use a color code like #4F46E5",
-      "apply": "Apply color",
       "applied": "Color updated. The preview refreshes by itself.",
-      "notWired": "This app doesn’t use Studio’s theme yet. Ask Claude to connect it.",
+      "notWired": "This app has its own theme code, so Studio’s theme isn’t connected. Ask Claude to connect it.",
       "wire": "Connect the theme",
       "wirePrompt": "Make MaterialApp use AppTheme.light and AppTheme.dark from lib/app_theme.dart, and remove any colors that are set by hand elsewhere.",
       "fontTitle": "Font",
-      "fontHelp": "Claude adds the font as a package and uses it everywhere.",
+      "fontHelp": "Studio adds the font and uses it everywhere. The preview updates by itself.",
       "kitTitle": "Look and feel",
-      "kitHelp": "Claude picks a Flutter package for this style and reuses it across all screens.",
+      "kitHelp": "Studio applies this style to buttons, cards and the app bar across all screens.",
       "fonts": {
         "Inter": "Inter",
         "Poppins": "Poppins",
@@ -779,7 +778,11 @@
         "minimal": "Minimal"
       },
       "fontPrompt": "Use the font “{{font}}” for the whole app (add it with the google_fonts package or bundle it as an asset) and make sure the theme file uses it.",
-      "kitPrompt": "Give the whole app a “{{kit}}” look and feel. Pick a suitable Flutter package or theme settings, apply it consistently on every screen, and keep using AppTheme for colors."
+      "kitPrompt": "Give the whole app a “{{kit}}” look and feel. Pick a suitable Flutter package or theme settings, apply it consistently on every screen, and keep using AppTheme for colors.",
+      "defaultFont": "Default",
+      "deviation": "The theme was changed by hand. Choose a color to put Studio’s theme back.",
+      "pubGetFailed": "The font needs a download that didn’t work. Check your internet connection and choose the font again.",
+      "saved": "Saved"
     },
     "data": {
       "title": "Data and login",
@@ -1725,6 +1728,15 @@
         "byClass": "Per class",
         "byModel": "Per model",
         "row": "{{name}}: {{runs}} runs, {{pct}}% succeeded, {{clean}} clean first time, {{esc}} escalated, ${{cost}}, {{tokens}} tokens"
+      },
+      "ux": {
+        "title": "Studio vs. AI per flow",
+        "none": "Nothing measured yet.",
+        "flow": "Flow",
+        "deterministic": "Studio itself",
+        "ai": "AI calls",
+        "chat": "Chat turns",
+        "saved": "Estimated tokens saved: {{tokens}} (each action Studio did itself, at an average of {{avg}} tokens per AI run)."
       }
     }
   },

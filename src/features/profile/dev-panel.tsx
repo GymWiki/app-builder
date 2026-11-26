@@ -126,6 +126,49 @@ function ModelOverride() {
   );
 }
 
+/** UX-meting: per flow wat Studio zelf deed (deterministisch), wat via de AI ging en hoeveel tokens dat naar schatting scheelde. */
+function UxOverview() {
+  const { t } = useTranslation();
+  const q = useQuery({ queryKey: ["uxSummary"], queryFn: () => api.uxSummary(), refetchInterval: 5000 });
+  if (!q.data) return null;
+  const flows = Object.entries(q.data.flows);
+  return (
+    <div className="space-y-1 border-t pt-3" data-testid="ux-overview">
+      <h3 className="t-body font-medium">{t("profile.dev.ux.title")}</h3>
+      {flows.length === 0 ? (
+        <p className="t-small text-muted-foreground">{t("profile.dev.ux.none")}</p>
+      ) : (
+        <table className="t-small w-full text-left font-mono">
+          <thead className="text-muted-foreground">
+            <tr>
+              <th>{t("profile.dev.ux.flow")}</th>
+              <th>{t("profile.dev.ux.deterministic")}</th>
+              <th>{t("profile.dev.ux.ai")}</th>
+              <th>{t("profile.dev.ux.chat")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {flows.map(([flow, k]) => (
+              <tr key={flow}>
+                <td>{flow}</td>
+                <td>{k.deterministic ?? 0}</td>
+                <td>{k.ai ?? 0}</td>
+                <td>{k.chat_turn ?? 0}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="t-small text-muted-foreground">
+        {t("profile.dev.ux.saved", {
+          tokens: q.data.estimatedTokensSaved.toLocaleString(),
+          avg: q.data.avgTokensPerAiRun.toLocaleString(),
+        })}
+      </p>
+    </div>
+  );
+}
+
 /** Verborgen ontwikkelaarsmodus: technische toestand van het projectprofiel en de modelkeuze. */
 export function DevPanel() {
   const { t } = useTranslation();
@@ -135,6 +178,7 @@ export function DevPanel() {
       <h2 className="t-heading">{t("profile.dev.title")}</h2>
       <p className="t-small text-muted-foreground">{t("profile.dev.on")}</p>
       <ModelOverride />
+      <UxOverview />
       <ul className="divide-y">
         {(projects.data ?? []).map((p) => (
           <Info key={p.id} project={p} />

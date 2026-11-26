@@ -536,13 +536,89 @@ fn job_state(app: &AppHandle, id: &str, job: &str, status: &str) {
 #[tauri::command]
 pub fn theme_get(state: State<'_, AppState>, project_id: String) -> AppResult<serde_json::Value> {
     let (_, dir) = project_and_dir(&state, &project_id)?;
-    crate::studio_tools::get_theme(&dir)
+    let mut v = crate::studio_tools::get_theme(&dir)?;
+    let cfg = crate::config::load(&dir);
+    v["font"] = serde_json::json!(cfg.theme.font);
+    v["kit"] = serde_json::json!(cfg.theme.kit);
+    // Is er iets met de hand veranderd? (de UI zegt dat dan kort en past het stil terug)
+    v["deviation"] = serde_json::json!(cfg.theme.seed.is_some() && crate::config::plan(&dir, &cfg).iter().any(|c| c.area == "theme"));
+    Ok(v)
 }
 
 #[tauri::command]
 pub fn theme_set(state: State<'_, AppState>, project_id: String, seed_color: String) -> AppResult<serde_json::Value> {
     let (_, dir) = project_and_dir(&state, &project_id)?;
     crate::studio_tools::set_theme(&dir, &seed_color)
+}
+
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemePatch {
+    pub seed_color: Option<String>,
+    /// `Some("")` = terug naar de standaard.
+    pub font: Option<String>,
+    pub kit: Option<String>,
+}
+
+/// Thema-instellingen opslaan en meteen toepassen (deterministisch, geen AI): kleur, lettertype, stijl en koppeling aan de app.
+/// Vóór een wijziging komt automatisch een momentopname; daarna `flutter pub get` (alleen bij een nieuw pakket) en een herstart van de preview.
+#[tauri::command]
+pub async fn theme_apply(state: State<'_, AppState>, project_id: String, patch: ThemePatch) -> AppResult<serde_json::Value> {
+    let (p, dir) = project_and_dir(&state, &project_id)?;
+    let db = state.db.clone();
+    let preview = state.preview.clone();
+    blocking(move || {
+        let mut cfg = crate::config::load(&dir);
+        if let Some(s) = patch.seed_color {
+            cfg.theme.seed = Some(s.to_uppercase());
+        }
+        if let Some(f) = patch.font {
+            cfg.theme.font = Some(f).filter(|x| !x.is_empty());
+        }
+        if let Some(k) = patch.kit {
+            cfg.theme.kit = Some(k).filter(|x| !x.is_empty() && x != "material");
+        }
+        crate::config::validate(&cfg)?;
+        if !crate::config::plan(&dir, &cfg).is_empty() {
+            let _ = crate::studio_tools::create_snapshot(&db, &p, "Before changing the theme", "auto");
+        }
+        let rep = crate::config::apply(&dir, &cfg)?;
+        let mut pub_get_failed = false;
+        if rep.needs_pub_get {
+            pub_get_failed = match proc::find("flutter") {
+                Some(f) => proc::run(&f, &["pub", "get"], Some(&dir), std::time::Duration::from_secs(180)).map(|o| o.status != Some(0)).unwrap_or(true),
+                None => true,
+            };
+        }
+        let _ = db.ux_record(Some(&p.id), "theme", "deterministic");
+        let _ = db.ux_record(Some(&p.id), "theme", "setting_done");
+        // Een nieuw pakket vraagt een herstart (hot reload pakt het niet op); anders hot reload door de preview zelf.
+        if rep.needs_pub_get && !pub_get_failed {
+            let _ = preview.reload();
+        }
+        let mut v = serde_json::to_value(&rep)?;
+        v["pubGetFailed"] = serde_json::json!(pub_get_failed);
+        Ok(v)
+    })
+    .await
+}
+
+/// UX-meting voor de ontwikkelaarsmodus: wat gebeurde deterministisch en wat via de AI, en de geschatte tokenbesparing.
+#[tauri::command]
+pub fn ux_summary(state: State<'_, AppState>) -> AppResult<serde_json::Value> {
+    let (rows, avg) = state.db.ux_summary()?;
+    let mut flows: std::collections::BTreeMap<String, serde_json::Map<String, serde_json::Value>> = Default::default();
+    for (flow, kind, n) in rows {
+        flows.entry(flow).or_default().insert(kind, n.into());
+    }
+    let det_total: i64 = flows.values().map(|m| m.get("deterministic").and_then(|v| v.as_i64()).unwrap_or(0)).sum();
+    let avg = if avg > 0 { avg } else { 8000 };
+    Ok(serde_json::json!({ "flows": flows, "avgTokensPerAiRun": avg, "estimatedTokensSaved": det_total * avg }))
+}
+
+#[tauri::command]
+pub fn ux_event(state: State<'_, AppState>, project_id: Option<String>, flow: String, kind: String) -> AppResult<()> {
+    state.db.ux_record(project_id.as_deref(), &flow, &kind)
 }
 
 #[tauri::command]

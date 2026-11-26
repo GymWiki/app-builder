@@ -372,6 +372,7 @@ function startMockFrames() {
   );
 }
 const mockShots = new Map<string, string>();
+const uxCounts: Record<string, Record<string, number>> = {};
 // Alleen voor de demo-tests: een route-gebeurtenis alsof de gebruiker in de preview zelf navigeert.
 (window as unknown as { __mockEmit: typeof emit }).__mockEmit = emit;
 const MOCK_PAGE =
@@ -447,6 +448,8 @@ const fs = {
   testPassed: false,
   testRan: false,
   seed: "#4F46E5" as string | null,
+  font: null as string | null,
+  kit: null as string | null,
 };
 let snaps = [
   {
@@ -924,7 +927,25 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
             },
           ];
     case "theme_get":
-      return { managed: fs.seed !== null, seedColor: fs.seed };
+      return { managed: fs.seed !== null, seedColor: fs.seed, font: fs.font, kit: fs.kit, deviation: false };
+    case "theme_apply": {
+      const patch = args.patch as { seedColor?: string; font?: string; kit?: string };
+      if (patch.seedColor) fs.seed = patch.seedColor.toUpperCase();
+      if (patch.font !== undefined) fs.font = patch.font || null;
+      if (patch.kit !== undefined) fs.kit = patch.kit && patch.kit !== "material" ? patch.kit : null;
+      uxCounts.theme = { ...(uxCounts.theme ?? {}), deterministic: (uxCounts.theme?.deterministic ?? 0) + 1 };
+      return { changed: [{ area: "theme", file: "lib/core/theme/app_theme.dart" }], needsPubGet: false, wired: true, notes: [], pubGetFailed: false };
+    }
+    case "ux_summary": {
+      const det = Object.values(uxCounts).reduce((n, m) => n + (m.deterministic ?? 0), 0);
+      return { flows: uxCounts, avgTokensPerAiRun: 8000, estimatedTokensSaved: det * 8000 };
+    }
+    case "ux_event":
+      uxCounts[args.flow as string] = {
+        ...(uxCounts[args.flow as string] ?? {}),
+        [args.kind as string]: (uxCounts[args.flow as string]?.[args.kind as string] ?? 0) + 1,
+      };
+      return;
     case "theme_set":
       fs.seed = (args.seedColor as string).toUpperCase();
       return { ok: true, wired: true, next: "" };

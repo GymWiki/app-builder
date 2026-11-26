@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import type { Applied, Purpose } from "@/lib/types";
 import { toastError } from "@/lib/toast";
 import { toast } from "sonner";
+import { api } from "@/lib/ipc";
 
 export const inputCls =
   "bg-card placeholder:text-muted-foreground focus-visible:border-ring h-10 w-full rounded-lg border px-3 t-body outline-none transition-colors duration-[var(--dur)] disabled:opacity-60";
@@ -15,6 +16,9 @@ export function useAsk(projectId: string) {
   const { t, i18n } = useTranslation();
   const running = useChat((s) => s.byProject[projectId]?.running ?? false);
   const ask = (prompt: string, purpose?: Purpose) => {
+    // Meting: een instelling die toch de AI nodig had (hoort naar nul te gaan).
+    void api.uxEvent(projectId, "assist", "ai").catch(() => undefined);
+    void api.uxEvent(projectId, "assist", "chat_turn").catch(() => undefined);
     void useChat
       .getState()
       .send(projectId, prompt, null, i18n.language.slice(0, 2), purpose)

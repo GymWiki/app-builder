@@ -1,4 +1,6 @@
 mod extent;
+mod config;
+mod derive;
 mod purchases;
 mod purchases_flow;
 mod inspect;
@@ -184,6 +186,9 @@ pub fn run() {
             commands::preview_devices,
             commands::theme_get,
             commands::theme_set,
+            commands::theme_apply,
+            commands::ux_summary,
+            commands::ux_event,
             commands::screens_graph,
             commands::engines_list,
             commands::engines_set_order,

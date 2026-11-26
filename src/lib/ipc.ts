@@ -132,7 +132,20 @@ export const api = {
   previewReload: () => call<void>("preview_reload"),
   previewDevices: () => call<Device[]>("preview_devices"),
 
-  themeGet: (projectId: string) => call<{ managed: boolean; seedColor: string | null }>("theme_get", { projectId }),
+  themeGet: (projectId: string) => call<{ managed: boolean; seedColor: string | null; font: string | null; kit: string | null; deviation: boolean }>(
+      "theme_get",
+      { projectId },
+    ),
+  themeApply: (projectId: string, patch: { seedColor?: string; font?: string; kit?: string }) =>
+    call<{ changed: { area: string; file: string }[]; needsPubGet: boolean; wired: boolean; notes: string[]; pubGetFailed: boolean }>(
+      "theme_apply",
+      { projectId, patch },
+    ),
+  uxSummary: () =>
+    call<{ flows: Record<string, Record<string, number>>; avgTokensPerAiRun: number; estimatedTokensSaved: number }>(
+      "ux_summary",
+    ),
+  uxEvent: (projectId: string | null, flow: string, kind: string) => call<void>("ux_event", { projectId, flow, kind }),
   themeSet: (projectId: string, seedColor: string) =>
     call<{ ok: boolean; wired: boolean; next: string }>("theme_set", { projectId, seedColor }),
   screensGraph: (projectId: string) => call<ScreenGraph>("screens_graph", { projectId }),
