@@ -84,6 +84,16 @@ pub fn total_tokens(u: &serde_json::Value) -> Option<u64> {
     (!parts.is_empty()).then(|| parts.iter().sum())
 }
 
+/// De vier soorten tokens uit het `usage`-blok van het resultaat.
+pub fn token_usage(u: &serde_json::Value) -> Option<super::TokenUsage> {
+    u.is_object().then(|| super::TokenUsage {
+        input: u["input_tokens"].as_u64().unwrap_or(0),
+        output: u["output_tokens"].as_u64().unwrap_or(0),
+        cache_read: u["cache_read_input_tokens"].as_u64().unwrap_or(0),
+        cache_write: u["cache_creation_input_tokens"].as_u64().unwrap_or(0),
+    })
+}
+
 pub fn parse_line(line: &str, project_dir: &Path) -> Vec<ChatEvent> {
     let Ok(v) = serde_json::from_str::<Value>(line.trim()) else { return vec![] };
     let kind = v.get("type").and_then(Value::as_str).unwrap_or("");
@@ -166,7 +176,7 @@ pub fn parse_line(line: &str, project_dir: &Path) -> Vec<ChatEvent> {
                 }
                 .to_string()
             });
-            vec![ChatEvent::Done { ok, text, duration_ms: v["duration_ms"].as_u64(), code, cost_usd: v["total_cost_usd"].as_f64(), turns: v["num_turns"].as_u64().map(|n| n as u32), tokens: total_tokens(&v["usage"]) }]
+            vec![ChatEvent::Done { ok, text, duration_ms: v["duration_ms"].as_u64(), code, cost_usd: v["total_cost_usd"].as_f64(), turns: v["num_turns"].as_u64().map(|n| n as u32), tokens: total_tokens(&v["usage"]), usage: token_usage(&v["usage"]) }]
         }
         _ => vec![],
     }

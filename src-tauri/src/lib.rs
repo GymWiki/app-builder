@@ -118,6 +118,7 @@ pub fn run() {
                 scopes,
                 checks: true,
                 flutter: None,
+                ablation: Default::default(),
                 emit: Arc::new(move |name, payload| {
                     let _ = handle.emit(name, payload);
                 }),

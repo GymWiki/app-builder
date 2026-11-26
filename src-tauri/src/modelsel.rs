@@ -59,6 +59,17 @@ pub struct Escalation {
 pub struct Downgrade {
     pub window: usize,
     pub min_clean: usize,
+    /// Strengere (of mildere) drempel voor één klasse. De evaluatie liet zien dat complexe taken op lichtere modellen vaak een
+    /// reparatie nodig hebben (sonnet 33% en haiku 50% meteen goed, opus 100%), dus daar is meer bewijs nodig.
+    #[serde(default)]
+    pub per_class: BTreeMap<String, DowngradeRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DowngradeRule {
+    pub window: usize,
+    pub min_clean: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -91,7 +102,7 @@ pub struct EngineConfig {
 
 const CLAUDE: &str = include_str!("../../engines/claude.json");
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Class {
     Trivial,
@@ -308,17 +319,17 @@ pub struct Choice {
 
 /// Mag de klasse een niveau omlaag? Alleen na `min_clean` keer meteen goed binnen het venster, en zonder een mislukking op het
 /// lichtere niveau in de twee vensters daarvoor (anders pendelt de keuze).
-pub fn downgrade_ok(cfg: &EngineConfig, mapped: usize, history: &[HistoryRow]) -> bool {
-    let d = &cfg.downgrade;
-    if mapped == 0 || d.window == 0 || history.len() < d.window {
+pub fn downgrade_ok(cfg: &EngineConfig, class: Class, mapped: usize, history: &[HistoryRow]) -> bool {
+    let rule = cfg.downgrade.per_class.get(class.as_str()).cloned().unwrap_or(DowngradeRule { window: cfg.downgrade.window, min_clean: cfg.downgrade.min_clean });
+    if mapped == 0 || rule.window == 0 || history.len() < rule.window {
         return false;
     }
-    let clean = history.iter().take(d.window).filter(|h| h.clean).count();
-    if clean < d.min_clean {
+    let clean = history.iter().take(rule.window).filter(|h| h.clean).count();
+    if clean < rule.min_clean {
         return false;
     }
     let lower = &cfg.tiers[mapped - 1].id;
-    !history.iter().take(d.window * 2).any(|h| &h.tier == lower && !h.clean)
+    !history.iter().take(rule.window * 2).any(|h| &h.tier == lower && !h.clean)
 }
 
 pub fn choose(cfg: &EngineConfig, a: &Assessment, purpose: Purpose, history: &[HistoryRow], override_value: Option<&str>) -> Choice {
@@ -348,7 +359,7 @@ pub fn choose(cfg: &EngineConfig, a: &Assessment, purpose: Purpose, history: &[H
         return named(i, "helper task".into());
     }
     let mapped = cfg.tier_of_class(a.class);
-    let (tier, why) = if purpose == Purpose::Work && downgrade_ok(cfg, mapped, history) {
+    let (tier, why) = if purpose == Purpose::Work && downgrade_ok(cfg, a.class, mapped, history) {
         (mapped - 1, format!("{} class, lowered by statistics", a.class.as_str()))
     } else {
         (mapped, format!("{} class", a.class.as_str()))
@@ -496,6 +507,40 @@ mod tests {
         // Trivial kan niet lager dan het lichtste niveau.
         let triv = a("small", "Change the title", 1, false, &[]);
         assert_eq!(choose(&c, &triv, Purpose::Work, &rows("light", &[true; 9]), None).tier_id, "light");
+    }
+
+    #[test]
+    fn complex_work_needs_more_clean_runs_before_it_is_lowered() {
+        let c = cfg();
+        let comp = a("shared", "Add dark mode with a switch", 6, false, &[]);
+        assert_eq!(choose(&c, &comp, Purpose::Work, &rows("strong", &[true; 5]), None).tier_id, "strong", "five clean runs are enough for normal work, not for complex work");
+        assert_eq!(choose(&c, &comp, Purpose::Work, &rows("strong", &[true; 7]), None).tier_id, "strong");
+        assert_eq!(choose(&c, &comp, Purpose::Work, &rows("strong", &[true; 8]), None).tier_id, "mid", "eight in a row: one tier lighter");
+        let mut h = rows("strong", &[true; 7]);
+        h.insert(3, HistoryRow { tier: "strong".into(), clean: false });
+        assert_eq!(choose(&c, &comp, Purpose::Work, &h, None).tier_id, "strong", "one messy run in the window of eight blocks it");
+    }
+
+    /// De opdrachten van de evaluatieset moeten door de signalen in de verwachte klasse vallen (afgesteld op echte cijfers).
+    #[test]
+    fn the_evaluation_prompts_land_in_the_expected_class() {
+        use crate::evals::load_tasks_of;
+        let c = cfg();
+        let none = |_: &str| false;
+        let class_at = |level: &str, text: &str| assess(&c, &AssessInput { level, text, files: 3, previous_failed: false, has_skill: &none }).class;
+        for t in load_tasks_of("hard").tasks {
+            match t.expect.as_str() {
+                // Een moeilijke taak mag nooit lichter dan "complex" worden gezien als het scherm al bekend is.
+                "complex" => assert_eq!(class_at("screen", &t.prompt), Class::Complex, "{}", t.id),
+                // Een gewone taak mag niet zwaarder dan "normaal" zijn als de scope klein is.
+                _ => assert!(class_at("small", &t.prompt) <= Class::Normal, "{}", t.id),
+            }
+        }
+        for t in load_tasks_of("basic").tasks {
+            if t.expect == "trivial" {
+                assert_eq!(class_at("small", &t.prompt), Class::Trivial, "{}", t.id);
+            }
+        }
     }
 
     #[test]

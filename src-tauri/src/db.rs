@@ -154,6 +154,13 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE runs ADD COLUMN tokens    INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE runs ADD COLUMN planned   INTEGER NOT NULL DEFAULT 0;
     "#,
+    // v9 — ruwe tokens per soort (invoer, uitvoer, cache gelezen, cache geschreven)
+    r#"
+    ALTER TABLE runs ADD COLUMN input_tokens  INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE runs ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE runs ADD COLUMN cache_read_tokens  INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE runs ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0;
+    "#,
 ];
 
 /// De verplichte (blokkerende) checklistpunten. Volgorde = weergavevolgorde.
@@ -267,6 +274,10 @@ pub struct RunRecord {
     pub escalated: bool,
     pub tokens: i64,
     pub planned: bool,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_write_tokens: i64,
 }
 
 /// Cijfers per klasse of per model.
@@ -640,11 +651,13 @@ impl Db {
     pub fn run_insert(&self, project_id: &str, r: &RunRecord) -> AppResult<()> {
         self.lock().execute(
             "INSERT INTO runs(project_id, level, final_level, screen, why, expansions, denied_edits, files_changed, issues_before, repairs,
-                              rolled_back, ok, duration_ms, cost_usd, turns, ai_questions, class, tier, model, engine, purpose, escalated, tokens, planned)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)",
+                              rolled_back, ok, duration_ms, cost_usd, turns, ai_questions, class, tier, model, engine, purpose, escalated, tokens, planned,
+                              input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)",
             params![
                 project_id, r.level, r.final_level, r.screen, r.why, r.expansions, r.denied_edits, r.files_changed, r.issues_before, r.repairs,
-                r.rolled_back, r.ok, r.duration_ms, r.cost_usd, r.turns, r.ai_questions, r.class, r.tier, r.model, r.engine, r.purpose, r.escalated, r.tokens, r.planned
+                r.rolled_back, r.ok, r.duration_ms, r.cost_usd, r.turns, r.ai_questions, r.class, r.tier, r.model, r.engine, r.purpose, r.escalated, r.tokens, r.planned,
+                r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_write_tokens
             ],
         )?;
         Ok(())
@@ -675,11 +688,16 @@ impl Db {
             escalated: r.get(20)?,
             tokens: r.get(21)?,
             planned: r.get(22)?,
+            input_tokens: r.get(23)?,
+            output_tokens: r.get(24)?,
+            cache_read_tokens: r.get(25)?,
+            cache_write_tokens: r.get(26)?,
         })
     }
 
     const RUN_COLS: &'static str = "level, final_level, screen, why, expansions, denied_edits, files_changed, issues_before, repairs, rolled_back, ok,
-        duration_ms, cost_usd, turns, ai_questions, class, tier, model, engine, purpose, escalated, tokens, planned";
+        duration_ms, cost_usd, turns, ai_questions, class, tier, model, engine, purpose, escalated, tokens, planned,
+        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens";
 
     /// Samenvatting van de laatste `limit` runs van een project (alles als getallen, voor het ontwikkelaarspaneel).
     pub fn runs_summary(&self, project_id: &str, limit: i64) -> AppResult<RunsSummary> {

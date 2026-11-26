@@ -191,6 +191,44 @@ Gecontroleerd tegen de actuele documentatie (web, november 2026); afwijkingen va
 
 **Wat dit wel en niet zegt.** Alle 39 runs slaagden, op elk model. De set onderscheidt de modellen dus niet op slagingskans; hij laat vooral het kostenverschil zien: lichtste ≈ 1/25 van het sterkste per taak. De huidige mapping (auto) kost 38% minder dan altijd het sterkste, met dezelfde uitkomst. De controles zijn structureel (aanwezigheid, analyze, rooktest, twee echte tests), geen oordeel over ontwerpkwaliteit, en het sjabloon is klein. Daarom is de mapping **niet** naar het lichtste model geschoven: dat zou kwaliteit op een bewijs baseren dat er niet is. De ingebouwde statistiek doet dat voorzichtig en per klasse, met terugval. Afwijkingen gevonden door de set: Studio zag een toernooi met rondes en standen als "normaal" (nu: lange verzoeken tellen zwaarder), "een tweede scherm" als kleine tweak (nu: gedeeld niveau, want router en core veranderen mee), en een eenvoudige tooltip en een kleine bug als zwaarder dan nodig (veilige kant, kost alleen geld).
 
+## Fase 11a, vervolg: zwaardere set, basislijn en ruwe tokens
+
+**Opzet.** Een groter testproject (`evals/project`, "Trip Expenses": vier schermen, modellen, opslag met versies, balansberekening, go_router met parameters) en negen zwaardere opdrachten (`evals/hard-tasks.json`): wijziging over meerdere schermen, twee subtiele statebugs met ingebouwde bug, datamodelwijziging met migratie, navigatie met parameters, een refactor in `core/`, en twee taken waar ontwerp en gedrag moeten kloppen (formaat, tikdoel en overflow op 320 px met grote tekst; een afrekenflow die ook na terugkomen klopt). Elke taak heeft een gedragstest die pas **na** de run in het project komt (het model ziet hem nooit, ook niet via de controle of reparatie). De twee bugtaken zijn gecontroleerd: de test faalt met de bug en slaagt op het schone project. Variant **router** is volledige Studio; variant **baseline** zet scope-router en projectprofiel uit: het hele project, geen scope-regel, geen skills, regels, hooks, schermindex of Dart-MCP, en één lange CLAUDE.md (78 regels algemene richtlijnen plus bestandslijst en de volledige code). Beide varianten behouden dezelfde controle (analyze, tests, reparatie), zodat "geslaagd" hetzelfde betekent. Per run staan de ruwe tokens (invoer, uitvoer, cache gelezen, cache geschreven) uit het resultaat van de CLI in de database en in `evals/last-results-hard-*.jsonl`. 54 echte runs: 9 taken x 3 modellen x 2 varianten.
+
+## Per class, variant and model (averages per run)
+
+| class   | variant  | model  | runs | success | clean first time | input | output | cache read | cache write | cost   | time |
+| ------- | -------- | ------ | ---- | ------- | ---------------- | ----- | ------ | ---------- | ----------- | ------ | ---- |
+| complex | baseline | haiku  | 6    | 100%    | 0%               | 0k    | 7k     | 709k       | 34k         | $0.032 | 64s  |
+| complex | baseline | opus   | 6    | 100%    | 67%              | 0k    | 5k     | 413k       | 24k         | $0.516 | 79s  |
+| complex | baseline | sonnet | 6    | 100%    | 0%               | 0k    | 4k     | 457k       | 29k         | $0.377 | 64s  |
+| complex | router   | haiku  | 6    | 83%     | 50%              | 0k    | 6k     | 558k       | 23k         | $0.018 | 58s  |
+| complex | router   | opus   | 6    | 100%    | 100%             | 0k    | 6k     | 474k       | 22k         | $0.380 | 84s  |
+| complex | router   | sonnet | 6    | 100%    | 33%              | 0k    | 4k     | 482k       | 20k         | $0.276 | 63s  |
+| normal  | baseline | haiku  | 3    | 100%    | 0%               | 0k    | 12k    | 876k       | 38k         | $0.043 | 101s |
+| normal  | baseline | opus   | 3    | 100%    | 67%              | 0k    | 7k     | 592k       | 26k         | $0.582 | 112s |
+| normal  | baseline | sonnet | 3    | 67%     | 0%               | 0k    | 4k     | 412k       | 23k         | $0.285 | 60s  |
+| normal  | router   | haiku  | 3    | 100%    | 100%             | 0k    | 10k    | 655k       | 29k         | $0.017 | 70s  |
+| normal  | router   | opus   | 3    | 100%    | 100%             | 0k    | 5k     | 391k       | 19k         | $0.330 | 77s  |
+| normal  | router   | sonnet | 3    | 100%    | 100%             | 0k    | 3k     | 312k       | 17k         | $0.134 | 46s  |
+
+## Router and profile versus baseline, per model (same tasks)
+
+| model  | variant  | runs | success | fresh tokens (input+output+cache write) | all tokens | cost  | time |
+| ------ | -------- | ---- | ------- | --------------------------------------- | ---------- | ----- | ---- |
+| haiku  | router   | 9    | 89%     | 32k                                     | 623k       | $0.02 | 62s  |
+| haiku  | baseline | 9    | 100%    | 44k                                     | 809k       | $0.04 | 77s  |
+| opus   | router   | 9    | 100%    | 26k                                     | 473k       | $0.36 | 81s  |
+| opus   | baseline | 9    | 100%    | 31k                                     | 503k       | $0.54 | 90s  |
+| sonnet | router   | 9    | 100%    | 23k                                     | 448k       | $0.23 | 57s  |
+| sonnet | baseline | 9    | 89%     | 31k                                     | 473k       | $0.35 | 63s  |
+
+**Wat dit laat zien.** Het projectprofiel plus de router verwerken minder: ongeveer 16 tot 27% minder "verse" tokens (invoer + uitvoer + naar de cache geschreven) en 5 tot 23% minder tokens in totaal, 10 tot 19% sneller, en 33 tot 50% goedkoper (de kosten schommelen mee met cache-schrijven, dus lees dat laatste getal als indicatie). Dat effect is los van de modelkeuze gemeten, omdat het model per rij vast staat. Slagingskans: 26 van 27 per variant. Eén echte mislukking per variant: haiku liet bij de navigatietaak het tikken op een uitgave onbedraad (router), sonnet haalde de afreken-ontwerptaak niet (baseline). "Meteen goed" (zonder reparatie of terugdraaien) is het scherpste verschil: op de complexe taken opus 100% met de router en 67% in de basislijn, haiku 50% en sonnet 33% met de router, en beide 0% in de basislijn. Lichtere modellen halen het dus meestal wel, maar met een reparatieronde.
+
+**Wat dit nog steeds niet bewijst.** (1) n = 1 per cel: een enkele mislukking of een reparatie kan toeval zijn; twee mislukkingen in 54 runs onderscheiden de modellen niet statistisch. (2) Eén groter testproject van een paar honderd regels; echte apps zijn groter en rommeliger, en juist daar kan de router méér winnen (of de index tekortschieten). (3) De gedragstests dekken wat ik heb bedacht, geen ontwerpkwaliteit of onderhoudbaarheid van de code; de ontwerptaken controleren alleen formaat, tikdoel en overflow. (4) Router en profiel zijn samen uitgezet: de tokenwinst van fase 6 (profiel), 7 (router) en 8 (gerichte controle) is dus niet per fase te scheiden. (5) De kosten zijn lijstprijs uit de CLI en hangen af van wat er toevallig in de cache stond; tokens zijn betrouwbaarder dan euro's. (6) De opschaal- en neerwaartse-bijstelregels zelf zijn hier niet gemeten (de modellen waren vast gekozen); ze zijn alleen met nep-CLI's getest. (7) De classificatie is afgesteld op dezelfde opdrachten waarop ze is getoetst. Dat is een risico op overfitting; daarom is de test bewust ruim (een klasse minimaal) en blijft de mapping staan zoals ze was.
+
+**Aanpassingen op grond van de cijfers (mapping ongewijzigd).** (a) Nieuwe signalen: `design_behavior` en `state_kept` (gewicht 3: eisen over formaat/leesbaarheid en over "blijft kloppen na terugkomen") omdat dat de taken waren waar lichtere modellen onderdelen lieten vallen en waar Studio ze als "normaal" zag; `multi_screen` (gewicht 2) en woorden voor migraties. (b) Complexe taken worden pas een niveau lichter na 8 van de laatste 8 keer meteen goed (`downgrade.perClass.complex`), tegen 5 van 5 voor de rest, omdat complexe taken op lichtere modellen in de meting vaak een reparatie nodig hadden. (c) Een test controleert dat alle 22 opdrachten van de set in de verwachte klasse vallen.
+
 ## Preview-uitvoer (echt gemeten, Flutter 3.50.1, `flutter run -d web-server`)
 
 - Succes: `Performing hot restart...` (bezig) en daarna dezelfde regel met `123ms` (klaar); er is geen "Reloaded N of M libraries" op web.

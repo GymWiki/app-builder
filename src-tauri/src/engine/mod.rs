@@ -51,10 +51,31 @@ pub enum ChatEvent {
         /// Totaal aantal tokens van de beurt (invoer, uitvoer en cache) waar de CLI dat meldt.
         #[serde(default)]
         tokens: Option<u64>,
+        /// Ruwe tokens per soort, voor zover de CLI ze geeft.
+        #[serde(default)]
+        usage: Option<TokenUsage>,
     },
     /// Een statusregel van Studio zelf (werkgebied gekozen, gerepareerd, teruggedraaid, ...). De UI vertaalt `code`.
     Status { code: String, detail: Option<String> },
     Error { code: String, message: String },
+}
+
+/// Ruwe tokens van een beurt: invoer, uitvoer, uit de cache gelezen en naar de cache geschreven.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+pub struct TokenUsage {
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+}
+
+impl TokenUsage {
+    pub fn add(&mut self, o: &TokenUsage) {
+        self.input += o.input;
+        self.output += o.output;
+        self.cache_read += o.cache_read;
+        self.cache_write += o.cache_write;
+    }
 }
 
 pub struct TurnRequest {
