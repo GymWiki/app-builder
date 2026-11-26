@@ -5,11 +5,18 @@ import { StatusBadge, type Tone } from "@/components/ds/status-badge";
 import { useChat } from "@/features/chat/chat-store";
 import { PhoneFrame, type DeviceId } from "@/features/project/phone-frame";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { api } from "@/lib/ipc";
 import { toastError } from "@/lib/toast";
 import type { Device, PreviewStatus } from "@/lib/types";
 import { DeviceDialog } from "./device-dialog";
 import { usePreview } from "./preview-store";
+
+/** Plek van een aangeklikt element, in procenten van het telefoonscherm (0–100). */
+export interface PickPoint {
+  x: number;
+  y: number;
+}
 
 const TONE: Record<PreviewStatus, Tone> = {
   stopped: "neutral",
@@ -24,12 +31,20 @@ export function PreviewPanel({
   device,
   dark,
   route,
+  screenName,
+  pick,
+  onPick,
 }: {
   projectId: string;
   device: DeviceId;
   dark: boolean;
   /** Pad van de gekozen pagina (go_router); de preview springt er naartoe. */
   route?: string | null;
+  /** Naam van de gekozen pagina (voor de melding onder de werkbalk). */
+  screenName?: string | null;
+  /** Het gekozen element (positie in procenten van het telefoonscherm), of `null` = de hele pagina. */
+  pick?: PickPoint | null;
+  onPick?: (p: PickPoint | null) => void;
 }) {
   const { t, i18n } = useTranslation();
   const state = usePreview((s) => s.state);
@@ -50,14 +65,21 @@ export function PreviewPanel({
     prev.current = status;
   }, [status]);
 
-  // Preview stoppen als je het project verlaat (zware processen horen niet op de achtergrond te blijven).
-  useEffect(
-    () => () => {
-      const s = usePreview.getState().state;
-      if (s.projectId === projectId && s.status !== "stopped") void api.previewStop().catch(() => undefined);
-    },
-    [projectId],
-  );
+  // De preview start vanzelf: de gebruiker wil de app meteen zien, zonder eerst op een knop te hoeven drukken.
+  const autoStarted = useRef<string | null>(null);
+  useEffect(() => {
+    if (autoStarted.current === projectId) return;
+    autoStarted.current = projectId;
+    void api
+      .previewState()
+      .then((st) => {
+        if (st.projectId === projectId && st.status !== "stopped") return;
+        if (st.projectId !== null && st.projectId !== projectId && st.status !== "stopped") return;
+        return api.previewStart(projectId, "web");
+      })
+      .catch((e) => toastError(e, t));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   useEffect(() => {
     if (!showLog) return;
@@ -114,11 +136,11 @@ export function PreviewPanel({
       <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
         <StatusBadge tone={TONE[status]}>{t(`preview.status.${status}`)}</StatusBadge>
         <div className="flex-1" />
+        <Button size="sm" variant="outline" onClick={() => setDevices(true)}>
+          <Smartphone /> {t("preview.realDevice")}
+        </Button>
         {status === "stopped" || (status === "error" && !state.url) ? (
           <>
-            <Button size="sm" variant="outline" onClick={() => setDevices(true)}>
-              <Smartphone /> {t("preview.realDevice")}
-            </Button>
             <Button size="sm" disabled={pending} onClick={() => void start("web")}>
               {pending ? <Loader2 className="animate-spin" /> : <Play />} {t("preview.start")}
             </Button>
@@ -143,6 +165,34 @@ export function PreviewPanel({
         )}
       </div>
 
+      {active && !onDevice && state.url && (
+        <div
+          role="status"
+          data-testid="pick-banner"
+          className={cn(
+            "t-small flex shrink-0 items-center gap-2 border-b px-3 py-2",
+            pick ? "bg-warning/15" : "bg-accent/60",
+          )}
+        >
+          <span className="min-w-0 flex-1">
+            {pick ? (
+              <>
+                <strong>{t("preview.pick.elementTitle")}</strong> {t("preview.pick.elementBody")}
+              </>
+            ) : (
+              <>
+                <strong>{t("preview.pick.pageTitle", { name: screenName ?? "" })}</strong> {t("preview.pick.pageBody")}
+              </>
+            )}
+          </span>
+          {pick && (
+            <Button size="xs" variant="outline" onClick={() => onPick?.(null)}>
+              {t("preview.pick.back")}
+            </Button>
+          )}
+        </div>
+      )}
+
       <div className="min-h-0 flex-1">
         <PhoneFrame device={device} dark={dark}>
           {active && !onDevice && state.url ? (
@@ -153,6 +203,36 @@ export function PreviewPanel({
               className="absolute inset-0 size-full border-0 bg-white"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             />
+          ) : null}
+          {active && !onDevice && state.url ? (
+            // Klikken in de app doen hier niets (dat hoort bij "Testrun"): ze kiezen alleen een element voor de chat.
+            <div
+              data-testid="pick-layer"
+              aria-label={t("preview.pick.layer")}
+              title={t("preview.pick.layer")}
+              className="absolute inset-0 z-10 cursor-crosshair"
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                onPick?.({
+                  x: Math.round(((e.clientX - r.left) / r.width) * 100),
+                  y: Math.round(((e.clientY - r.top) / r.height) * 100),
+                });
+              }}
+            >
+              {pick && (
+                <span
+                  aria-hidden
+                  className="border-warning bg-warning/25 pointer-events-none absolute size-9 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-lg"
+                  style={{ left: `${pick.x}%`, top: `${pick.y}%` }}
+                />
+              )}
+              {!pick && screenName && (
+                <span
+                  aria-hidden
+                  className="border-primary pointer-events-none absolute inset-0 border-2 border-dashed"
+                />
+              )}
+            </div>
           ) : (
             <div className="grid h-full place-items-center px-6 text-center">
               <div className="max-w-[16rem]">

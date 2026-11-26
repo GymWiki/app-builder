@@ -459,9 +459,10 @@
       "Leg uit wat deze app tot nu toe doet"
     ],
     "context": {
-      "screen": "Scherm: {{name}}",
+      "screen": "Hele pagina: {{name}}",
       "section": "Onderdeel: {{name}}",
-      "remove": "Deze context niet meesturen"
+      "remove": "Deze context niet meesturen",
+      "element": "Alleen één element in {{name}}"
     },
     "tool": {
       "read": {
@@ -605,6 +606,14 @@
         "Kies “Opnieuw zoeken”."
       ],
       "ios": "iPhones kunnen alleen vanaf een Mac met Xcode. Studio ondersteunt dit samen met publiceren voor iOS."
+    },
+    "pick": {
+      "layer": "Klik om een element voor de chat te kiezen. De app zelf reageert hier niet.",
+      "pageTitle": "Hele pagina: {{name}}.",
+      "pageBody": "Alles wat je vraagt geldt voor de hele pagina. Klik op iets in de app om alleen dat element aan te passen. De app uitproberen doe je met “Testrun”.",
+      "elementTitle": "Alleen het gemarkeerde element.",
+      "elementBody": "Claude past alleen dat ene element aan, niet de rest van de pagina.",
+      "back": "Hele pagina kiezen"
     }
   },
   "demo": {

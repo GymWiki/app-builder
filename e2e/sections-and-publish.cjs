@@ -21,7 +21,7 @@ const ok = (c, m) => {
   ok(await p.getByRole("region", { name: "Chat with Claude" }).isVisible(), "chat shown on Screens");
   const settings = p.getByRole("button", { name: /^SettingsScreen/ });
   await settings.click();
-  await p.getByText("Screen: SettingsScreen").waitFor();
+  await p.getByText("Whole page: SettingsScreen").waitFor();
   ok((await settings.getAttribute("aria-pressed")) === "true", "clicking a page makes it the active page for the chat");
   const frame = await p
     .locator("iframe")
@@ -197,8 +197,8 @@ const ok = (c, m) => {
   );
   await p
     .getByRole("button", { name: "Take one from the preview" })
-    .isDisabled()
-    .then((d) => ok(d, "screenshots need a running preview"));
+    .isEnabled()
+    .then((d) => ok(d, "screenshots can be taken from the running preview"));
   await p.getByRole("button", { name: "Add my own…" }).click();
   await p.getByRole("button", { name: "Add my own…" }).click();
   for (const q of [

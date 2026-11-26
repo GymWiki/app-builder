@@ -13,16 +13,33 @@ const ok = (c, m) => {
   p.on("console", (m) => m.type() === "error" && errs.push(m.text()));
 
   await p.goto("http://localhost:1420/?mock=ready#/project/friday_scores");
-  await p.getByText("See your app live").waitFor();
-  await p.screenshot({ path: `${S}/30-preview-empty.png` });
-  await p.getByRole("button", { name: "Start preview" }).click();
   await p.getByText("Starting…").first().waitFor();
-  ok(true, "starting state shown");
+  ok(true, "the preview starts by itself, no button needed");
   await p.locator('iframe[title="Live preview"]').waitFor({ timeout: 6000 });
   ok(await p.getByText("Running", { exact: true }).isVisible(), "running badge");
   const frame = p.frameLocator('iframe[title="Live preview"]');
   ok(await frame.getByText("Friday Scores").isVisible(), "app is shown in the phone frame");
   await p.screenshot({ path: `${S}/31-preview-running.png` });
+
+  // Klikken in het canvas kiest een element voor de chat en bedient de app niet
+  ok(
+    await p.getByTestId("pick-banner").getByText("Whole page: HomeScreen.").isVisible(),
+    "banner says the whole page is selected",
+  );
+  const layer = p.getByTestId("pick-layer");
+  const lb = await layer.boundingBox();
+  await p.mouse.click(lb.x + lb.width * 0.5, lb.y + lb.height * 0.4);
+  await p.getByTestId("pick-banner").getByText("Only the marked element.").waitFor();
+  ok(true, "clicking marks one element and says so clearly");
+  ok(
+    (await p.locator('[data-kind="element"]').innerText()).includes("Only one element in HomeScreen"),
+    "chat chip shows that only an element is selected",
+  );
+  ok(await frame.getByText("7", { exact: true }).isVisible(), "the click did not reach the app");
+  await p.screenshot({ path: `${S}/35-element-selected.png` });
+  await p.getByRole("button", { name: "Select whole page" }).click();
+  await p.locator('[data-kind="page"]').waitFor();
+  ok(true, "one click goes back to the whole page");
   await p.getByRole("button", { name: "Refresh", exact: true }).click();
   await p.locator('iframe[title="Live preview"]').waitFor();
   ok(true, "refresh keeps the preview");
@@ -34,7 +51,6 @@ const ok = (c, m) => {
 
   // build error -> banner -> fix with Claude
   await p.goto("http://localhost:1420/?mock=ready#/project/water_tracker");
-  await p.getByRole("button", { name: "Start preview" }).click();
   const alert = p.getByRole("alert").filter({ hasText: "The app has a problem" });
   await alert.waitFor({ timeout: 6000 });
   ok(await alert.getByText("lib/main.dart line 12").isVisible(), "problem shows file and line");
@@ -69,7 +85,7 @@ const ok = (c, m) => {
   await p.goto("http://localhost:1420/?mock=ready#/settings");
   await p.getByRole("radio", { name: "Nederlands" }).click();
   await p.goto("http://localhost:1420/?mock=ready#/project/friday_scores");
-  await p.getByText("Zie je app live").waitFor();
+  await p.getByText("Hele pagina: HomeScreen").waitFor();
   ok(true, "preview translated");
   ok(errs.filter((e) => !/create project failed/.test(e)).length === 0, "no console errors " + errs.join("|"));
   await b.close();

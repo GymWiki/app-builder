@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { Send, SquarePen, Square, Sparkles, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -25,6 +26,8 @@ export interface ChatContext {
   label: string;
   /** Wat er aan de prompt wordt toegevoegd (Engels, voor Claude). */
   prompt: string;
+  /** `element` = alleen één onderdeel van een pagina; wordt opvallend getoond zodat niemand per ongeluk te smal vraagt. */
+  kind?: "page" | "element";
 }
 
 const EMPTY: never[] = [];
@@ -177,7 +180,15 @@ export function ChatPanel({
             </div>
           )}
           {context && (
-            <span className="bg-accent text-accent-foreground t-small mb-2 inline-flex max-w-full items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 font-medium">
+            <span
+              data-kind={context.kind ?? "page"}
+              className={cn(
+                "t-small mb-2 inline-flex max-w-full items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 font-medium",
+                context.kind === "element"
+                  ? "border-warning bg-warning/15 text-foreground border"
+                  : "bg-accent text-accent-foreground",
+              )}
+            >
               <span className="truncate">{context.label}</span>
               <button
                 type="button"

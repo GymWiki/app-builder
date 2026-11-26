@@ -17,9 +17,8 @@ const ok = (c, m) => {
   ok(true, "empty chat shows suggestions");
 
   // select a screen -> context chip
-  await p.getByRole("button", { name: /^HomeScreen/ }).click();
-  await p.getByText("Screen: HomeScreen").waitFor();
-  ok(true, "selecting a screen adds a context chip");
+  await p.locator("[data-kind=page]").waitFor();
+  ok(true, "the start page is active by itself and shown as a context chip");
 
   // suggestion fills draft, send
   await p.getByRole("button", { name: "Add a second screen with a settings page" }).click();
@@ -32,7 +31,10 @@ const ok = (c, m) => {
     .waitFor({ timeout: 8000 })
     .catch(() => {});
   await p.screenshot({ path: `${S}/21-chat-working.png` });
-  ok(await p.getByRole("button", { name: "Stop" }).isVisible(), "stop button while working");
+  ok(
+    await p.getByRole("region", { name: "Chat with Claude" }).getByRole("button", { name: "Stop" }).isVisible(),
+    "stop button while working",
+  );
   ok(
     await box.evaluate((el) => el.closest("div").querySelector("button")?.disabled ?? true),
     "send disabled while running",
@@ -104,11 +106,12 @@ const ok = (c, m) => {
   ok(true, "advanced tab opens the raw terminal");
   await p.screenshot({ path: `${S}/25-advanced.png` });
 
-  await p.getByRole("button", { name: /^HomeScreen/ }).click();
+  for (let i = 0; i < 2 && (await p.locator("[data-kind]").count()) === 0; i++)
+    await p.getByRole("button", { name: /^HomeScreen/ }).click();
   // dismiss context chip
   await p.getByRole("tab", { name: "Chat" }).click();
   await p.getByRole("button", { name: "Don’t include this context" }).click();
-  ok((await p.getByText("Screen: HomeScreen").count()) === 0, "context chip can be dismissed");
+  ok((await p.locator("[data-kind]").count()) === 0, "context chip can be dismissed");
 
   // NL
   await p.goto("http://localhost:1420/?mock=ready#/settings");

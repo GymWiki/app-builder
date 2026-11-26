@@ -16,7 +16,7 @@ import type { JumpTarget } from "@/features/integrations/use-integrations";
 import { PublishView, type PublishTab } from "@/features/sections/publish/publish-view";
 import { useChecklist } from "@/features/sections/publish/use-checklist";
 import { AutoRetest } from "@/features/sections/publish/auto-retest";
-import { PreviewPanel } from "@/features/preview/preview-panel";
+import { PreviewPanel, type PickPoint } from "@/features/preview/preview-panel";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import { EmptyState } from "@/components/ds/empty-state";
 import { Panel as Pane } from "@/components/ds/card";
@@ -55,6 +55,7 @@ export default function ProjectPage() {
   const [previewDark, setPreviewDark] = useState(false);
   const [screen, setScreen] = useState<PickedScreen | null>(null);
   const [contextOff, setContextOff] = useState(false);
+  const [pick, setPick] = useState<PickPoint | null>(null);
   const [publishTab, setPublishTab] = useState<PublishTab>("checklist");
   const [jump, setJump] = useState<JumpTarget | null>(null);
   const checklist = useChecklist(id);
@@ -68,6 +69,14 @@ export default function ProjectPage() {
   const [treeHidden, setTreeHidden] = useState(false);
   const [chatHidden, setChatHidden] = useState(false);
   const layout = useDefaultLayout({ id: "studio-screens-layout", storage: safeStorage() });
+
+  // De preview draait zolang je in dit project bent (ook als je even een andere pagina opent) en stopt als je het verlaat.
+  useEffect(
+    () => () => {
+      void api.previewStop().catch(() => undefined);
+    },
+    [id],
+  );
 
   // Bijhouden wanneer het project voor het laatst is geopend.
   useEffect(() => {
@@ -131,10 +140,17 @@ export default function ProjectPage() {
   const context: ChatContext | null =
     contextOff || !screen
       ? null
-      : {
-          label: t("chat.context.screen", { name: screen.class }),
-          prompt: `The user selected the screen "${screen.class}" (${screen.file}). "This screen" means that one.`,
-        };
+      : pick
+        ? {
+            kind: "element",
+            label: t("chat.context.element", { name: screen.class }),
+            prompt: `The user is pointing at ONE element of the screen "${screen.class}" (${screen.file}) in the live preview: at ${pick.x}% from the left and ${pick.y}% from the top of the phone screen. Use the preview_screenshot tool to look at the page, find the element at that spot and change only that element (and what belongs to it). Do not change the rest of the screen unless the user explicitly asks.`,
+          }
+        : {
+            kind: "page",
+            label: t("chat.context.screen", { name: screen.class }),
+            prompt: `The user selected the screen "${screen.class}" (${screen.file}). "This screen" means that one, as a whole.`,
+          };
   const toggle = (ref: typeof treeRef, hidden: boolean) => (hidden ? ref.current?.expand() : ref.current?.collapse());
 
   return (
@@ -314,6 +330,7 @@ export default function ProjectPage() {
                   selected={screen?.class ?? null}
                   onSelect={(sc) => {
                     setScreen(sc);
+                    setPick(null);
                     setContextOff(false);
                   }}
                 />
@@ -323,7 +340,18 @@ export default function ProjectPage() {
 
             <Panel id="preview" minSize="25%">
               <section aria-label={t("workspace.previewLabel")} className="h-full">
-                <PreviewPanel projectId={p.id} device={device} dark={previewDark} route={screen?.route} />
+                <PreviewPanel
+                  projectId={p.id}
+                  device={device}
+                  dark={previewDark}
+                  route={screen?.route}
+                  screenName={screen?.class ?? null}
+                  pick={screen ? pick : null}
+                  onPick={(pt) => {
+                    setPick(pt);
+                    if (pt) setContextOff(false);
+                  }}
+                />
               </section>
             </Panel>
             <ResizeHandle />
@@ -339,7 +367,11 @@ export default function ProjectPage() {
               onResize={(s) => setChatHidden(s.asPercentage === 0)}
             >
               <Pane className="h-full border-l" aria-label={t("workspace.chatLabel")} inert={chatHidden}>
-                <ChatPanel projectId={p.id} context={context} onDismissContext={() => setContextOff(true)} />
+                <ChatPanel
+                  projectId={p.id}
+                  context={context}
+                  onDismissContext={() => (pick ? setPick(null) : setContextOff(true))}
+                />
               </Pane>
             </Panel>
           </Group>

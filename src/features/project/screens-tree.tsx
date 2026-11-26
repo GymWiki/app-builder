@@ -9,7 +9,7 @@ import {
   MoreHorizontal,
   RefreshCw,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
@@ -99,6 +99,15 @@ export function ScreensTree({
       linked: new Set(rows.map((r) => r.class)),
     };
   }, [q.data]);
+
+  // Zonder keuze is meteen de startpagina actief (preview en chat weten dan altijd over welke pagina het gaat).
+  useEffect(() => {
+    if (home && selected === null) {
+      const sc = byClass.get(home);
+      if (sc) onSelect(sc);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [home]);
 
   const view = useMemo(() => (q.data ? prune(state, order) : state), [state, order, q.data]);
   const items = flatten(view, order);
