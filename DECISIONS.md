@@ -288,3 +288,33 @@ Gecontroleerd tegen de actuele documentatie (web, november 2026); afwijkingen va
 - Selecteren gaat nu door **te slepen** over het telefoonscherm: het vak wordt live getekend, de rest wordt gedimd, de balk en de chat-chip zeggen "Alleen binnen het vak". Een gewone klik (of een vak kleiner dan 4% in een richting) kiest niets en toont de uitleg "Sleep om een vak te tekenen"; de klik bereikt de app nooit. Vak = percentages van het telefoonscherm, dus onafhankelijk van het toesteltype.
 - De opdracht aan Claude: alleen aanpassen wat binnen het vak valt, de rest (ook opmaak eromheen) ongemoeid laten, en bij een vraag die buiten het vak werkt dat zeggen in plaats van het te doen. `preview_screenshot` heeft er een optionele `region` bij en geeft dan twee afbeeldingen: het hele scherm en alleen het vak (`screenshot::crop_percent`, unit-getest).
 - **Eerlijk:** dit is een instructie, geen afdwingbare grens. Studio kent het widget onder het vak niet (cross-origin iframe, Flutter tekent op een canvas), dus we kunnen niet automatisch controleren welke bestanden of widgets Claude aanraakt. Het bereik-systeem (scope) werkt op scherm-/bestandsniveau; vak-niveau afdwingen vergt een inspector in de app (VM-service). Niet gebouwd.
+
+## Experiment: vak → widget via de Flutter widget inspector
+
+Doel: het getekende vak betrouwbaar omzetten naar widgets, zonder hulpbestand in het gebruikersproject. Alles hieronder is gemeten met Flutter 3.50.1 (Dart 3.14) en terug te vinden in `experiments/inspector/`.
+
+**API's gecontroleerd in de bron** (`packages/flutter/lib/src/widgets/widget_inspector.dart`): extensies `ext.flutter.inspector.*`: `show`, `getSelectedWidget`, `getSelectedSummaryWidget`, `getRootWidgetSummaryTree`, `getParentChain`, `getProperties`, `getLayoutExplorerNode`, `isWidgetCreationTracked`, `set/add/removePubRootDirectories`, `setSelectionById`, `screenshot`, `disposeGroup`. Er is **geen** extensie om een coördinaat naar een widget om te zetten. De route is dus: `show=true` (selectiemodus), een echte tik op dat punt, daarna de selectie uitlezen.
+
+**Wat werkt**
+- Creation tracking staat in `flutter run` (debug) standaard aan (`isWidgetCreationTracked` = true); niets te forceren, wel controleren.
+- `addPubRootDirectories(<projectmap>)` is nodig: pas dan krijgen widgets uit de eigen code `createdByLocalProject: true`.
+- Snelste weg: `getSelectedSummaryWidget` (16 ms) + `getRootWidgetSummaryTree` (32 ms) en daarin het pad naar de selectie zoeken. De summary-boom bevat precies de widgets uit eigen code, met `creationLocation` (bestand, regel, kolom). `getParentChain` geeft hetzelfde, maar duurt 5–9 s (haalt alle eigenschappen op): niet gebruiken.
+- Gedeeld component: de selectie landt in `core/primary_button.dart` (Text/ElevatedButton), maar de `PrimaryButton` zelf heeft als `creationLocation` de **aanroeplocatie** op het scherm. "Dichtstbijzijnde aanroep buiten `core/`" lost dit op: 10 van 10.
+- Hot reload en regelverschuiving: na het invoegen van 3 regels bovenin en na een nieuwe widget erboven waren de regelnummers meteen goed (25 en 27). Na hot restart verandert het isolate-id: opnieuw `getVM` doen vóór elke selectie.
+
+**Cijfers (web, headless Chrome, 46 tikken verspreid over 4 schermen + dialoog, midden en hoek van elk element, 4 lege plekken; grondwaarheid uit de semantics-boom)**
+- Juiste bestand: 46/46 (100%).
+- Precies de bedoelde widget (regel binnen het bereik): 42/46 (91%). De 4 missers zijn de teksten in een `AlertDialog`: de selectie landt op een `Semantics` in `dialog.dart`, waarna de dichtstbijzijnde widget uit eigen code de `AlertDialog` is. Dat is een omvattende, niet een foute widget (de tekst zit erin).
+- Lege plekken: 4/4 geven de omvattende container (Column, AppBar).
+- Linux-desktop (Xvfb + xdotool, `flutter run -d linux`): 20/20 correct.
+- Doorlooptijd van de selectie zelf: ~50 ms (summary-route); met overlay aan/uit en wachttijden onder de seconde.
+
+**Niet gedaan / niet getest:** Windows-desktop en Android-emulator of -toestel (niet beschikbaar in deze omgeving; de inspector-API's zijn dezelfde, maar tikken simuleren werkt daar anders), lijsten met veel verschillende rijen buiten de zichtbare 8, dialogen met eigen widgets buiten de standaard (alleen `AlertDialog`), animaties tijdens de tik.
+
+**Blokkerende bevinding voor de architectuur**
+- De huidige preview (`-d web-server` in een iframe) heeft **geen** VM-service ("requires the Dart Debug Chrome extension"): daar werkt de inspector niet.
+- `flutter run -d chrome` met een headless Chrome geeft wel de VM-service (`Debug service listening on ws://…`), maar het ondersteunt **één app-instantie tegelijk**. Opende ik dezelfde URL ook in een tweede client (zoals het iframe zou doen), dan raakte de debugverbinding de eerste kwijt ("No client connected", lege isolatelijst) en kwam hij niet terug.
+- Dus: de inspector-preview moet de enige instantie zijn, en Studio moet die tonen (CDP-screencast + invoer doorsturen) in plaats van een iframe. Een tweede, losse "probe"-sessie met eigen `flutter run` is mogelijk maar dubbel zo zwaar en toont niet de staat die de gebruiker ziet.
+- In de sandbox moest `--no-web-resources-cdn` (CanvasKit lokaal), omdat gstatic geblokkeerd is. Chrome met `--web-browser-debug-port` hield zijn poort vast na het stoppen van `flutter`: Studio moet de hele procesgroep beëindigen (doet het al).
+
+**Oordeel:** selectie zelf is betrouwbaar genoeg (≥ 90% exact, 100% bestand en omvattende widget, mits het de enige app-instantie is). De prijs is een architectuurwijziging van de preview. Niet doorgebouwd; wacht op beslissing.
