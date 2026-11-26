@@ -203,7 +203,12 @@ pub fn target_from_path(path: &[Node], project_dir: &Path, screens: &[(String, S
     let span = extent::expression_span(&src, call_site.line, call_site.column);
     let screen = inner_first.iter().find_map(|n| screens.iter().find(|(c, _)| *c == n.widget).cloned());
     // Tekst: eerst die van het gekozen element zelf, anders van de binnenste node met tekst.
-    let text = call_site.text.clone().or_else(|| inner_first.iter().find_map(|n| n.text.clone()));
+    let container = matches!(call_site.widget.as_str(), "Column" | "Row" | "Scaffold" | "Padding" | "Center" | "Stack" | "Container" | "SizedBox" | "ListView" | "SingleChildScrollView" | "SafeArea" | "Expanded" | "MaterialApp");
+    let text = call_site
+        .text
+        .clone()
+        .or_else(|| inner_first.iter().find_map(|n| n.text.clone()))
+        .or_else(|| span.filter(|s| !container && s.end_line - s.start_line < 12).and_then(|s| extent::first_string_literal(&src, s)));
     let chain = inner_first.iter().skip_while(|n| *n != call_site).map(|n| Link { widget: n.widget.clone(), file: n.file.clone(), line: n.line, column: n.column }).collect();
     Some((
         Target {

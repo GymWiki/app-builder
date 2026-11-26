@@ -66,6 +66,37 @@ pub fn expression_span(src: &str, line: usize, col: usize) -> Option<Span> {
     Some(Span { start_line: line, end_line })
 }
 
+/// Eerste tekst-literal in de regels van een uitdrukking (zonder aanhalingstekens), bv. `'Open list'` in `PrimaryButton(label: 'Open list', …)`.
+/// De inspector geeft de tekst van een widget niet mee in de summary-boom; de broncode wel.
+pub fn first_string_literal(src: &str, span: Span) -> Option<String> {
+    let region: String = src.split('\n').skip(span.start_line.saturating_sub(1)).take(span.end_line - span.start_line + 1).collect::<Vec<_>>().join("\n");
+    let b = region.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'/' if b.get(i + 1) == Some(&b'/') => {
+                while i < b.len() && b[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            q @ (b'\'' | b'"') => {
+                let end = skip_string(&region, i, q, false)?;
+                let triple = end - i >= 6 && b.get(i + 1) == Some(&q) && b.get(i + 2) == Some(&q);
+                let inner = if triple { &region[i + 3..end - 3] } else { &region[i + 1..end - 1] };
+                let t = inner.trim();
+                if !t.is_empty() && !t.starts_with("package:") && !t.ends_with(".dart") {
+                    return Some(t.to_string());
+                }
+                i = end;
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
 /// Index van het haakje dat bij het `(` op `open` hoort.
 fn matching_paren(src: &str, open: usize) -> Option<usize> {
     let b = src.as_bytes();
@@ -195,6 +226,16 @@ mod tests {
     fn comments_raw_and_triple_quoted_strings() {
         let src = "a(\n  // closing ) in a comment\n  b: r'raw ) string',\n  c: '''multi\n) line''',\n  /* ) */\n);\n";
         assert_eq!(expression_span(src, 1, 1), Some(Span { start_line: 1, end_line: 7 }));
+    }
+
+    #[test]
+    fn the_first_visible_string_of_an_expression() {
+        let span = |l: usize, c: usize| expression_span(HOME, l, c).unwrap();
+        let l8 = HOME.lines().nth(7).unwrap().find("PrimaryButton").unwrap() + 1;
+        assert_eq!(first_string_literal(HOME, span(8, l8)).as_deref(), Some("Open list"));
+        let l7 = HOME.lines().nth(6).unwrap().find("const Text").unwrap() + 1;
+        assert_eq!(first_string_literal(HOME, span(7, l7)).as_deref(), Some("Welcome (back)"));
+        assert_eq!(first_string_literal("Foo(a: 1)", Span { start_line: 1, end_line: 1 }), None);
     }
 
     #[test]
