@@ -16,6 +16,8 @@ pub struct Node {
     pub children: Vec<String>,
     /// go_router-pad van dit scherm (voor de preview); leeg als het scherm geen eigen pad heeft.
     pub route: Option<String>,
+    /// De route die de preview opent: bij een pad met parameters (`/item/:id`) een voorbeeldwaarde uit `.studio/preview.json`.
+    pub preview_route: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -136,10 +138,30 @@ pub fn route_map(project_dir: &Path, names: &[&str]) -> BTreeMap<String, String>
     map
 }
 
+/// Voorbeeldroutes per pagina uit `.studio/preview.json`: `{"routes": {"DetailScreen": "/item/1"}}`. Een klein bestand dat de AI bij een
+/// nieuwe pagina met parameters bijhoudt; ontbreekt het, dan krijgt elke parameter de waarde `1`.
+pub fn preview_examples(project_dir: &Path) -> BTreeMap<String, String> {
+    std::fs::read_to_string(project_dir.join(".studio/preview.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v["routes"].as_object().map(|o| o.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect()))
+        .unwrap_or_default()
+}
+
+pub fn resolve_preview_route(route: &str, class: &str, examples: &BTreeMap<String, String>) -> String {
+    if let Some(e) = examples.get(class).filter(|e| e.starts_with('/') && crate::inspect::valid_route(e)) {
+        return e.clone();
+    }
+    let r: Vec<String> = route.split('/').map(|seg| if seg.starts_with(':') { "1".to_string() } else { seg.to_string() }).collect();
+    let joined = r.join("/");
+    if joined.starts_with('/') { joined } else { format!("/{joined}") }
+}
+
 pub fn screen_graph(project_dir: &Path) -> AppResult<ScreenGraph> {
     let screens: Vec<Screen> = list_screens(project_dir)?;
     let names: Vec<&str> = screens.iter().map(|s| s.class.as_str()).collect();
     let routes = route_map(project_dir, &names);
+    let examples = preview_examples(project_dir);
     let mut nodes = vec![];
     for s in &screens {
         let text = std::fs::read_to_string(project_dir.join(&s.file)).unwrap_or_default();
@@ -160,7 +182,8 @@ pub fn screen_graph(project_dir: &Path) -> AppResult<ScreenGraph> {
             }
         }
         let route = routes.iter().find(|(_, v)| **v == s.class).map(|(k, _)| format!("/{}", k.trim_start_matches('/')));
-        nodes.push(Node { class: s.class.clone(), file: s.file.clone(), line: s.line, children, route });
+        let preview_route = route.as_deref().map(|r| resolve_preview_route(r, &s.class, &examples));
+        nodes.push(Node { class: s.class.clone(), file: s.file.clone(), line: s.line, children, route, preview_route });
     }
     let home = routes.get("").cloned().or_else(|| find_home(project_dir, &names)).or_else(|| names.first().map(|s| s.to_string()));
     // Wie bereikbaar is vanaf home?
@@ -181,6 +204,35 @@ pub fn screen_graph(project_dir: &Path) -> AppResult<ScreenGraph> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preview_routes_use_examples_from_a_small_file_or_a_default_value() {
+        let mut ex = BTreeMap::new();
+        ex.insert("DetailScreen".to_string(), "/item/42".to_string());
+        ex.insert("EvilScreen".to_string(), "javascript:alert(1)".to_string());
+        assert_eq!(resolve_preview_route("/item/:id", "DetailScreen", &ex), "/item/42");
+        assert_eq!(resolve_preview_route("/item/:id", "Other", &ex), "/item/1", "no example: every parameter becomes 1");
+        assert_eq!(resolve_preview_route("/a/:x/b/:y", "Other", &ex), "/a/1/b/1");
+        assert_eq!(resolve_preview_route("/", "HomeScreen", &ex), "/");
+        assert_eq!(resolve_preview_route("/x/:id", "EvilScreen", &ex), "/x/1", "an unsafe example is ignored");
+        let d = std::env::temp_dir().join(format!("studio-prev-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(d.join(".studio")).unwrap();
+        assert!(preview_examples(&d).is_empty());
+        std::fs::write(d.join(".studio/preview.json"), r#"{"routes":{"DetailScreen":"/item/9"}}"#).unwrap();
+        assert_eq!(preview_examples(&d).get("DetailScreen").map(String::as_str), Some("/item/9"));
+        std::fs::remove_dir_all(d).ok();
+    }
+
+    #[test]
+    fn route_validation_only_allows_plain_path_characters() {
+        for ok in ["/", "/settings", "/item/7", "/a-b/c_d/1.2?x=1&y=%20"] {
+            assert!(crate::inspect::valid_route(ok), "{ok}");
+        }
+        for bad in ["", "settings", "/a'b", "/a\"b", "/a;b", "/a b", "javascript:1", "/a\nb", "/<x>"] {
+            assert!(!crate::inspect::valid_route(bad), "{bad:?}");
+        }
+        assert!(!crate::inspect::valid_route(&format!("/{}", "a".repeat(300))));
+    }
 
     #[test]
     fn builds_navigation_tree() {

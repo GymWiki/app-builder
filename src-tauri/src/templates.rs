@@ -19,6 +19,7 @@ fn common() -> Vec<TemplateFile> {
         tf!("lib/main.dart", "../templates/app/common/lib/main.dart"),
         tf!("lib/app.dart", "../templates/app/common/lib/app.dart"),
         tf!("lib/core/theme/tokens.dart", "../templates/app/common/lib/core/theme/tokens.dart"),
+        tf!("lib/core/preview_mode.dart", "../templates/app/common/lib/core/preview_mode.dart"),
         tf!("lib/core/widgets/empty_state.dart", "../templates/app/common/lib/core/widgets/empty_state.dart"),
     ]
 }

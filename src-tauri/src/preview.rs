@@ -31,6 +31,13 @@ pub struct Problem {
     pub excerpt: String,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Failure {
+    /// `flutter_missing` | `crashed` | `start_failed`
+    pub code: String,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewState {
@@ -42,6 +49,8 @@ pub struct PreviewState {
     pub url: Option<String>,
     pub problems: Vec<Problem>,
     pub reloads: u32,
+    /// Waarom de preview niet draait en wat de gebruiker eraan kan doen (bv. Flutter ontbreekt).
+    pub failure: Option<Failure>,
     /// `iframe` (web-server, geen inspector) of `inspect` (Chrome van `flutter run`, het scherm komt als beeldstroom).
     pub mode: String,
 }
@@ -55,6 +64,10 @@ pub struct Inner {
     pub web_port: u16,
     pub cdp_port: u16,
     pub viewport: (u32, u32),
+    /// Het `flutter run`-proces eindigde onverwacht (de supervisor start opnieuw, maximaal drie keer).
+    pub crashed: bool,
+    /// De route waar de app nu is (alleen in `inspect`-modus bekend).
+    pub route: String,
     capture: Option<(usize, usize)>, // (probleemindex, resterende regels)
 }
 
@@ -196,7 +209,12 @@ pub struct PreviewManager {
     inner: Arc<Mutex<Inner>>,
     run: Mutex<Option<Running>>,
     emit: EmitFn,
+    /// Wordt bij elke start door de gebruiker/de app en bij elke stop opgehoogd; de supervisor stopt als zijn nummer niet meer klopt.
+    generation: Arc<std::sync::atomic::AtomicU64>,
 }
+
+/// Hoe vaak de preview na een crash opnieuw wordt gestart.
+pub const MAX_RESTARTS: u32 = 3;
 
 fn free_port() -> AppResult<u16> {
     Ok(std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
@@ -238,7 +256,7 @@ fn kill_tree(child: &Arc<Mutex<Child>>, stdin: &Arc<Mutex<Option<ChildStdin>>>) 
 
 impl PreviewManager {
     pub fn new(emit: EmitFn) -> Self {
-        Self { inner: Arc::new(Mutex::new(Inner { state: PreviewState { status: "stopped".into(), target: "web".into(), ..Default::default() }, ..Default::default() })), run: Mutex::new(None), emit }
+        Self { inner: Arc::new(Mutex::new(Inner { state: PreviewState { status: "stopped".into(), target: "web".into(), ..Default::default() }, ..Default::default() })), run: Mutex::new(None), emit, generation: Arc::new(std::sync::atomic::AtomicU64::new(0)) }
     }
 
     pub fn state(&self) -> PreviewState {
@@ -253,7 +271,22 @@ impl PreviewManager {
         (self.emit)("preview-state", serde_json::to_value(self.state()).unwrap_or_default());
     }
 
+    /// Stopt de preview (en de supervisor): bij het verlaten van het project of bij een nieuwe start.
     pub fn stop(&self) {
+        self.generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.stop_process();
+    }
+
+    /// Meldt dat de preview niet kan draaien, met een code waar de UI een vriendelijke melding en oplossing bij kan tonen.
+    pub fn set_failure(&self, project_id: &str, code: &str, message: &str) {
+        {
+            let mut i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            i.state = PreviewState { project_id: Some(project_id.into()), status: "error".into(), target: "web".into(), mode: "iframe".into(), failure: Some(Failure { code: code.into(), message: message.into() }), ..Default::default() };
+        }
+        self.publish();
+    }
+
+    fn stop_process(&self) {
         let running = self.run.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(r) = running {
             r.stopping.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -267,12 +300,70 @@ impl PreviewManager {
         self.publish();
     }
 
-    /// Start `flutter run` voor een project. `target` = "web" of een apparaat-id uit `flutter devices`.
+    /// Start `flutter run` en houdt het in de gaten: eindigt het proces onverwacht, dan start Studio het opnieuw (maximaal drie keer).
+    /// Compilatiefouten tellen niet: dan blijft het proces draaien en wacht het op de volgende wijziging.
+    pub fn start_supervised(self: &Arc<Self>, flutter: &Path, project_id: &str, dir: &Path, target: &str) -> AppResult<()> {
+        use std::sync::atomic::Ordering::SeqCst;
+        let gen = self.generation.fetch_add(1, SeqCst) + 1;
+        if let Err(e) = self.start_inner(flutter, project_id, dir, target) {
+            self.set_failure(project_id, if matches!(e, AppError::ToolMissing(_)) { "flutter_missing" } else { "start_failed" }, &crate::logging::redact(&e.to_string()));
+            return Err(e);
+        }
+        let (me, flutter, project_id, dir, target) = (self.clone(), flutter.to_path_buf(), project_id.to_string(), dir.to_path_buf(), target.to_string());
+        std::thread::spawn(move || {
+            let mut restarts = 0u32;
+            let mut running_since: Option<Instant> = None;
+            loop {
+                std::thread::sleep(Duration::from_millis(500));
+                if me.generation.load(SeqCst) != gen {
+                    return;
+                }
+                let (crashed, status) = {
+                    let i = me.inner.lock().unwrap_or_else(|e| e.into_inner());
+                    (i.crashed, i.state.status.clone())
+                };
+                // Een proces dat een minuut goed draait telt als hersteld.
+                if status == "running" {
+                    if running_since.get_or_insert_with(Instant::now).elapsed() > Duration::from_secs(60) {
+                        restarts = 0;
+                    }
+                } else {
+                    running_since = None;
+                }
+                if !crashed {
+                    continue;
+                }
+                if restarts >= MAX_RESTARTS {
+                    me.inner.lock().unwrap_or_else(|e| e.into_inner()).crashed = false;
+                    {
+                        let mut i = me.inner.lock().unwrap_or_else(|e| e.into_inner());
+                        i.state.failure = Some(Failure { code: "crashed".into(), message: "The preview stopped several times in a row.".into() });
+                    }
+                    me.publish();
+                    return;
+                }
+                restarts += 1;
+                log::warn!("preview crashed; restart {restarts} of {MAX_RESTARTS}");
+                if me.start_inner(&flutter, &project_id, &dir, &target).is_err() {
+                    me.inner.lock().unwrap_or_else(|e| e.into_inner()).crashed = true;
+                }
+            }
+        });
+        Ok(())
+    }
+
+    /// Start `flutter run` voor een project (zonder supervisor; voor tests). `target` = "web" of een apparaat-id uit `flutter devices`.
     pub fn start(&self, flutter: &Path, project_id: &str, dir: &Path, target: &str) -> AppResult<()> {
-        self.stop();
+        self.generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.start_inner(flutter, project_id, dir, target)
+    }
+
+    fn start_inner(&self, flutter: &Path, project_id: &str, dir: &Path, target: &str) -> AppResult<()> {
+        self.stop_process();
         let web = target == "web";
         let help = proc::run(flutter, &["run", "--help", "-v"], Some(dir), Duration::from_secs(120))?.combined();
-        let mut args: Vec<String> = vec!["run".into()];
+        // Preview-modus: de app slaat inlogbeveiliging over en gebruikt voorbeelddata (`lib/core/preview_mode.dart`); nooit in release-builds.
+        let mut args: Vec<String> = vec!["run".into(), "--dart-define=STUDIO_PREVIEW=true".into()];
         let mut url = None;
         let mut inspect: Option<(std::path::PathBuf, u16, u16)> = None;
         if web {
@@ -308,7 +399,7 @@ impl PreviewManager {
 
         {
             let mut i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-            *i = Inner { state: PreviewState { project_id: Some(project_id.into()), status: "starting".into(), target: target.into(), url: None, problems: vec![], reloads: 0, mode: if inspect.is_some() { "inspect".into() } else { "iframe".into() } }, web_port: inspect.as_ref().map(|i| i.1).unwrap_or(0), cdp_port: inspect.as_ref().map(|i| i.2).unwrap_or(0), viewport: (390, 844), ..Default::default() };
+            *i = Inner { state: PreviewState { project_id: Some(project_id.into()), status: "starting".into(), target: target.into(), url: None, problems: vec![], reloads: 0, failure: None, mode: if inspect.is_some() { "inspect".into() } else { "iframe".into() } }, web_port: inspect.as_ref().map(|i| i.1).unwrap_or(0), cdp_port: inspect.as_ref().map(|i| i.2).unwrap_or(0), viewport: (390, 844), ..Default::default() };
         }
         self.publish();
 
@@ -360,6 +451,7 @@ impl PreviewManager {
                 }
                 let st = {
                     let mut i = inner.lock().unwrap_or_else(|e| e.into_inner());
+                    i.crashed = code != Some(0);
                     if code != Some(0) && i.state.problems.is_empty() {
                         let excerpt = i.log.iter().rev().take(10).rev().cloned().collect::<Vec<_>>().join("\n");
                         let message = format!("flutter run stopped unexpectedly (exit code {})", code.map(|c| c.to_string()).unwrap_or("?".into()));
@@ -410,6 +502,9 @@ impl PreviewManager {
         // Bestanden in lib/ bekijken: elke wijziging (van Claude of handmatig) herlaadt de preview.
         let watcher = self.watch(dir, web, &stdin);
         let viewport_tx = inspect.as_ref().map(|(_, web_port, cdp_port)| spawn_screencast(*cdp_port, *web_port, self.emit.clone(), stopping.clone()));
+        if let Some((_, web_port, cdp_port)) = inspect.as_ref() {
+            spawn_route_poll(*cdp_port, *web_port, self.inner.clone(), self.emit.clone(), stopping.clone());
+        }
         *self.run.lock().unwrap_or_else(|e| e.into_inner()) = Some(Running { viewport_tx, child, stdin, stopping, _watcher: watcher, web });
         Ok(())
     }
@@ -461,6 +556,18 @@ impl PreviewManager {
         if let Some(tx) = self.run.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|r| r.viewport_tx.as_ref()) {
             let _ = tx.send((w, h));
         }
+    }
+
+    /// Laat de preview naar een route gaan (pagina aangeklikt in de lijst). Alleen in `inspect`-modus; anders `Unsupported`.
+    pub fn navigate(&self, route: &str) -> AppResult<()> {
+        let (web_port, cdp_port, mode) = {
+            let i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            (i.web_port, i.cdp_port, i.state.mode.clone())
+        };
+        if mode != "inspect" {
+            return Err(AppError::Unsupported("preview navigation".into()));
+        }
+        crate::inspect::navigate_to(&crate::inspect::page_target(cdp_port, web_port)?, route)
     }
 
     /// Zet een vak (procenten van het telefoonscherm) om in widgets uit de code van het project, via de widget inspector.
@@ -538,6 +645,33 @@ fn spawn_screencast(cdp_port: u16, web_port: u16, emit: EmitFn, stopping: Arc<st
         rpc.close();
     });
     tx
+}
+
+/// Draad die ongeveer elke seconde kijkt op welke route de app is en dat meldt als het verandert (ook als de gebruiker in de preview zelf
+/// naar een andere pagina gaat of na een herstart), zodat de lijst met pagina's gelijk blijft aan het scherm.
+fn spawn_route_poll(cdp_port: u16, web_port: u16, inner: Arc<Mutex<Inner>>, emit: EmitFn, stopping: Arc<std::sync::atomic::AtomicBool>) {
+    use crate::inspect::{current_route, page_target, Rpc};
+    std::thread::spawn(move || {
+        let stop = || stopping.load(std::sync::atomic::Ordering::SeqCst);
+        let mut rpc: Option<Rpc> = None;
+        let mut last = String::new();
+        while !stop() {
+            std::thread::sleep(Duration::from_millis(1000));
+            if rpc.is_none() {
+                rpc = page_target(cdp_port, web_port).ok().and_then(|u| Rpc::connect(&u, Duration::from_millis(500)).ok());
+            }
+            let Some(r) = rpc.as_mut() else { continue };
+            match current_route(r) {
+                Ok(route) if route != last => {
+                    last = route.clone();
+                    inner.lock().unwrap_or_else(|e| e.into_inner()).route = route.clone();
+                    emit("preview-route", serde_json::json!({ "route": route }));
+                }
+                Ok(_) => {}
+                Err(_) => rpc = None,
+            }
+        }
+    });
 }
 
 /// Aangesloten apparaten uit `flutter devices --machine`.
@@ -734,6 +868,65 @@ mod tests {
     }
 
     #[cfg(unix)]
+    fn fake_flutter_crashing(root: &std::path::Path, crashes: u32) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let fake = root.join("flutter");
+        std::fs::write(
+            &fake,
+            format!(
+                "#!/bin/bash\n\
+                 if [ \"$2\" = \"--help\" ]; then echo '--web-port --web-hostname'; exit 0; fi\n\
+                 d=$(dirname \"$0\"); echo x >> \"$d/starts.txt\"; n=$(wc -l < \"$d/starts.txt\")\n\
+                 for a in \"$@\"; do case $a in --web-port=*) port=${{a#--web-port=}};; esac; done\n\
+                 echo 'Launching lib/main.dart on Web Server in debug mode...'\n\
+                 if [ \"$n\" -le {crashes} ]; then exit 1; fi\n\
+                 echo \"lib/main.dart is being served at http://127.0.0.1:$port\"\n\
+                 while IFS= read -r -n1 c; do case \"$c\" in q) exit 0;; esac; done\n"
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        fake
+    }
+
+    /// Een crash wordt hersteld (hoogstens drie keer); houdt het niet op, dan staat er een melding en geeft Studio het op.
+    #[cfg(unix)]
+    #[test]
+    fn a_crashing_preview_is_restarted_up_to_three_times() {
+        let root = std::env::temp_dir().join(format!("studio-prev-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(root.join("lib")).unwrap();
+        // 1. crasht twee keer, de derde start slaagt
+        let fake = fake_flutter_crashing(&root, 2);
+        let mgr = Arc::new(PreviewManager::new(Arc::new(|_, _| {})));
+        mgr.start_supervised(&fake, "p1", &root, "web").unwrap();
+        let end = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < end && mgr.state().status != "running" {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(mgr.state().status, "running", "{:?}", mgr.state());
+        assert_eq!(std::fs::read_to_string(root.join("starts.txt")).unwrap().lines().count(), 3);
+        mgr.stop();
+        // 2. crasht altijd: één start en drie herstarts, dan een melding
+        std::fs::remove_file(root.join("starts.txt")).unwrap();
+        let fake = fake_flutter_crashing(&root, 99);
+        let mgr = Arc::new(PreviewManager::new(Arc::new(|_, _| {})));
+        mgr.start_supervised(&fake, "p1", &root, "web").unwrap();
+        let end = Instant::now() + Duration::from_secs(40);
+        while Instant::now() < end && mgr.state().failure.is_none() {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let st = mgr.state();
+        assert_eq!(st.failure.as_ref().map(|f| f.code.as_str()), Some("crashed"), "{st:?}");
+        assert_eq!(std::fs::read_to_string(root.join("starts.txt")).unwrap().lines().count(), 4, "one start and three restarts, never more");
+        mgr.stop();
+        // 3. zonder Flutter: een melding met een code, nooit een startknop
+        let none = Arc::new(PreviewManager::new(Arc::new(|_, _| {})));
+        none.set_failure("p1", "flutter_missing", "Flutter is not installed");
+        assert_eq!(none.state().failure.unwrap().code, "flutter_missing");
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[cfg(unix)]
     #[test]
     fn runs_stops_and_reloads_with_a_fake_flutter() {
         use std::os::unix::fs::PermissionsExt;
@@ -784,6 +977,7 @@ mod tests {
             })
             .expect("fake flutter wrote its arguments");
         assert!(argv.contains("-d web-server") && argv.contains("--web-hostname=127.0.0.1") && argv.contains("--web-port="));
+        assert!(argv.contains("--dart-define=STUDIO_PREVIEW=true"), "the preview always runs in preview mode: {argv}");
 
         // Wijziging in lib/ → automatisch hot restart (het nep-proces antwoordt met "Restarted").
         std::fs::write(root.join("lib/main.dart"), "b").unwrap();
@@ -900,6 +1094,46 @@ mod tests {
         let t = sel.targets.iter().find(|t| t.widget == "PrimaryButton").unwrap();
         println!("after shift: {} lines {}-{}", t.file, t.start_line, t.end_line);
         assert_eq!((t.start_line, t.end_line), (24, 27));
+        mgr.stop();
+    }
+
+    /// Echte keten met een go_router-project (`STUDIO_TEST_PROJECT`, bv. met een inlog-omleiding): navigeren naar een pagina zonder herladen,
+    /// de route teruglezen (ook voor een pagina met parameter) en in preview-modus de inlogbeveiliging overslaan.
+    #[test]
+    #[ignore]
+    fn real_preview_navigation_and_preview_mode() {
+        let dir = std::path::PathBuf::from(std::env::var("STUDIO_TEST_PROJECT").expect("STUDIO_TEST_PROJECT"));
+        let flutter = proc::find("flutter").expect("flutter on PATH");
+        let routes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let sink = routes.clone();
+        let mgr = PreviewManager::new(Arc::new(move |n, v| {
+            if n == "preview-route" {
+                sink.lock().unwrap().push(v["route"].as_str().unwrap_or("").to_string());
+            }
+        }));
+        mgr.start(&flutter, "p", &dir, "web").unwrap();
+        let end = Instant::now() + Duration::from_secs(280);
+        while Instant::now() < end && !(mgr.state().status == "running" && !routes.lock().unwrap().is_empty()) {
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        assert_eq!(routes.lock().unwrap().first().map(String::as_str), Some("/"), "the app starts on the start page");
+        let wait_route = |r: &str| {
+            let end = Instant::now() + Duration::from_secs(15);
+            while Instant::now() < end {
+                if routes.lock().unwrap().last().map(String::as_str) == Some(r) {
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            false
+        };
+        for r in ["/settings", "/item/7", "/account", "/"] {
+            mgr.navigate(r).unwrap();
+            assert!(wait_route(r), "route {r} not reached; saw {:?}", routes.lock().unwrap());
+        }
+        // `/account` heeft inlog nodig (omleiding naar /login), maar in preview-modus blijft het `/account`
+        assert!(routes.lock().unwrap().iter().any(|r| r == "/account") && !routes.lock().unwrap().iter().any(|r| r == "/login"), "{:?}", routes.lock().unwrap());
+        assert!(mgr.navigate("/a'b").is_err() && mgr.navigate("settings").is_err(), "unsafe routes are refused");
         mgr.stop();
     }
 

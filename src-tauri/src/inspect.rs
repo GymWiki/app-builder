@@ -237,6 +237,33 @@ pub fn sample_points(b: [f64; 4]) -> Vec<(f64, f64)> {
     pts
 }
 
+/// Een route die we aan de pagina doorgeven: alleen padtekens (geen aanhalingstekens of code), zodat er nooit iets uitgevoerd kan worden.
+pub fn valid_route(route: &str) -> bool {
+    route.starts_with('/') && route.len() <= 200 && route.chars().all(|c| c.is_ascii_alphanumeric() || "/_-.:?=&%~".contains(c))
+}
+
+/// Laat de app naar een route gaan door de hash van de pagina te zetten (zonder te herladen: hot reload en de staat blijven intact).
+/// Flutter web gebruikt standaard hash-routing; go_router volgt de hash.
+pub fn navigate_to(page_ws: &str, route: &str) -> AppResult<()> {
+    if !valid_route(route) {
+        return Err(AppError::Invalid("invalid route".into()));
+    }
+    let mut page = Rpc::connect(page_ws, Duration::from_millis(500))?;
+    // pushState + popstate: Flutter's router reageert op popstate, ook als alleen de hash wijzigt (geen herlaad).
+    let expr = format!("history.pushState(null, '', '#{route}'); window.dispatchEvent(new PopStateEvent('popstate', {{ state: null }})); window.location.href");
+    page.call("Runtime.evaluate", json!({ "expression": expr, "returnByValue": true }))?;
+    page.close();
+    Ok(())
+}
+
+/// De route waar de app nu is (`/` als er geen hash is).
+pub fn current_route(rpc: &mut Rpc) -> AppResult<String> {
+    let r = rpc.call("Runtime.evaluate", json!({ "expression": "window.location.hash", "returnByValue": true }))?;
+    let h = r["result"]["value"].as_str().unwrap_or("");
+    let route = h.trim_start_matches('#');
+    Ok(if route.is_empty() { "/".to_string() } else { route.to_string() })
+}
+
 /// Zet een vak (procenten) om in een selectie via de inspector. `viewport` = de afmetingen in CSS-pixels.
 pub fn select_box(vm_ws: &str, page_ws: &str, project_dir: &Path, viewport: (u32, u32), bbox: [f64; 4], screens: &[(String, String)]) -> AppResult<Selection> {
     let mut vm = Rpc::connect(vm_ws, Duration::from_millis(500))?;

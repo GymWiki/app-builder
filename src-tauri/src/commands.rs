@@ -202,7 +202,82 @@ pub fn project_open(app: AppHandle, state: State<'_, AppState>, id: String) -> A
     let p = state.db.project_get(&id)?;
     // Het profiel en de plugin horen er altijd te zijn; dit is goedkoop als alles al klaar is.
     spawn_profile(&app, &p.id, PathBuf::from(&p.path), false);
+    spawn_preview(&app, &p);
     Ok(p)
+}
+
+/// De preview start vanzelf zodra een project wordt geopend (op de achtergrond, blokkeert niets). Er is geen aan/uit-schakelaar: lukt het
+/// niet, dan staat er een melding met een oplossing in de preview-staat.
+fn spawn_preview(app: &AppHandle, p: &Project) {
+    let (handle, id, dir) = (app.clone(), p.id.clone(), PathBuf::from(&p.path));
+    std::thread::spawn(move || {
+        let st = handle.state::<AppState>();
+        let cur = st.preview.state();
+        // Draait of start de preview van dit project al (webversie), dan niets doen.
+        if cur.project_id.as_deref() == Some(id.as_str()) && cur.target == "web" && matches!(cur.status.as_str(), "starting" | "running" | "reloading") {
+            return;
+        }
+        if !crate::preview::project_dir_exists(&dir) {
+            st.preview.set_failure(&id, "start_failed", "The project folder could not be found.");
+            return;
+        }
+        let Some(flutter) = proc::find("flutter") else {
+            st.preview.set_failure(&id, "flutter_missing", "Flutter is not installed or could not be found.");
+            return;
+        };
+        if let Err(e) = st.preview.start_supervised(&flutter, &id, &dir, "web") {
+            log::warn!("preview did not start: {e}");
+        }
+    });
+}
+
+/// Laat de preview naar een route gaan (de aangeklikte pagina).
+#[tauri::command]
+pub async fn preview_navigate(state: State<'_, AppState>, route: String) -> AppResult<()> {
+    let p = state.preview.clone();
+    blocking(move || p.navigate(&route)).await
+}
+
+fn shot_path(state: &AppState, project_id: &str, screen: &str) -> AppResult<PathBuf> {
+    let ok = |s: &str| !s.is_empty() && s.len() <= 80 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !ok(screen) || !project_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(AppError::Invalid("invalid screen name".into()));
+    }
+    Ok(state.data_dir.join("previews").join(project_id).join(format!("{screen}.jpg")))
+}
+
+/// Bewaart de laatste weergave van een pagina (JPEG, base64) in de gegevens van Studio (niet in het project) zodat een volgende klik meteen iets toont.
+#[tauri::command]
+pub fn preview_shot_save(state: State<'_, AppState>, project_id: String, screen: String, data: String) -> AppResult<()> {
+    use base64::Engine;
+    state.db.project_get(&project_id)?;
+    let path = shot_path(&state, &project_id, &screen)?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.trim()).map_err(|_| AppError::Invalid("not an image".into()))?;
+    if bytes.len() > 4_000_000 || !bytes.starts_with(&[0xFF, 0xD8]) {
+        return Err(AppError::Invalid("not a jpeg image".into()));
+    }
+    if let Some(d) = path.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    std::fs::write(path, bytes)?;
+    Ok(())
+}
+
+/// De bewaarde weergave als data-URL, of `None`.
+#[tauri::command]
+pub fn preview_shot_get(state: State<'_, AppState>, project_id: String, screen: String) -> AppResult<Option<String>> {
+    use base64::Engine;
+    let path = shot_path(&state, &project_id, &screen)?;
+    Ok(std::fs::read(path).ok().map(|b| format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(b))))
+}
+
+/// Van welke pagina's er al een bewaarde weergave is.
+#[tauri::command]
+pub fn preview_shots_list(state: State<'_, AppState>, project_id: String) -> Vec<String> {
+    if !project_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return vec![];
+    }
+    std::fs::read_dir(state.data_dir.join("previews").join(&project_id)).map(|rd| rd.flatten().filter_map(|e| e.file_name().to_string_lossy().strip_suffix(".jpg").map(String::from)).collect()).unwrap_or_default()
 }
 
 #[tauri::command]
@@ -373,7 +448,7 @@ pub async fn preview_start(app: AppHandle, state: State<'_, AppState>, project_i
     let handle = app.clone();
     blocking(move || {
         let st = handle.state::<AppState>();
-        st.preview.start(&flutter, &project_id, &dir, &target)
+        st.preview.start_supervised(&flutter, &project_id, &dir, &target)
     })
     .await
 }

@@ -8,3 +8,4 @@ description: Add data storage or user accounts to this Studio app with the owner
 - Supabase: use the `supabase` MCP server (if connected) to create tables and row level security; ask before destructive changes. Firebase: FlutterFire packages and the `firebase` MCP server. Local: `sqflite` or `drift`.
 - Keys: only the public anon/web config may be in code. Service keys and tokens never go in files; ask the owner to use Studio's data screen.
 - Accounts require a working "delete my account" function (store rule). Details: references/accounts.md.
+- Preview: in every login/redirect guard return early when `kStudioPreview` is true (lib/core/preview_mode.dart), and let repositories return sample data then, so Studio's live preview shows every page without an account. Never active in release builds.

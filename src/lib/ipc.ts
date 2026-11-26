@@ -120,6 +120,11 @@ export const api = {
     call<string>("purchases_suggest_id", { name, kind, period }),
   previewSelect: (projectId: string, bbox: [number, number, number, number]) =>
     call<{ selection: Selection; prompt: string }>("preview_select", { projectId, bbox }),
+  previewNavigate: (route: string) => call<void>("preview_navigate", { route }),
+  previewShotSave: (projectId: string, screen: string, data: string) =>
+    call<void>("preview_shot_save", { projectId, screen, data }),
+  previewShotGet: (projectId: string, screen: string) => call<string | null>("preview_shot_get", { projectId, screen }),
+  previewShotsList: (projectId: string) => call<string[]>("preview_shots_list", { projectId }),
   previewViewport: (width: number, height: number) => call<void>("preview_viewport", { width, height }),
   chatSetSelection: (projectId: string, ranges: [string, number, number][]) =>
     call<void>("chat_set_selection", { projectId, ranges }),

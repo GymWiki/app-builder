@@ -123,6 +123,8 @@ export interface PreviewState {
   url: string | null;
   problems: PreviewProblem[];
   reloads: number;
+  /** Waarom de preview niet draait en wat eraan te doen is (bv. Flutter ontbreekt). */
+  failure?: { code: "flutter_missing" | "crashed" | "start_failed" | string; message: string } | null;
   /** `inspect` = het scherm komt als beeldstroom uit de Chrome van `flutter run` (widget inspector beschikbaar); `iframe` = oude web-server. */
   mode?: "iframe" | "inspect";
 }
@@ -163,8 +165,10 @@ export interface ScreenNode {
   file: string;
   line: number;
   children: string[];
-  /** go_router-pad, als het scherm er een heeft (de preview springt er dan naartoe). */
+  /** go_router-pad, als het scherm er een heeft (met parameters als `/item/:id`). */
   route?: string | null;
+  /** De route die de preview opent (parameters ingevuld met voorbeeldwaarden). */
+  previewRoute?: string | null;
 }
 export interface ScreenGraph {
   home: string | null;

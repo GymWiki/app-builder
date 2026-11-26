@@ -15,7 +15,8 @@ Flutter app made with Studio for a non-programmer. Explain in plain language and
 ## Structure
 - lib/core/: theme (tokens.dart; app_theme.dart is generated: change colors only with the studio tool `set_theme`), models, navigation/app_router.dart, shared widgets.
 - lib/features/<screen>/: <screen>_screen.dart, <screen>_controller.dart, widgets/, CLAUDE.md (local rules).
-- A new screen = a new feature folder + a GoRoute in app_router.dart. Never put screens or logic in the lib/ root.
+- A new screen = a new feature folder + a GoRoute in app_router.dart (every page needs a route: Studio shows the page the user picks by opening its route). Never put screens or logic in the lib/ root.
+- Studio runs the preview with `kStudioPreview` (lib/core/preview_mode.dart) true: login/redirect guards return early and repositories return sample data then, so every page shows something. For a page with route parameters (`/item/:id`) add an example to `.studio/preview.json`: `{"routes": {"DetailScreen": "/item/1"}}`.
 __SCOPE_RULE__
 ## Rules
 - Colors from Theme.of(context).colorScheme; spacing and radius from AppSpacing/AppRadius. No hard-coded colors, fonts or magic numbers in screens.
