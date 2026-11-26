@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, Rocket } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -38,6 +39,11 @@ export function ReleaseTab({
   const track = meta.publishing.track || "internal";
   const status = useJobs((s) => s.status[id] ?? NO_STATUS);
   const log = useJobs((s) => s.logs[id] ?? NO_LINES);
+  const vq = useQuery({
+    queryKey: ["version", id, project.version, project.buildNumber],
+    queryFn: () => api.versionInfo(id),
+  });
+  const shown = { version: vq.data?.nextVersion ?? project.version, build: vq.data?.nextBuild ?? project.buildNumber };
   const [confirm, setConfirm] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,9 +74,7 @@ export function ReleaseTab({
     <div className="space-y-5">
       <Card2 title={t("sec.publish.release.title")}>
         <p className="t-body text-muted-foreground">{t("sec.publish.release.intro")}</p>
-        <p className="t-body font-medium">
-          {t("sec.publish.release.version", { version: project.version, build: project.buildNumber })}
-        </p>
+        <p className="t-body font-medium">{t("sec.publish.release.version", shown)}</p>
         <Field label={t("sec.publish.release.track")} htmlFor="track">
           <select
             id="track"
@@ -129,7 +133,9 @@ export function ReleaseTab({
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>{t("sec.publish.release.confirmTitle", { version: project.version })}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("sec.publish.release.confirmTitle", { version: `${shown.version} (${shown.build})` })}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {t("sec.publish.release.confirmBody", { track: t(`sec.publish.release.tracks.${track}`) })}
             </AlertDialogDescription>

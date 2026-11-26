@@ -814,7 +814,22 @@
       "changelogEmpty": "No changes to describe yet.",
       "changelogAsk": "Let Claude write the changelog",
       "changelogPrompt": "Write or update CHANGELOG.md for version {{version}} in plain language for app users (short bullet points, newest first). Base it on these changes:\n{{changes}}",
-      "current": "Now"
+      "current": "Now",
+      "version": {
+        "title": "App version",
+        "current": "Current version",
+        "last": "Last upload to the store",
+        "never": "Not uploaded yet",
+        "change": "Change manually…",
+        "nextChanges": "The next upload automatically gets version {{version}}, build {{build}}.",
+        "nextSame": "The next upload uses these numbers.",
+        "auto": "Studio keeps this in line with your app and raises the version and build number by itself before each upload, because the stores only accept higher numbers.",
+        "dialogTitle": "Change version and build number",
+        "dialogBody": "Only do this if you need a specific number. The build number must be higher than the one you last uploaded.",
+        "versionInvalid": "Use three numbers with dots, like 1.2.0",
+        "buildInvalid": "Use a whole number of {{min}} or higher",
+        "saved": "Version saved"
+      }
     },
     "publish": {
       "title": "Publish",

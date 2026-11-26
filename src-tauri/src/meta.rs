@@ -83,6 +83,8 @@ pub struct Meta {
     /// Commit waarop de laatste upload naar de winkel plaatsvond (voor "versie verhoogd?").
     pub last_published_commit: Option<String>,
     pub last_published_version: Option<String>,
+    /// Buildnummer van die upload: Google Play en de App Store eisen dat het elke keer hoger wordt.
+    pub last_published_build: Option<u32>,
 }
 
 fn path(dir: &Path) -> std::path::PathBuf {

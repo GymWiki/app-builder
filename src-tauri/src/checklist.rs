@@ -177,9 +177,7 @@ pub fn evaluate(m: &Meta, f: &Facts) -> Evaluation {
 
     // 7. versie en changelog
     let mut miss = vec![];
-    if m.last_published_version.as_deref() == Some(f.version.as_str()) {
-        miss.push("version_bump");
-    }
+    // Een al gepubliceerde versie blokkeert niet meer: Studio verhoogt versie en buildnummer zelf vlak voor de upload.
     if !f.changelog {
         miss.push("changelog");
     }
@@ -352,10 +350,10 @@ mod tests {
     }
 
     #[test]
-    fn republishing_the_same_version_is_blocked() {
+    fn republishing_the_same_version_does_not_block_because_studio_bumps_it() {
         let (mut m, f) = ready();
         m.last_published_version = Some("1.1.0".into());
-        assert_eq!(get(&evaluate(&m, &f), "version_changelog").missing, ["version_bump"]);
+        assert!(get(&evaluate(&m, &f), "version_changelog").missing.is_empty());
     }
 
     #[test]

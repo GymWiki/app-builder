@@ -19,6 +19,7 @@ import { timeAgo } from "@/lib/format";
 import { api } from "@/lib/ipc";
 import { toastError } from "@/lib/toast";
 import type { Project, Snapshot } from "@/lib/types";
+import { VersionCard } from "./version-card";
 import { AskButton, Card2, SectionPage, inputCls } from "./shared";
 
 const TONE: Record<Snapshot["kind"], Tone> = { auto: "accent", manual: "neutral", publish: "success" };
@@ -73,6 +74,7 @@ export function VersionsView({ project }: { project: Project }) {
 
   return (
     <SectionPage title={t("sec.versions.title")} intro={t("sec.versions.intro")}>
+      <VersionCard project={project} />
       <Card2>
         <div className="flex gap-2">
           <input

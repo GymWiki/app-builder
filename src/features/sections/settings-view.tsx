@@ -46,8 +46,6 @@ function SettingsForm({
   const id = project.id;
   const [name, setName] = useState(p.appName ?? project.name);
   const [bundle, setBundle] = useState(p.androidApplicationId ?? p.bundleId ?? project.bundleId);
-  const [version, setVersion] = useState(project.version);
-  const [build, setBuild] = useState(String(project.buildNumber));
   const [minAndroid, setMinAndroid] = useState(p.minAndroid ? String(p.minAndroid) : "");
   const [minIos, setMinIos] = useState(p.minIos ?? "");
   const [reasons, setReasons] = useState<Record<string, string>>(
@@ -71,7 +69,6 @@ function SettingsForm({
     }
   };
   const bundleValid = BUNDLE_RE.test(bundle);
-  const versionValid = /^\d+\.\d+\.\d+$/.test(version) && Number(build) >= 1;
   const exampleId = bundle.startsWith("com.example.");
 
   return (
@@ -111,30 +108,6 @@ function SettingsForm({
             </Button>
           </div>
           {exampleId && <p className="text-warning t-small">{t("sec.settings.bundleDefault")}</p>}
-        </Field>
-        <Field label={t("sec.settings.version")} help={t("sec.settings.versionHelp")} htmlFor="s-version">
-          <div className="flex gap-2">
-            <input
-              id="s-version"
-              aria-label={t("sec.settings.version")}
-              value={version}
-              onChange={(e) => setVersion(e.target.value.trim())}
-              className={cn(inputCls, "font-mono")}
-            />
-            <input
-              aria-label={t("sec.settings.build")}
-              value={build}
-              inputMode="numeric"
-              onChange={(e) => setBuild(e.target.value.replace(/\D/g, ""))}
-              className={cn(inputCls, "w-28 font-mono")}
-            />
-            <Button
-              disabled={!versionValid || (version === project.version && Number(build) === project.buildNumber)}
-              onClick={() => void run(() => api.versionSet(id, version, Number(build)))}
-            >
-              {t("sec.common.save")}
-            </Button>
-          </div>
         </Field>
       </Card2>
 

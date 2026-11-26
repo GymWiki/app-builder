@@ -814,7 +814,22 @@
       "changelogEmpty": "Nog geen wijzigingen om te beschrijven.",
       "changelogAsk": "Laat Claude de changelog schrijven",
       "changelogPrompt": "Schrijf of werk CHANGELOG.md bij voor versie {{version}} in gewone taal voor app-gebruikers (korte opsommingen, nieuwste bovenaan). Baseer het op deze wijzigingen:\n{{changes}}",
-      "current": "Nu"
+      "current": "Nu",
+      "version": {
+        "title": "Appversie",
+        "current": "Huidige versie",
+        "last": "Laatste upload naar de winkel",
+        "never": "Nog niet geüpload",
+        "change": "Handmatig aanpassen…",
+        "nextChanges": "De volgende upload krijgt automatisch versie {{version}}, build {{build}}.",
+        "nextSame": "De volgende upload gebruikt deze nummers.",
+        "auto": "Studio houdt dit gelijk aan je app en verhoogt versie en buildnummer zelf vóór elke upload, want de winkels accepteren alleen hogere nummers.",
+        "dialogTitle": "Versie en buildnummer aanpassen",
+        "dialogBody": "Doe dit alleen als je een bepaald nummer nodig hebt. Het buildnummer moet hoger zijn dan dat van je laatste upload.",
+        "versionInvalid": "Gebruik drie getallen met punten, zoals 1.2.0",
+        "buildInvalid": "Gebruik een heel getal van {{min}} of hoger",
+        "saved": "Versie opgeslagen"
+      }
     },
     "publish": {
       "title": "Publiceren",

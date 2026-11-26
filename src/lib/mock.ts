@@ -42,6 +42,28 @@ const mk = (
   checklistDone: done,
   checklistTotal: 8,
 });
+/** Laatst "geüploade" versie per project (de demo kent er maar een paar). */
+const published: Record<string, { version: string; build: number }> = { friday_scores: { version: "1.0.0", build: 1 } };
+function mockVersionInfo(p?: Project) {
+  const last = p ? published[p.id] : undefined;
+  const cur = (p?.version ?? "1.0.0").split(".").map(Number) as [number, number, number];
+  let next: [number, number, number] = cur;
+  let build = p?.buildNumber ?? 1;
+  if (last) {
+    const lv = last.version.split(".").map(Number) as [number, number, number];
+    const le = cur[0] * 1e6 + cur[1] * 1e3 + cur[2] <= lv[0] * 1e6 + lv[1] * 1e3 + lv[2];
+    if (le) next = [lv[0], lv[1], lv[2] + 1];
+    if (build <= last.build) build = last.build + 1;
+  }
+  return {
+    version: p?.version ?? "1.0.0",
+    build: p?.buildNumber ?? 1,
+    lastPublished: last ? { version: last.version, build: last.build } : null,
+    nextVersion: next.join("."),
+    nextBuild: build,
+    willChange: next.join(".") !== (p?.version ?? "1.0.0") || build !== (p?.buildNumber ?? 1),
+  };
+}
 let projects: Project[] = ["ready", "nodevices", "noscreens"].includes(scenario)
   ? [
       mk("friday_scores", "Friday Scores", "scoreboard", "testing", 12, 4),
@@ -632,13 +654,17 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       perm.ios_reason = args.enabled ? (args.iosReason as string) : null;
       return applied("AndroidManifest.xml, Info.plist");
     }
+    case "version_info":
+      return mockVersionInfo(projects.find((x) => x.id === args.projectId));
     case "version_set": {
       const p = projects.find((x) => x.id === args.projectId);
       if (p) {
+        const last = published[p.id];
+        if (last && (args.build as number) <= last.build) throw { kind: "invalid", message: "build too low" };
         p.version = args.version as string;
         p.buildNumber = args.build as number;
       }
-      return;
+      return mockVersionInfo(p);
     }
     case "assets_generate_icon":
       fs.icon = true;

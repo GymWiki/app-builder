@@ -203,6 +203,101 @@ pub fn bump_version(db: &Db, p: &Project, part: &str) -> AppResult<Value> {
     Ok(json!({ "previous": format!("{}.{}.{}+{}", cur.0, cur.1, cur.2, cur.3), "version": version, "buildNumber": new.3, "pubspec": new_str }))
 }
 
+/// Schrijft `version: x.y.z+n` in pubspec.yaml en zet dezelfde waarde in Studio.
+pub fn apply_version(db: &Db, p: &Project, v: (u32, u32, u32, u32)) -> AppResult<()> {
+    let path = dir_of(p).join("pubspec.yaml");
+    let text = std::fs::read_to_string(&path)?;
+    let new_line = format!("version: {}.{}.{}+{}", v.0, v.1, v.2, v.3);
+    let mut found = false;
+    let lines: Vec<String> = text
+        .lines()
+        .map(|l| {
+            if l.starts_with("version:") {
+                found = true;
+                new_line.clone()
+            } else {
+                l.to_string()
+            }
+        })
+        .collect();
+    if !found {
+        return Err(AppError::Invalid("pubspec.yaml has no version line".into()));
+    }
+    let mut out = lines.join("\n");
+    if text.ends_with('\n') {
+        out.push('\n');
+    }
+    std::fs::write(&path, out)?;
+    db.project_set_version(&p.id, &format!("{}.{}.{}", v.0, v.1, v.2), v.3 as i64)
+}
+
+/// De versie die de volgende upload moet krijgen: hoger dan wat al gepubliceerd is (de winkel eist dat),
+/// en nooit lager dan wat er nu in pubspec.yaml staat.
+pub fn next_release(cur: (u32, u32, u32, u32), last_version: Option<&str>, last_build: Option<u32>) -> (u32, u32, u32, u32) {
+    let mut n = cur;
+    if let Some(lv) = last_version.and_then(|v| parse_pubspec_version(&format!("version: {v}"))) {
+        if (n.0, n.1, n.2) <= (lv.0, lv.1, lv.2) {
+            n = (lv.0, lv.1, lv.2 + 1, n.3);
+        }
+    }
+    if let Some(lb) = last_build {
+        if n.3 <= lb {
+            n.3 = lb + 1;
+        }
+    }
+    n
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PubVersion {
+    pub version: String,
+    pub build: Option<u32>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionInfo {
+    pub version: String,
+    pub build: u32,
+    pub last_published: Option<PubVersion>,
+    /// Wat de volgende upload automatisch krijgt.
+    pub next_version: String,
+    pub next_build: u32,
+    /// De volgende upload krijgt een ander nummer dan nu in de app staat.
+    pub will_change: bool,
+}
+
+/// Leest de versie uit pubspec.yaml (Claude kan die hebben aangepast) en houdt Studio erbij gelijk.
+pub fn version_info(db: &Db, p: &Project) -> AppResult<VersionInfo> {
+    let text = std::fs::read_to_string(dir_of(p).join("pubspec.yaml"))?;
+    let cur = parse_pubspec_version(&text).ok_or_else(|| AppError::Invalid("pubspec.yaml has no valid version: x.y.z+n line".into()))?;
+    let version = format!("{}.{}.{}", cur.0, cur.1, cur.2);
+    if p.version != version || p.build_number != cur.3 as i64 {
+        db.project_set_version(&p.id, &version, cur.3 as i64)?;
+    }
+    let meta = crate::meta::load(&dir_of(p))?;
+    let n = next_release(cur, meta.last_published_version.as_deref(), meta.last_published_build);
+    Ok(VersionInfo {
+        version,
+        build: cur.3,
+        last_published: meta.last_published_version.clone().map(|v| PubVersion { version: v, build: meta.last_published_build }),
+        next_version: format!("{}.{}.{}", n.0, n.1, n.2),
+        next_build: n.3,
+        will_change: n != cur,
+    })
+}
+
+/// Vlak voor een upload: zet automatisch de juiste versie en het juiste buildnummer.
+pub fn prepare_release(db: &Db, p: &Project) -> AppResult<VersionInfo> {
+    let info = version_info(db, p)?;
+    if info.will_change {
+        let n = parse_pubspec_version(&format!("version: {}+{}", info.next_version, info.next_build)).unwrap_or((0, 0, 0, 0));
+        apply_version(db, p, n)?;
+    }
+    version_info(db, p)
+}
+
 // ───────────── snapshot ─────────────
 
 pub fn create_snapshot(db: &Db, p: &Project, label: &str, kind: &str) -> AppResult<Value> {
@@ -352,6 +447,20 @@ mod tests {
         assert_eq!((r["file"].as_str(), r["wired"].as_bool()), (Some("lib/core/theme/app_theme.dart"), Some(true)));
         assert!(d.join("lib/core/theme/app_theme.dart").is_file() && !d.join("lib/app_theme.dart").exists());
         assert_eq!(get_theme(&d).unwrap()["file"], "lib/core/theme/app_theme.dart");
+    }
+
+    #[test]
+    fn next_release_goes_above_what_is_published() {
+        // nog nooit gepubliceerd: niets veranderen
+        assert_eq!(next_release((1, 0, 0, 1), None, None), (1, 0, 0, 1));
+        // zelfde versie + zelfde build als de laatste upload: patch en build omhoog
+        assert_eq!(next_release((1, 0, 0, 1), Some("1.0.0"), Some(1)), (1, 0, 1, 2));
+        // versie al hoger, maar buildnummer niet (bv. na teruggaan): alleen build omhoog
+        assert_eq!(next_release((1, 1, 0, 3), Some("1.0.0"), Some(5)), (1, 1, 0, 6));
+        // na terugzetten naar een oudere versie: boven de gepubliceerde versie blijven
+        assert_eq!(next_release((0, 9, 0, 2), Some("1.2.3"), Some(7)), (1, 2, 4, 8));
+        // al goed: laten staan
+        assert_eq!(next_release((1, 0, 1, 9), Some("1.0.0"), Some(5)), (1, 0, 1, 9));
     }
 
     #[test]

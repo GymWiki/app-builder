@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toAppError, AppError } from "./errors";
 import type {
+  VersionInfo,
   AppInfo,
   Applied,
   ChatEvent,
@@ -109,7 +110,8 @@ export const api = {
   platformSetPermission: (projectId: string, key: string, enabled: boolean, iosReason: string) =>
     call<Applied>("platform_set_permission", { projectId, key, enabled, iosReason }),
   versionSet: (projectId: string, version: string, build: number) =>
-    call<void>("version_set", { projectId, version, build }),
+    call<VersionInfo>("version_set", { projectId, version, build }),
+  versionInfo: (projectId: string) => call<VersionInfo>("version_info", { projectId }),
   assetsGenerateIcon: (projectId: string, sourcePath: string) =>
     call<IconReport>("assets_generate_icon", { projectId, sourcePath }),
 

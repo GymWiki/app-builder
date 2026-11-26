@@ -300,3 +300,12 @@ export interface GroupStats {
   costUsd: number;
   tokens: number;
 }
+
+export interface VersionInfo {
+  version: string;
+  build: number;
+  lastPublished: { version: string; build: number | null } | null;
+  nextVersion: string;
+  nextBuild: number;
+  willChange: boolean;
+}

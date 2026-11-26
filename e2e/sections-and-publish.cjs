@@ -104,6 +104,18 @@ const ok = (c, m) => {
   // Versions
   await menu("Versions").click();
   await p.getByText("Claude: add a settings screen").first().waitFor();
+  ok(
+    await p.getByText("The next upload automatically gets version 1.0.1, build 2.").isVisible(),
+    "next upload version is announced (already uploaded 1.0.0+1)",
+  );
+  await p.getByRole("button", { name: "Change manually…" }).click();
+  await p.locator("#v-build").fill("1");
+  ok(await p.getByRole("alert").filter({ hasText: "2 or higher" }).isVisible(), "build must exceed the uploaded one");
+  await p.locator("#v-version").fill("1.2.0");
+  await p.locator("#v-build").fill("7");
+  await p.getByRole("dialog").getByRole("button", { name: "Save" }).click();
+  await p.getByTestId("version-current").filter({ hasText: "1.2.0" }).waitFor();
+  ok((await p.getByTestId("version-current").innerText()).includes("+7"), "manual version and build saved");
   await p.getByPlaceholder("What did you just finish?").fill("Before the big change");
   await p.getByRole("button", { name: "Save a snapshot" }).click();
   await p.getByText("Before the big change").waitFor();

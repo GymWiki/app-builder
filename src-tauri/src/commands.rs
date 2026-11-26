@@ -481,27 +481,29 @@ pub fn platform_set_permission(state: State<'_, AppState>, project_id: String, k
     crate::platform::set_permission(&dir, &key, enabled, &ios_reason)
 }
 
-/// Versie expliciet zetten (`1.2.3` + buildnummer) in pubspec.yaml en in Studio.
+/// Versie expliciet zetten (`1.2.3` + buildnummer) in pubspec.yaml en in Studio. Het buildnummer moet hoger zijn dan dat van de laatste upload.
 #[tauri::command]
-pub fn version_set(state: State<'_, AppState>, project_id: String, version: String, build: u32) -> AppResult<()> {
-    let (_, dir) = project_and_dir(&state, &project_id)?;
+pub fn version_set(state: State<'_, AppState>, project_id: String, version: String, build: u32) -> AppResult<crate::studio_tools::VersionInfo> {
+    let (p, dir) = project_and_dir(&state, &project_id)?;
     let parts: Vec<&str> = version.split('.').collect();
     if parts.len() != 3 || parts.iter().any(|p| p.is_empty() || p.parse::<u32>().is_err()) || build == 0 {
         return Err(AppError::Invalid("version must look like 1.2.3 with a build number of 1 or more".into()));
     }
-    let path = dir.join("pubspec.yaml");
-    let text = std::fs::read_to_string(&path)?;
-    let new_line = format!("version: {version}+{build}");
-    let mut found = false;
-    let mut out: Vec<String> = text.lines().map(|l| if l.starts_with("version:") { found = true; new_line.clone() } else { l.to_string() }).collect();
-    if !found {
-        return Err(AppError::Invalid("pubspec.yaml has no version line".into()));
+    if let Some(last) = crate::meta::load(&dir)?.last_published_build {
+        if build <= last {
+            return Err(AppError::Invalid(format!("the build number must be higher than {last}, the one already uploaded")));
+        }
     }
-    if text.ends_with('\n') {
-        out.push(String::new());
-    }
-    std::fs::write(&path, out.join("\n"))?;
-    state.db.project_set_version(&project_id, &version, build as i64)
+    let n: Vec<u32> = parts.iter().filter_map(|x| x.parse().ok()).collect();
+    crate::studio_tools::apply_version(&state.db, &p, (n[0], n[1], n[2], build))?;
+    crate::studio_tools::version_info(&state.db, &state.db.project_get(&project_id)?)
+}
+
+/// Huidige versie, laatst gepubliceerde versie en wat de volgende upload automatisch krijgt.
+#[tauri::command]
+pub fn version_info(state: State<'_, AppState>, project_id: String) -> AppResult<crate::studio_tools::VersionInfo> {
+    let (p, _) = project_and_dir(&state, &project_id)?;
+    crate::studio_tools::version_info(&state.db, &p)
 }
 
 #[tauri::command]
@@ -581,6 +583,7 @@ pub fn meta_save(state: State<'_, AppState>, project_id: String, meta: crate::me
     let mut meta = meta;
     meta.last_published_commit = current.last_published_commit;
     meta.last_published_version = current.last_published_version;
+    meta.last_published_build = current.last_published_build;
     crate::meta::save(&dir, &meta)
 }
 
@@ -893,6 +896,9 @@ pub async fn publish_android(app: AppHandle, state: State<'_, AppState>, project
                 let _ = h.emit("job-log", JobLine { project_id: id.clone(), job: job.into(), line: line.into() });
             }
         };
+        // Automatisch de juiste versie en het juiste buildnummer vóór de build.
+        crate::studio_tools::prepare_release(&st.db, &p)?;
+        let p = st.db.project_get(&project_id)?;
         let env = crate::signing::build_env(&project_id)?;
         let package = crate::platform::read_settings(&dir).android_application_id.unwrap_or_else(|| p.bundle_id.clone());
         let publisher = PlayPublisher;
@@ -920,6 +926,7 @@ pub async fn publish_android(app: AppHandle, state: State<'_, AppState>, project
         // Vastleggen wat er is gepubliceerd.
         let mut meta = crate::meta::load(&dir)?;
         meta.last_published_version = Some(p.version.clone());
+        meta.last_published_build = Some(p.build_number as u32);
         meta.last_published_commit = crate::gitops::head(&dir).ok();
         meta.publishing.final_confirmed = false;
         crate::meta::save(&dir, &meta)?;

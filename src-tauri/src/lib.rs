@@ -186,6 +186,7 @@ pub fn run() {
             commands::platform_set_min_os,
             commands::platform_set_permission,
             commands::version_set,
+            commands::version_info,
             commands::assets_generate_icon,
             commands::snapshots_list,
             commands::snapshot_create,
