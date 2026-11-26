@@ -13,6 +13,7 @@ import { VersionsView } from "@/features/sections/versions-view";
 import { IntegrationsView } from "@/features/integrations/integrations-view";
 import { SecretsView } from "@/features/integrations/secrets-view";
 import type { JumpTarget } from "@/features/integrations/use-integrations";
+import { PurchasesPage } from "@/features/purchases/purchases-page";
 import { PublishView, type PublishTab } from "@/features/sections/publish/publish-view";
 import { useChecklist } from "@/features/sections/publish/use-checklist";
 import { AutoRetest } from "@/features/sections/publish/auto-retest";
@@ -448,6 +449,7 @@ export default function ProjectPage() {
             {section === "secrets" && (
               <SecretsView projectId={p.id} target={jump} onGoIntegrations={() => setSection("integrations")} />
             )}
+            {section === "purchases" && <PurchasesPage project={p} goto={goto} />}
             {section === "publish" && <PublishView project={p} tab={publishTab} onTab={setPublishTab} goto={goto} />}
           </section>
         )}

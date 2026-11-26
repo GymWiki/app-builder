@@ -1,8 +1,16 @@
 // Alleen voor `npm run dev` in een gewone browser (zonder Tauri): een in-memory backend,
 // zodat de UI zonder desktop-shell kan worden ontwikkeld en getest. Niet in productie.
-import { mockLeaks, vaultHas, vaultInvoke, vaultMissing, vaultSetKeystore } from "./mock-vault";
+import {
+  mockLeaks,
+  vaultHas,
+  vaultInvoke,
+  vaultMissing,
+  vaultPreloadForPurchases,
+  vaultSetKeystore,
+} from "./mock-vault";
 import { AppError } from "./errors";
-import type { Project, TemplateId, ToolStatus } from "./types";
+import * as pur from "./mock-purchases";
+import type { Project, Purchases, PurchasesView, TemplateId, ToolStatus } from "./types";
 
 type Handler = (p: unknown) => void;
 const listeners = new Map<string, Set<Handler>>();
@@ -64,7 +72,21 @@ function mockVersionInfo(p?: Project) {
     willChange: next.join(".") !== (p?.version ?? "1.0.0") || build !== (p?.buildNumber ?? 1),
   };
 }
-let projects: Project[] = ["ready", "nodevices", "noscreens", "inspect"].includes(scenario)
+if (scenario === "purchases") vaultPreloadForPurchases("friday_scores");
+const purchasesStore = new Map<string, Purchases>();
+const purchasesApplying = new Set<string>();
+const purchasesOf = (id: string): Purchases => {
+  if (!purchasesStore.has(id)) purchasesStore.set(id, pur.emptyPurchases());
+  return purchasesStore.get(id)!;
+};
+const purchasesView = (id: string): PurchasesView =>
+  pur.view(
+    purchasesOf(id),
+    id,
+    projects.find((p) => p.id === id)?.bundleId ?? "com.example.app",
+    purchasesApplying.has(id),
+  );
+let projects: Project[] = ["ready", "nodevices", "noscreens", "inspect", "purchases"].includes(scenario)
   ? [
       mk("friday_scores", "Friday Scores", "scoreboard", "testing", 12, 4),
       mk("water_tracker", "Water Tracker", "tracker", "draft", 60 * 26, 1),
@@ -123,8 +145,9 @@ async function mockChat(projectId: string, text: string) {
       });
       return;
     }
-    const reply =
-      "Sure! I'll add a **settings screen** and link it from the home screen.\n\n- A new `SettingsScreen` with a theme switch\n- A button on the home screen";
+    const reply = text.includes("STUDIO GATING PLAN")
+      ? '```json\n[{"kind":"screen","name":"Statistics","entitlement":"pro","file":"lib/stats_screen.dart","line":7},{"kind":"button","name":"Export","entitlement":"pro","file":"lib/stats_screen.dart","line":31}]\n```'
+      : "Sure! I'll add a **settings screen** and link it from the home screen.\n\n- A new `SettingsScreen` with a theme switch\n- A button on the home screen";
     for (const word of reply.split(" ")) {
       if (!(await wait(35))) return;
       push({ type: "text_delta", message_id: `m${id}`, text: word + " " });
@@ -613,6 +636,80 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
     case "preview_stop":
       setPreview({ status: "stopped", url: null, problems: [] });
       return;
+    case "purchases_suggest_id":
+      return pur.suggestId(args.name as string, args.kind as never, args.period as never);
+    case "purchases_get":
+      return purchasesView(args.projectId as string);
+    case "purchases_save": {
+      const id = args.projectId as string;
+      const disk = purchasesOf(id);
+      const next = args.purchases as Purchases;
+      next.applied = disk.applied;
+      next.appliedVersion = disk.appliedVersion;
+      next.confirmations = disk.confirmations;
+      for (const pr of next.products) {
+        const old = disk.products.find((o) => o.id === pr.id);
+        pr.status = old ? old.status : { apple: "concept", google: "concept" };
+      }
+      next.gating.approved =
+        disk.gating.approved && JSON.stringify(disk.gating.points) === JSON.stringify(next.gating.points);
+      purchasesStore.set(id, next);
+      return purchasesView(id);
+    }
+    case "purchases_approve_gating":
+      purchasesOf(args.projectId as string).gating.approved = true;
+      return purchasesView(args.projectId as string);
+    case "purchases_confirm":
+      purchasesOf(args.projectId as string).confirmations[args.key as string] = args.value as boolean;
+      return purchasesView(args.projectId as string);
+    case "purchases_set_status": {
+      const pu = purchasesOf(args.projectId as string);
+      const pr = pu.products.find((x) => x.id === args.product);
+      if (!pr) throw new AppError("not_found", args.product as string);
+      const store = args.store as "apple" | "google";
+      if (
+        pur.rank(pr.status[store]) < 1 ||
+        pur.rank(args.status as never) <= pur.rank(pr.status[store]) ||
+        pur.rank(args.status as never) < 2
+      )
+        throw new AppError("invalid", "a status can only move forward");
+      pr.status[store] = args.status as never;
+      const ap = (pu.applied as { products: { id: string; status: unknown }[] } | null)?.products.find(
+        (x) => x.id === args.product,
+      );
+      if (ap) ap.status = { ...pr.status };
+      return purchasesView(args.projectId as string);
+    }
+    case "purchases_gating_prompt":
+      return "STUDIO GATING PLAN. Do NOT change any file.";
+    case "purchases_set_gating_from_answer": {
+      const text = String(args.answer);
+      const raw = text.includes("```") ? text.split("```")[1]!.replace(/^json/, "") : text;
+      let pts: Purchases["gating"]["points"] = [];
+      try {
+        pts = (JSON.parse(raw) as Purchases["gating"]["points"]).filter((x) => x.name);
+      } catch {
+        /* geen bruikbaar plan */
+      }
+      if (!pts.length) throw new AppError("invalid", "no usable gating plan");
+      const pu = purchasesOf(args.projectId as string);
+      pu.gating = { points: pts, approved: false };
+      return purchasesView(args.projectId as string);
+    }
+    case "purchases_apply": {
+      const id = args.projectId as string;
+      const v = purchasesView(id);
+      if (v.missing[0]) throw new AppError("rejected", `purchases_${v.missing[0].code}:${v.missing[0].next}`);
+      purchasesApplying.add(id);
+      emit("purchases-progress", { projectId: id, step: "snapshot", detail: null });
+      emit("purchases-progress", { projectId: id, step: "code", detail: null });
+      setTimeout(() => {
+        pur.finalize(purchasesOf(id));
+        purchasesApplying.delete(id);
+        emit("purchases-progress", { projectId: id, step: "done", detail: null });
+      }, 1500);
+      return;
+    }
     case "preview_viewport":
     case "chat_set_selection":
       return;

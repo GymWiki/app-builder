@@ -132,6 +132,25 @@ export function vaultSetKeystore(projectId: string) {
   put("alias", "text", "upload");
 }
 
+/** Demo: de sleutels die "Aankopen toepassen" nodig heeft alvast in de kluis (nep-waarden). */
+export function vaultPreloadForPurchases(projectId: string) {
+  const now = new Date().toISOString();
+  for (const [i, f, kind] of [
+    ["google_play", "service_account", "file"],
+    ["apple", "private_key", "file"],
+    ["revenuecat", "public_sdk_key", "text"],
+  ] as const)
+    values.set(keyOf(projectId, i, f), {
+      kind,
+      value: "demo",
+      fileName: kind === "file" ? "demo-key" : "",
+      derived: {},
+      setAt: now,
+      lastUsed: null,
+      usedBy: "",
+    });
+}
+
 const nowIso = () => new Date().toISOString();
 
 export function mockLeaks(): Leak[] {

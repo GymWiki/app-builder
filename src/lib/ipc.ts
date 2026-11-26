@@ -2,6 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toAppError, AppError } from "./errors";
 import type {
+  ProductKind,
+  ProductPeriod,
+  Purchases,
+  PurchasesView,
+  StoreStatus,
   Selection,
   VersionInfo,
   AppInfo,
@@ -93,6 +98,21 @@ export const api = {
   previewStart: (projectId: string, target: string) => call<void>("preview_start", { projectId, target }),
   previewStop: () => call<void>("preview_stop"),
   previewState: () => call<PreviewState>("preview_state"),
+  purchasesGet: (projectId: string) => call<PurchasesView>("purchases_get", { projectId }),
+  purchasesSave: (projectId: string, purchases: Purchases) =>
+    call<PurchasesView>("purchases_save", { projectId, purchases }),
+  purchasesApproveGating: (projectId: string) => call<PurchasesView>("purchases_approve_gating", { projectId }),
+  purchasesConfirm: (projectId: string, key: string, value: boolean) =>
+    call<PurchasesView>("purchases_confirm", { projectId, key, value }),
+  purchasesSetStatus: (projectId: string, product: string, store: "apple" | "google", status: StoreStatus) =>
+    call<PurchasesView>("purchases_set_status", { projectId, product, store, status }),
+  purchasesGatingPrompt: (projectId: string) => call<string>("purchases_gating_prompt", { projectId }),
+  purchasesSetGatingFromAnswer: (projectId: string, answer: string) =>
+    call<PurchasesView>("purchases_set_gating_from_answer", { projectId, answer }),
+  purchasesApply: (projectId: string, language: string, confirmed: boolean) =>
+    call<void>("purchases_apply", { projectId, language, confirmed }),
+  purchasesSuggestId: (name: string, kind: ProductKind, period: ProductPeriod | null) =>
+    call<string>("purchases_suggest_id", { name, kind, period }),
   previewSelect: (projectId: string, bbox: [number, number, number, number]) =>
     call<{ selection: Selection; prompt: string }>("preview_select", { projectId, bbox }),
   previewViewport: (width: number, height: number) => call<void>("preview_viewport", { width, height }),

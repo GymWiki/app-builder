@@ -154,6 +154,10 @@
       "secrets": {
         "name": "Geheimen",
         "desc": "Sleutels en wachtwoorden, veilig bewaard op deze computer. Claude ziet ze nooit."
+      },
+      "purchases": {
+        "name": "Aankopen",
+        "desc": "In-app aankopen en abonnementen, en de betaalmuur van je app."
       }
     },
     "device": {
@@ -1371,6 +1375,214 @@
         "service_account_file": "Een service-accountsleutel staat in de projectmap.",
         "env_file": "Een .env-bestand met geheimen staat in de projectmap.",
         "secret_in_app_assets": "Een geheim bestand staat als onderdeel van de app in de lijst en zou dus in de app terechtkomen."
+      }
+    },
+    "purchases": {
+      "title": "Aankopen",
+      "intro": "Bepaal wat mensen kunnen kopen, wat het ontgrendelt en hoe de betaalmuur eruitziet. Studio zet de code klaar en begeleidt je door de winkels. Prijzen in je app komen altijd uit de winkel.",
+      "kinds": {
+        "oneTime": "Eenmalige aankoop",
+        "subscription": "Abonnement",
+        "consumable": "Verbruiksartikel"
+      },
+      "kindHelp": {
+        "oneTime": "Eén keer kopen, voor altijd houden.",
+        "subscription": "Verlengt elke week, maand of jaar.",
+        "consumable": "Kan telkens opnieuw gekocht worden, zoals munten."
+      },
+      "periods": {
+        "week": "week",
+        "month": "maand",
+        "year": "jaar"
+      },
+      "stores": {
+        "title": "Klaarzetten in de winkels",
+        "apple": "App Store",
+        "google": "Google Play",
+        "intro": "Studio kan producten nog niet zelf in de winkels aanmaken, dat doe je zelf. Gebruik precies de ID’s hieronder: ze kunnen achteraf nooit meer veranderen. Laat het Studio weten als het klaar is.",
+        "allCreated": "Alle producten zijn aangemaakt in de winkels.",
+        "created": "Ik heb het aangemaakt"
+      },
+      "status": {
+        "concept": "Concept",
+        "inApp": "In de app",
+        "created": "Aangemaakt in de winkel",
+        "inReview": "In review",
+        "live": "Live"
+      },
+      "products": {
+        "title": "Producten",
+        "help": "De prijs die je invult is alleen de basisprijs om het product in de winkels aan te maken. In je app zien mensen altijd de echte prijs uit de winkel.",
+        "none": "Nog geen producten",
+        "noneHint": "Voeg een eenmalige aankoop of een abonnement toe om te beginnen.",
+        "add": "Product toevoegen",
+        "edit": "{{name}} bewerken",
+        "remove": "{{name}} verwijderen",
+        "unlocks": "ontgrendelt {{name}}"
+      },
+      "product": {
+        "addTitle": "Product toevoegen",
+        "editTitle": "Product bewerken",
+        "intro": "Kies het type, geef het een naam en een basisprijs. De rest stelt Studio voor.",
+        "kind": "Type",
+        "name": "Naam",
+        "namePlaceholder": "Pro",
+        "description": "Beschrijving",
+        "unlock": "Wat het ontgrendelt",
+        "unlockHelp": "Een kort woord voor de toegang die het geeft, zoals pro.",
+        "price": "Basisprijs",
+        "priceHelp": "Alleen om het in de winkels aan te maken.",
+        "currency": "Valuta",
+        "period": "Verlengt elke",
+        "trial": "Gratis proefperiode (dagen)",
+        "trialHelp": "Laat leeg voor geen proefperiode.",
+        "id": "Product-ID",
+        "idWarning": "Product-ID’s zijn permanent in de winkels. Zodra je dit product aan de app toevoegt, kun je het ID niet meer wijzigen.",
+        "idLocked": "Dit product staat al in de app of een winkel, dus ID en type kunnen niet meer veranderen."
+      },
+      "problems": {
+        "id_invalid": "Gebruik kleine letters, cijfers en underscores, beginnend met een letter.",
+        "id_duplicate": "Een ander product gebruikt dit ID al.",
+        "name_missing": "Geef het een naam.",
+        "price_missing": "Vul een basisprijs in.",
+        "currency_invalid": "Gebruik een valutacode van drie letters.",
+        "period_missing": "Kies hoe vaak het verlengt.",
+        "entitlement_missing": "Zeg wat het ontgrendelt."
+      },
+      "provider": {
+        "label": "Hoe aankopen in de app worden afgehandeld",
+        "revenueCat": "RevenueCat (aanbevolen voor abonnementen)",
+        "iap": "Officieel pakket in_app_purchase (eenvoudige eenmalige aankopen)",
+        "revenueCatWhy": "RevenueCat regelt verlengingen, herstellen en wie toegang heeft. Je hebt een gratis RevenueCat-account en de publieke sleutel in de geheimen nodig.",
+        "iapWhy": "Het officiële pakket is genoeg voor eenvoudige eenmalige aankopen en vraagt geen extra account."
+      },
+      "gating": {
+        "title": "Wat zit er achter de betaalmuur",
+        "describe": "Wat moet er ontgrendeld worden?",
+        "describeHelp": "Beschrijf het in je eigen woorden, bijvoorbeeld: onbeperkt spellen opslaan en exporteren.",
+        "placeholder": "Onbeperkt spellen opslaan en exporteren",
+        "make": "Laat AI het plan maken",
+        "working": "Claude leest je app…",
+        "planTitle": "Dit komt achter de betaalmuur:",
+        "item": "{{kind}} “{{name}}” (vraagt {{unlock}})",
+        "kinds": {
+          "screen": "scherm",
+          "feature": "functie",
+          "button": "knop"
+        },
+        "approve": "Goedkeuren",
+        "approved": "Goedgekeurd",
+        "again": "Nieuw plan maken",
+        "adjustHint": "Haal weg wat niet vergrendeld moet worden en keur het dan goed.",
+        "removeItem": "{{name}} uit het plan halen"
+      },
+      "paywall": {
+        "title": "Betaalmuur",
+        "where": "Waar verschijnt hij?",
+        "placements": {
+          "lockedFeature": "Als iemand een vergrendelde functie aantikt",
+          "startup": "Bij het opstarten of de introductie",
+          "settings": "Via een knop in instellingen",
+          "afterUses": "Na een aantal keer gebruik"
+        },
+        "afterUses": "Na hoeveel keer gebruik?",
+        "layout": "Uiterlijk",
+        "layouts": {
+          "fullScreen": "Volledig scherm",
+          "sheet": "Paneel van onderen",
+          "compact": "Compact"
+        },
+        "headline": "Kop",
+        "headlineExample": "Krijg alles met Pro",
+        "body": "Tekst",
+        "bodyExample": "Ontgrendel alle functies en steun de app.",
+        "cta": "Tekst op de knop",
+        "ctaExample": "Doorgaan",
+        "style": "Stijl in je eigen woorden",
+        "styleHelp": "De betaalmuur gebruikt de kleuren, lettertypen en onderdelen van je app.",
+        "styleExample": "Rustig, veel wit",
+        "products": "Producten op de betaalmuur",
+        "featured": "Uitgelicht",
+        "makeFeatured": "Maak {{name}} het uitgelichte product",
+        "storePrice": "Prijs uit de winkel",
+        "trial": "{{days}} dagen gratis",
+        "baseHint": "basisprijs {{price}}",
+        "noProducts": "Voeg een product toe om het hier te zien.",
+        "restore": "Aankopen herstellen",
+        "legal": "Gebruiksvoorwaarden · Privacybeleid",
+        "previewLabel": "Voorbeeld van de betaalmuur",
+        "realPriceNote": "Dit is een voorbeeld. In de app komen de echte prijs en valuta uit de winkel, nooit uit een vast bedrag.",
+        "tweak": "Pas aan met een zin",
+        "tweakHelp": "Claude past de instellingen van de betaalmuur aan, bijvoorbeeld: rustiger, grotere knop.",
+        "tweakExample": "Maak het rustiger",
+        "tweakButton": "Aanpassen"
+      },
+      "options": {
+        "title": "De opties zoals de app ze toont",
+        "base": "Basisprijs of periode",
+        "unlocks": "Ontgrendelt",
+        "note": "De echte prijs in de app komt uit de winkel."
+      },
+      "apply": {
+        "titleFirst": "Toevoegen aan je app",
+        "titleUpdate": "Je app bijwerken",
+        "addToApp": "Toevoegen aan app",
+        "updateApp": "App bijwerken",
+        "will": "Dit gaat gebeuren:",
+        "parts": {
+          "create": "{{count}} product(en) aanmaken",
+          "update": "{{count}} product(en) bijwerken",
+          "remove": "{{count}} product(en) verwijderen",
+          "lock": "{{count}} plek(ken) vergrendelen",
+          "unlock": "{{count}} plek(ken) weer ontgrendelen",
+          "paywall": "de betaalmuur toevoegen of bijwerken",
+          "provider": "de afhandeling van aankopen omzetten"
+        },
+        "risksTitle": "Pas op",
+        "risks": {
+          "price_increase": "Een hogere prijs voor “{{product}}” raakt mensen die al abonnee zijn.",
+          "remove_with_buyers": "“{{product}}” heeft al kopers. Uit de app halen haalt het niet uit de winkels en kopers houden wat ze betaald hebben.",
+          "entitlement_changed": "Veranderen wat “{{product}}” ontgrendelt raakt mensen die het al kochten."
+        },
+        "missingTitle": "Nog te doen",
+        "nothing": "Er is niets veranderd sinds de vorige keer.",
+        "steps": {
+          "snapshot": "Eerst een momentopname bewaren…",
+          "code": "Claude voegt de aankopen toe aan je app…"
+        },
+        "done": "Toegevoegd aan je app",
+        "failed": "Dit is niet gelukt en je app is teruggezet zoals hij was."
+      },
+      "missing": {
+        "no_products": "Voeg minstens één product toe.",
+        "product_problems": "Los de producten met een probleem op.",
+        "gating_not_approved": "Keur het plan voor wat achter de betaalmuur komt goed.",
+        "secret_google": "Voeg je Google Play-sleutel toe.",
+        "secret_apple": "Voeg je App Store Connect-sleutel toe.",
+        "secret_revenuecat": "Voeg je RevenueCat-sleutel toe.",
+        "go": "Ga erheen"
+      },
+      "confirm": {
+        "titleFirst": "Aankopen aan je app toevoegen?",
+        "titleUpdate": "De aankopen in je app bijwerken?",
+        "permanent": "Deze product-ID’s zijn permanent in de winkels:",
+        "deleteLimits": "Producten in de winkels zijn niet altijd te verwijderen, en Apple en Google houden hun ID’s voorgoed.",
+        "snapshotNote": "Studio bewaart eerst een momentopname en controleert de app daarna. Gaat er iets mis, dan wordt alles teruggezet.",
+        "paid_apps_agreement": "De overeenkomst voor betaalde apps is geaccepteerd (App Store)",
+        "paid_apps_agreementHelp": "In App Store Connect onder Zakelijk. Zonder kunnen aankopen niet verkocht worden.",
+        "tax_bank": "Belasting- en bankgegevens zijn ingevuld (App Store)",
+        "tax_bankHelp": "Ook onder Zakelijk in App Store Connect.",
+        "merchant_account": "Een merchant-account is ingesteld (Google Play)",
+        "merchant_accountHelp": "In de Play Console onder Instellen, betalingsprofiel.",
+        "sandbox_tested": "Ik heb een testaankoop op een echte telefoon geprobeerd",
+        "sandbox_testedHelp": "Gebruik een sandbox-tester (Apple) of licentietester (Google). Studio doet in de eigen testrun nooit echte aankopen.",
+        "apple_submitted": "De eerste aankoop is samen met een appversie ingediend (App Store)",
+        "apple_submittedHelp": "Apple beoordeelt de eerste in-app aankoop samen met een appversie."
+      },
+      "remove": {
+        "title": "“{{name}}” verwijderen?",
+        "body": "Dit product staat al in je app of een winkel. Hier verwijderen haalt het bij de volgende update uit je app, maar de winkels houden het, en wie het kocht houdt toegang.",
+        "confirm": "Verwijderen"
       }
     }
   },

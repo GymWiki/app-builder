@@ -334,3 +334,83 @@ export interface VersionInfo {
   nextBuild: number;
   willChange: boolean;
 }
+
+// ───────────── aankopen ─────────────
+export type ProductKind = "oneTime" | "consumable" | "subscription";
+export type ProductPeriod = "week" | "month" | "year";
+export type StoreStatus = "concept" | "inApp" | "created" | "inReview" | "live";
+export interface PurchaseProduct {
+  id: string;
+  kind: ProductKind;
+  name: string;
+  description: string;
+  basePrice: number;
+  currency: string;
+  period: ProductPeriod | null;
+  trialDays: number | null;
+  entitlement: string;
+  status: { apple: StoreStatus; google: StoreStatus };
+}
+export interface GatePoint {
+  kind: "screen" | "feature" | "button";
+  name: string;
+  entitlement: string;
+  file: string | null;
+  line: number | null;
+}
+export interface PaywallSettings {
+  placement: "startup" | "lockedFeature" | "settings" | "afterUses";
+  afterUses: number;
+  layout: "compact" | "fullScreen" | "sheet";
+  style: string;
+  headline: string;
+  body: string;
+  cta: string;
+  productIds: string[];
+  featured: string | null;
+}
+export interface Purchases {
+  schema: number;
+  provider: "revenueCat" | "inAppPurchase";
+  products: PurchaseProduct[];
+  paywallDescription: string;
+  gating: { points: GatePoint[]; approved: boolean };
+  paywall: PaywallSettings;
+  appliedVersion: number;
+  applied: unknown | null;
+  confirmations: Record<string, boolean>;
+  apple: boolean;
+  google: boolean;
+}
+export interface ApplyPlan {
+  firstTime: boolean;
+  create: string[];
+  update: string[];
+  remove: string[];
+  gatePointsAdded: number;
+  gatePointsRemoved: number;
+  paywallChanged: boolean;
+  providerChanged: boolean;
+  risks: { code: "price_increase" | "remove_with_buyers" | "entitlement_changed"; product: string }[];
+}
+export interface StoreTask {
+  store: "apple" | "google";
+  product: string;
+  fullId: string;
+  name: string;
+  kind: ProductKind;
+  period: ProductPeriod | null;
+  basePrice: number;
+  currency: string;
+  trialDays: number | null;
+}
+export interface PurchasesView {
+  purchases: Purchases;
+  plan: ApplyPlan;
+  summary: [string, number][];
+  missing: { code: string; next: string }[];
+  problems: { product: string; code: string }[];
+  tasks: StoreTask[];
+  bundleId: string;
+  applying: boolean;
+}

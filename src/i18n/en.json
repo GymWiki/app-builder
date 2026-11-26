@@ -154,6 +154,10 @@
       "secrets": {
         "name": "Secrets",
         "desc": "Keys and passwords, kept safely on this computer. Claude never sees them."
+      },
+      "purchases": {
+        "name": "Purchases",
+        "desc": "In-app purchases and subscriptions, and the paywall of your app."
       }
     },
     "device": {
@@ -1371,6 +1375,214 @@
         "service_account_file": "A service account key file is stored in the project folder.",
         "env_file": "An .env file with secrets is in the project folder.",
         "secret_in_app_assets": "A secret file is listed as part of the app, so it would ship inside the app."
+      }
+    },
+    "purchases": {
+      "title": "Purchases",
+      "intro": "Define what people can buy, what it unlocks and how the paywall looks. Studio sets up the code and guides you through the stores. Prices in your app always come from the store.",
+      "kinds": {
+        "oneTime": "One-time purchase",
+        "subscription": "Subscription",
+        "consumable": "Consumable"
+      },
+      "kindHelp": {
+        "oneTime": "Buy once, keep it.",
+        "subscription": "Renews every week, month or year.",
+        "consumable": "Can be bought again and again, like coins."
+      },
+      "periods": {
+        "week": "week",
+        "month": "month",
+        "year": "year"
+      },
+      "stores": {
+        "title": "Set up in the stores",
+        "apple": "App Store",
+        "google": "Google Play",
+        "intro": "Studio can’t create products in the stores for you yet, so you do that part yourself. Use exactly the IDs below: they can never be changed afterwards. Then tell Studio when it’s done.",
+        "allCreated": "All products are created in the stores.",
+        "created": "I created it"
+      },
+      "status": {
+        "concept": "Draft",
+        "inApp": "In the app",
+        "created": "Created in the store",
+        "inReview": "In review",
+        "live": "Live"
+      },
+      "products": {
+        "title": "Products",
+        "help": "The price you enter is only the base price used to create the product in the stores. In your app, people always see the real price from the store.",
+        "none": "No products yet",
+        "noneHint": "Add a one-time purchase or a subscription to get started.",
+        "add": "Add a product",
+        "edit": "Edit {{name}}",
+        "remove": "Remove {{name}}",
+        "unlocks": "unlocks {{name}}"
+      },
+      "product": {
+        "addTitle": "Add a product",
+        "editTitle": "Edit product",
+        "intro": "Pick the type, give it a name and a base price. Studio suggests the rest.",
+        "kind": "Type",
+        "name": "Name",
+        "namePlaceholder": "Pro",
+        "description": "Description",
+        "unlock": "What it unlocks",
+        "unlockHelp": "A short word for the access it gives, like pro.",
+        "price": "Base price",
+        "priceHelp": "Only used to create it in the stores.",
+        "currency": "Currency",
+        "period": "Renews every",
+        "trial": "Free trial (days)",
+        "trialHelp": "Leave empty for no trial.",
+        "id": "Product ID",
+        "idWarning": "Product IDs are permanent in the stores. After you add this product to the app you can no longer change the ID.",
+        "idLocked": "This product is already in the app or a store, so its ID and type can’t change anymore."
+      },
+      "problems": {
+        "id_invalid": "Use lowercase letters, digits and underscores, starting with a letter.",
+        "id_duplicate": "Another product already uses this ID.",
+        "name_missing": "Give it a name.",
+        "price_missing": "Add a base price.",
+        "currency_invalid": "Use a three-letter currency code.",
+        "period_missing": "Choose how often it renews.",
+        "entitlement_missing": "Say what it unlocks."
+      },
+      "provider": {
+        "label": "How purchases are handled in the app",
+        "revenueCat": "RevenueCat (recommended for subscriptions)",
+        "iap": "Official in_app_purchase package (simple one-time purchases)",
+        "revenueCatWhy": "RevenueCat takes care of renewals, restoring purchases and who has access. It needs a free RevenueCat account and its public key in the secrets.",
+        "iapWhy": "The official package is enough for simple one-time purchases and needs no extra account."
+      },
+      "gating": {
+        "title": "What is behind the paywall",
+        "describe": "What should be unlocked?",
+        "describeHelp": "Describe it in your own words, for example: unlimited saved games and exporting.",
+        "placeholder": "Unlimited saved games and export",
+        "make": "Let AI make the plan",
+        "working": "Claude is reading your app…",
+        "planTitle": "This goes behind the paywall:",
+        "item": "{{kind}} “{{name}}” (needs {{unlock}})",
+        "kinds": {
+          "screen": "screen",
+          "feature": "feature",
+          "button": "button"
+        },
+        "approve": "Approve",
+        "approved": "Approved",
+        "again": "Make a new plan",
+        "adjustHint": "Remove anything that shouldn’t be locked, then approve.",
+        "removeItem": "Remove {{name}} from the plan"
+      },
+      "paywall": {
+        "title": "Paywall",
+        "where": "Where does it appear?",
+        "placements": {
+          "lockedFeature": "When someone taps a locked feature",
+          "startup": "At startup or onboarding",
+          "settings": "From a button in settings",
+          "afterUses": "After a number of uses"
+        },
+        "afterUses": "After how many uses?",
+        "layout": "Look",
+        "layouts": {
+          "fullScreen": "Full screen",
+          "sheet": "Sheet from the bottom",
+          "compact": "Compact"
+        },
+        "headline": "Headline",
+        "headlineExample": "Get everything with Pro",
+        "body": "Text",
+        "bodyExample": "Unlock all features and support the app.",
+        "cta": "Button text",
+        "ctaExample": "Continue",
+        "style": "Style in your own words",
+        "styleHelp": "The paywall uses your app’s colours, fonts and components.",
+        "styleExample": "Calm, lots of white space",
+        "products": "Products on the paywall",
+        "featured": "Featured",
+        "makeFeatured": "Make {{name}} the featured product",
+        "storePrice": "Price from the store",
+        "trial": "{{days}} days free",
+        "baseHint": "base price {{price}}",
+        "noProducts": "Add a product to see it here.",
+        "restore": "Restore purchases",
+        "legal": "Terms of use · Privacy policy",
+        "previewLabel": "Paywall preview",
+        "realPriceNote": "This is a preview. In the app the real price and currency come from the store, never from a fixed number.",
+        "tweak": "Adjust with a sentence",
+        "tweakHelp": "Claude changes the paywall settings, for example: calmer, bigger button.",
+        "tweakExample": "Make it calmer",
+        "tweakButton": "Adjust"
+      },
+      "options": {
+        "title": "The options as the app shows them",
+        "base": "Base price or period",
+        "unlocks": "Unlocks",
+        "note": "The real price shown in the app comes from the store."
+      },
+      "apply": {
+        "titleFirst": "Add to your app",
+        "titleUpdate": "Update your app",
+        "addToApp": "Add to app",
+        "updateApp": "Update app",
+        "will": "This will:",
+        "parts": {
+          "create": "create {{count}} product(s)",
+          "update": "update {{count}} product(s)",
+          "remove": "remove {{count}} product(s)",
+          "lock": "lock {{count}} place(s)",
+          "unlock": "unlock {{count}} place(s) again",
+          "paywall": "add or update the paywall",
+          "provider": "switch how purchases are handled"
+        },
+        "risksTitle": "Be careful",
+        "risks": {
+          "price_increase": "Raising the price of “{{product}}” affects people who already subscribe.",
+          "remove_with_buyers": "“{{product}}” already has buyers. Removing it from the app doesn’t remove it from the stores, and buyers keep what they paid for.",
+          "entitlement_changed": "Changing what “{{product}}” unlocks affects people who already bought it."
+        },
+        "missingTitle": "Still to do",
+        "nothing": "Nothing has changed since the last time.",
+        "steps": {
+          "snapshot": "Saving a snapshot first…",
+          "code": "Claude is adding the purchases to your app…"
+        },
+        "done": "Added to your app",
+        "failed": "This didn’t work and your app was put back as it was."
+      },
+      "missing": {
+        "no_products": "Add at least one product.",
+        "product_problems": "Fix the products that have a problem.",
+        "gating_not_approved": "Approve the plan for what goes behind the paywall.",
+        "secret_google": "Add your Google Play key.",
+        "secret_apple": "Add your App Store Connect key.",
+        "secret_revenuecat": "Add your RevenueCat key.",
+        "go": "Go there"
+      },
+      "confirm": {
+        "titleFirst": "Add purchases to your app?",
+        "titleUpdate": "Update the purchases in your app?",
+        "permanent": "These product IDs are permanent in the stores:",
+        "deleteLimits": "Products in the stores can’t always be deleted again, and Apple and Google keep their IDs for good.",
+        "snapshotNote": "Studio saves a snapshot first and checks the app afterwards. If something fails, everything is put back.",
+        "paid_apps_agreement": "The paid apps agreement is accepted (App Store)",
+        "paid_apps_agreementHelp": "In App Store Connect under Business. Without it, purchases can’t be sold.",
+        "tax_bank": "Tax and bank details are filled in (App Store)",
+        "tax_bankHelp": "Also under Business in App Store Connect.",
+        "merchant_account": "A merchant account is set up (Google Play)",
+        "merchant_accountHelp": "In Play Console under Setup, payments profile.",
+        "sandbox_tested": "I tried a test purchase on a real phone",
+        "sandbox_testedHelp": "Use a sandbox tester (Apple) or a license tester (Google). Studio never makes real purchases in its own test run.",
+        "apple_submitted": "The first purchase was submitted with an app version (App Store)",
+        "apple_submittedHelp": "Apple reviews the first in-app purchase together with an app version."
+      },
+      "remove": {
+        "title": "Remove “{{name}}”?",
+        "body": "This product is already in your app or a store. Removing it here takes it out of your app at the next update, but the stores keep it, and people who bought it keep access.",
+        "confirm": "Remove it"
       }
     }
   },
