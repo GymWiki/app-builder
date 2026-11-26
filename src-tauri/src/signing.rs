@@ -130,6 +130,12 @@ pub fn build_env(project_id: &str) -> AppResult<crate::vault::EnvBundle> {
         return Err(AppError::NotFound("keystore password".into()));
     }
     let mut b = v.env_for_fields(project_id, &["google_play"], Some(&["keystore", "alias", "keystore_password", "key_password"]), "build")?;
+    // Aankopen met RevenueCat: de publieke SDK-sleutel gaat mee naar de build (via een tijdelijk bestand, zie `publish.rs`).
+    if v.has(project_id, "revenuecat", "public_sdk_key") {
+        let r = v.env_for_fields(project_id, &["revenuecat"], Some(&["public_sdk_key"]), "build")?;
+        b.vars.extend(r.vars);
+        b.files.extend(r.files);
+    }
     // PKCS12: het sleutelwachtwoord is hetzelfde als het keystore-wachtwoord, tenzij er een eigen is ingesteld.
     if !b.vars.iter().any(|(k, _)| k == "STUDIO_KEY_PASSWORD") {
         if let Some(pw) = b.vars.iter().find(|(k, _)| k == "STUDIO_KEYSTORE_PASSWORD").map(|(_, v)| v.clone()) {

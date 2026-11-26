@@ -370,6 +370,109 @@ pub fn missing(p: &Purchases, stores_apple: bool, stores_google: bool, has_secre
     m
 }
 
+
+// ───────────── concept uit de chat ─────────────
+
+/// Woorden waaraan we merken dat iemand het over betalen heeft. Alleen hele woorden, in het Nederlands en Engels.
+const INTENT_WORDS: &[&str] = &[
+    "betalen", "betaal", "betaald", "betalend", "betaalmuur", "premium", "abonnement", "abonnementen", "paywall", "unlock", "proefperiode", "subscription", "subscriptions", "purchase", "purchases", "aankoop", "aankopen", "iap", "monetize", "monetise", "monetization", "verdienen",
+];
+
+fn tokens(text: &str) -> Vec<String> {
+    text.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty()).map(String::from).collect()
+}
+
+/// Gaat dit bericht over aankopen of abonnementen? Berichten van Studio zelf (beginnen met "STUDIO ") tellen niet mee.
+pub fn intent(text: &str) -> bool {
+    if text.trim_start().starts_with("STUDIO ") {
+        return false;
+    }
+    let t = tokens(text);
+    // Nederlandse samenstellingen ("jaarabonnement", "betaalmuur") bevatten het stamwoord.
+    const STEMS: &[&str] = &["abonnement", "paywall", "betaalmuur", "subscription", "aankoop", "aankopen"];
+    t.iter().any(|w| INTENT_WORDS.contains(&w.as_str()) || STEMS.iter().any(|s| w.contains(s))) || t.windows(2).any(|w| w[0] == "in" && w[1] == "app" && t.iter().any(|x| x.starts_with("purchase") || x.starts_with("aankoop")))
+}
+
+/// Een eerste concept uit gewone zinnen: soort, periode en proefperiode worden herkend, een prijs wordt nooit verzonnen.
+pub fn draft_from_text(text: &str) -> Purchases {
+    let t = tokens(text);
+    let has = |ws: &[&str]| t.iter().any(|x| ws.contains(&x.as_str()));
+    let stem = |ws: &[&str]| t.iter().any(|x| ws.iter().any(|w| x.contains(w)));
+    let year = stem(&["jaar", "year", "annual"]);
+    let month = stem(&["maand", "month"]);
+    let week = t.iter().any(|x| x.starts_with("week") && x != "weekend") || has(&["wekelijks"]);
+    let sub = stem(&["abonnement", "subscription"]) || year || month || week;
+    let mut p = Purchases { paywall_description: text.trim().chars().take(500).collect(), ..Default::default() };
+    let period = if year { Some(Period::Year) } else if month { Some(Period::Month) } else if week { Some(Period::Week) } else if sub { Some(Period::Year) } else { None };
+    let kind = if sub { Kind::Subscription } else { Kind::OneTime };
+    let mut pr = Product { id: suggest_id("Pro", kind, period), kind, name: "Pro".into(), currency: "EUR".into(), period, entitlement: "pro".into(), ..Default::default() };
+    if has(&["proefperiode", "trial", "gratis"]) && sub {
+        pr.trial_days = Some(7);
+    }
+    p.paywall.product_ids = vec![pr.id.clone()];
+    p.paywall.featured = Some(pr.id.clone());
+    p.provider = if sub { Provider::RevenueCat } else { Provider::InAppPurchase };
+    p.products.push(pr);
+    p
+}
+
+/// Verwerkt een voorstel van Claude (MCP-tool `open_aankopen_pagina`) in het concept: nieuwe producten als concept en de omschrijving.
+/// Bestaande producten blijven ongemoeid. Geeft het aantal toegevoegde producten.
+pub fn apply_proposal(p: &mut Purchases, proposal: &serde_json::Value) -> usize {
+    let mut added = 0;
+    if let Some(d) = proposal["description"].as_str().map(str::trim).filter(|d| !d.is_empty()) {
+        if p.paywall_description.trim().is_empty() {
+            p.paywall_description = d.chars().take(500).collect();
+        } else if !p.paywall_description.contains(d) {
+            p.paywall_description = format!("{} {}", p.paywall_description.trim(), d.chars().take(300).collect::<String>());
+        }
+    }
+    for o in proposal["products"].as_array().cloned().unwrap_or_default() {
+        let name = o["name"].as_str().unwrap_or("").trim().to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let kind = match o["type"].as_str().or(o["kind"].as_str()).unwrap_or("") {
+            "subscription" => Kind::Subscription,
+            "consumable" => Kind::Consumable,
+            _ => Kind::OneTime,
+        };
+        let period = match o["period"].as_str() {
+            Some("week") => Some(Period::Week),
+            Some("month") => Some(Period::Month),
+            Some("year") => Some(Period::Year),
+            _ => None,
+        };
+        let period = if kind == Kind::Subscription { period.or(Some(Period::Year)) } else { None };
+        let id = suggest_id(&name, kind, period);
+        if p.products.iter().any(|x| x.id == id) {
+            continue;
+        }
+        let ent = if kind == Kind::Consumable { String::new() } else { o["unlock"].as_str().unwrap_or("pro").trim().to_lowercase() };
+        p.products.push(Product {
+            id: id.clone(),
+            kind,
+            name,
+            description: o["description"].as_str().unwrap_or("").to_string(),
+            base_price: o["price"].as_f64().filter(|x| *x > 0.0).unwrap_or(0.0),
+            currency: o["currency"].as_str().map(|c| c.to_uppercase()).filter(|c| c.len() == 3).unwrap_or_else(|| "EUR".into()),
+            period,
+            trial_days: if kind == Kind::Subscription { o["trialDays"].as_u64().filter(|d| *d > 0).map(|d| d as u32) } else { None },
+            entitlement: ent,
+            status: StoreStates::default(),
+        });
+        p.paywall.product_ids.push(id.clone());
+        if p.paywall.featured.is_none() {
+            p.paywall.featured = Some(id);
+        }
+        added += 1;
+    }
+    if p.products.iter().any(|x| x.kind == Kind::Subscription) {
+        p.provider = Provider::RevenueCat;
+    }
+    added
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -467,5 +570,41 @@ mod tests {
         assert_eq!(codes(missing(&p, true, true, &only_google)), ["secret_apple"]);
         assert_eq!(missing(&p, false, true, &only_google), vec![]);
         assert_eq!(missing(&Purchases::default(), false, false, &none)[0].next, "purchases:products");
+    }
+
+    #[test]
+    fn purchase_talk_is_recognised_but_studios_own_prompts_are_not() {
+        for t in ["Ik wil een abonnement met proefperiode", "add a paywall for pro users", "Make the stats screen premium", "wil geld verdienen met de app", "add in-app purchases"] {
+            assert!(intent(t), "{t}");
+        }
+        for t in ["Make the title bigger", "show the display name", "add a pay-as-you-go screen? no, a payment history list", "change the button color", "STUDIO GATING PLAN: the paywall..."] {
+            assert!(!intent(t) || t.starts_with("add a pay"), "{t}");
+        }
+        assert!(!intent("STUDIO PURCHASES FLOW paywall subscription"));
+    }
+
+    #[test]
+    fn a_draft_from_a_sentence_never_invents_a_price() {
+        let d = draft_from_text("Ik wil een jaarabonnement Pro met proefperiode voor onbeperkt exporteren");
+        assert_eq!(d.products.len(), 1);
+        let p = &d.products[0];
+        assert_eq!((p.kind, p.period, p.trial_days, p.id.as_str(), p.base_price), (Kind::Subscription, Some(Period::Year), Some(7), "pro_yearly", 0.0));
+        assert_eq!(d.provider, Provider::RevenueCat);
+        assert!(d.paywall_description.contains("exporteren") && validate(&d).iter().any(|x| x.code == "price_missing"), "the user still has to fill in the price");
+        let one = draft_from_text("add a paywall to unlock exporting");
+        assert_eq!((one.products[0].kind, one.provider), (Kind::OneTime, Provider::InAppPurchase));
+    }
+
+    #[test]
+    fn a_proposal_from_claude_adds_concepts_and_keeps_existing_products() {
+        let mut p = Purchases { products: vec![pro()], ..Default::default() };
+        let n = apply_proposal(&mut p, &serde_json::json!({"description":"Unlimited saves","products":[{"name":"Pro","type":"one_time"},{"name":"Pro","type":"subscription","period":"month","price":4.5,"currency":"usd","trialDays":3},{"name":"Tip","type":"consumable","price":-1}]}));
+        assert_eq!(n, 2, "the existing 'pro' is skipped");
+        let sub = p.products.iter().find(|x| x.id == "pro_monthly").unwrap();
+        assert_eq!((sub.base_price, sub.currency.as_str(), sub.trial_days, sub.status.apple), (4.5, "USD", Some(3), StoreStatus::Concept));
+        let tip = p.products.iter().find(|x| x.id == "tip").unwrap();
+        assert_eq!((tip.base_price, tip.entitlement.as_str()), (0.0, ""));
+        assert_eq!((p.paywall_description.as_str(), p.provider), ("Unlimited saves", Provider::RevenueCat));
+        assert_eq!(apply_proposal(&mut p, &serde_json::json!({"description":"Unlimited saves"})), 0);
     }
 }

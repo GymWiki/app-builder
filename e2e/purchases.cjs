@@ -143,6 +143,17 @@ const ok = (c, m) => {
     "the risk is repeated in the confirmation",
   );
   await p.screenshot({ path: `${S}/71-purchases-update.png`, fullPage: true });
+  // De chat: over aankopen begint Claude niet zelf; Studio zet een concept klaar en opent de pagina.
+  await p.goto("http://localhost:1420/?mock=purchases#/project/water_tracker");
+  await p.locator("textarea").first().fill("Ik wil een abonnement met een proefperiode");
+  await p.keyboard.press("Enter");
+  await p.getByRole("heading", { name: "Purchases" }).first().waitFor({ timeout: 8000 });
+  await p.getByText("Pro", { exact: true }).first().waitFor();
+  ok(
+    await p.getByText("com.example.water_tracker.pro_yearly").first().isVisible(),
+    "a purchase request in the chat opens the Purchases page with a draft",
+  );
+  ok((await p.getByText("Add a base price.").count()) === 0, "(the draft is not applied or priced by itself)");
   ok(errs.length === 0, "no console errors " + errs.join("|"));
   await b.close();
 })().catch((e) => {

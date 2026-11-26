@@ -71,6 +71,8 @@ pub fn tool_list() -> Value {
         {"name":"welke_geheimen_ontbreken","description":"Lists the required secrets that are still missing for this app (integration and field only). Never returns a value.","inputSchema":no_args},
         {"name":"vraag_gebruiker_om_geheim","description":"Opens the Secrets page in Studio at the right field so the USER can fill it in. You never see the value and must not ask the user to paste it into the chat.",
          "inputSchema":{"type":"object","properties":{"integratie":{"type":"string"},"veld":{"type":"string"}},"required":["integratie","veld"]}},
+        {"name":"open_aankopen_pagina","description":"Opens the Purchases page in Studio with a draft. Use this when the user asks for in-app purchases, a subscription, a paywall or premium features: do NOT write purchase code yourself. Pass what the user said as a proposal; they can adjust and confirm it on the page.",
+         "inputSchema":{"type":"object","properties":{"voorstel":{"type":"object","properties":{"description":{"type":"string","description":"What the user wants behind the paywall, in their words"},"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"type":{"type":"string","enum":["one_time","subscription","consumable"]},"period":{"type":"string","enum":["week","month","year"]},"price":{"type":"number"},"currency":{"type":"string"},"trialDays":{"type":"integer"},"unlock":{"type":"string"},"description":{"type":"string"}},"required":["name","type"]}}}}},"required":["voorstel"]}},
         {"name":"approve","description":"Internal: asks the user in Studio for permission. Used by Claude Code only.",
          "inputSchema":{"type":"object","properties":{"tool_name":{"type":"string"},"input":{"type":"object"},"tool_use_id":{"type":"string"}},"required":["tool_name","input"]}}
     ])
@@ -156,6 +158,16 @@ fn call_tool(deps: &Deps, project_id: &str, name: &str, args: &Value) -> Value {
                     Ok(json!({ "ok": true, "integrationOn": on, "note": if on { "The user has been asked in Studio. You will not see the value; carry on once they say it is filled in." } else { "This integration is switched off. The user was taken to the Integrations page to switch it on first." } }))
                 }
             }
+        }
+        "open_aankopen_pagina" => {
+            let proposal = args.get("voorstel").cloned().unwrap_or(json!({}));
+            crate::purchases::load(&dir).and_then(|mut pu| {
+                let added = crate::purchases::apply_proposal(&mut pu, &proposal);
+                crate::purchases::save(&dir, &pu)?;
+                let _ = deps.db.purchases_store(project_id, &serde_json::to_string(&pu).unwrap_or_default());
+                (deps.emit)("open-purchases", json!({ "projectId": project_id }));
+                Ok(json!({ "ok": true, "added": added, "note": "The user has been taken to the Purchases page in Studio with a draft. They will adjust and confirm it there. Do not write any purchase or paywall code yourself." }))
+            })
         }
         "scherm_index" => CodeIndex::build(&dir).map(|i| json!(i.render_markdown())),
         "afhankelijkheden" => CodeIndex::build(&dir).map(|i| {
@@ -499,6 +511,25 @@ mod tests {
         assert_eq!((events[0].0.as_str(), events[0].1["integration"].as_str(), events[0].1["field"].as_str()), ("open-secret", Some("google_play"), Some("keystore")));
         let bad = rpc(&deps, &pid, "tools/call", json!({"name":"vraag_gebruiker_om_geheim","arguments":{"integratie":"nope","veld":"x"}}));
         assert_eq!(bad["result"]["isError"], true);
+    }
+
+
+    #[test]
+    fn claude_opens_the_purchases_page_with_a_draft_instead_of_writing_purchase_code() {
+        let (deps, pid, dir) = deps_with_project();
+        let sent: Arc<std::sync::Mutex<Vec<(String, Value)>>> = Arc::default();
+        let s2 = sent.clone();
+        let deps = Deps { emit: Arc::new(move |n, v| s2.lock().unwrap().push((n.to_string(), v))), ..deps };
+        let call = |name: &str, args: Value| rpc(&deps, &pid, "tools/call", json!({"name":name,"arguments":args}));
+        assert!(tool_list().as_array().unwrap().iter().any(|t| t["name"] == "open_aankopen_pagina"));
+        let r = call("open_aankopen_pagina", json!({"voorstel":{"description":"Unlimited exports","products":[{"name":"Pro","type":"subscription","period":"year"}]}}));
+        assert_eq!(r["result"]["isError"], false, "{r}");
+        assert_eq!(serde_json::from_str::<Value>(&tool_text(&r)).unwrap()["added"], 1);
+        let saved = crate::purchases::load(&dir).unwrap();
+        assert_eq!((saved.products[0].id.as_str(), saved.paywall_description.as_str()), ("pro_yearly", "Unlimited exports"));
+        assert_eq!(deps.db.purchases_load(&pid).unwrap().is_some(), true, "the copy for the UI exists too");
+        let events = sent.lock().unwrap().clone();
+        assert_eq!((events[0].0.as_str(), events[0].1["projectId"].as_str()), ("open-purchases", Some(pid.as_str())));
     }
 
     #[test]

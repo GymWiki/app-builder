@@ -127,7 +127,8 @@ pub fn run(flutter: &Path, dir: &Path, on_line: &mut dyn FnMut(&str)) -> AppResu
     let _ = std::fs::remove_file(dir.join(REPORT_REL));
 
     let mut cmd = proc::command(flutter);
-    cmd.args(["test", CRAWLER_REL]).current_dir(dir).stderr(Stdio::piped()).stdout(Stdio::piped());
+    // De testrun doet nooit echte aankopen: een project met aankopen gebruikt dan de FakePurchaseProvider.
+    cmd.args(["test", "--dart-define=STUDIO_FAKE_PURCHASES=true", CRAWLER_REL]).current_dir(dir).stderr(Stdio::piped()).stdout(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| AppError::CommandFailed(format!("flutter test: {e}")))?;
     let stderr = child.stderr.take();
     let (tx, rx) = std::sync::mpsc::channel::<String>();

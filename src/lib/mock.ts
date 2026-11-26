@@ -126,6 +126,34 @@ async function mockChat(projectId: string, text: string) {
   const id = ++seq;
   runningChats.add(projectId);
   push({ type: "user", text, context: null });
+  // Over aankopen begint Claude niet zelf aan code: Studio zet een concept klaar en opent de pagina Aankopen (zoals de echte backend).
+  if (!text.startsWith("STUDIO ") && /abonnement|subscription|paywall|premium|betaalmuur|aankop|purchase/i.test(text)) {
+    await sleep(300);
+    const pu = purchasesOf(projectId);
+    if (!pu.products.length) {
+      const sub = /abonnement|subscription/i.test(text);
+      pu.products.push({
+        id: sub ? "pro_yearly" : "pro",
+        kind: sub ? "subscription" : "oneTime",
+        name: "Pro",
+        description: "",
+        basePrice: 0,
+        currency: "EUR",
+        period: sub ? "year" : null,
+        trialDays: null,
+        entitlement: "pro",
+        status: { apple: "concept", google: "concept" },
+      });
+      pu.paywallDescription = text;
+    }
+    const reply = "For purchases there is a dedicated page; I have already set up a draft for you.";
+    push({ type: "text", message_id: `m${id}`, text: reply });
+    push({ type: "done", ok: true, text: reply, duration_ms: 0 });
+    emit("open-purchases", { projectId });
+    runningChats.delete(projectId);
+    emit("chat-finished", { projectId });
+    return;
+  }
   push({ type: "status", code: "scope", detail: "small|HomeScreen" });
   push({
     type: "status",

@@ -180,9 +180,36 @@ impl ChatManager {
         let current_key = format!("scope:{project_id}:screen");
         let current = ctx.db.setting_get(&current_key).ok().flatten();
         let mut ai_questions = 0i64;
+        let purchases_flow = ctx.scopes.take_purchases(project_id);
+        // 1a. Over aankopen of abonnementen begint Claude niet zelf aan code: daar is de pagina Aankopen voor. Studio zet een concept klaar,
+        // opent de pagina en antwoordt in één vriendelijke zin; er draait geen model.
+        if !purchases_flow && crate::purchases::intent(text) {
+            let sid = match ctx.db.session_for_scope(project_id, "project", self.engine.id()) {
+                Ok(s) => s.id,
+                Err(e) => return emit_event(None, &ChatEvent::Error { code: error_code(&e).into(), message: crate::logging::redact(&e.to_string()) }),
+            };
+            emit_event(Some(&sid), &ChatEvent::User { text: text.to_string(), context: context.clone() });
+            let _ = ctx.db.session_set_title_if_empty(&sid, &text.chars().take(60).collect::<String>());
+            let mut pu = crate::purchases::load(&dir).unwrap_or_default();
+            if pu.products.is_empty() {
+                let d = crate::purchases::draft_from_text(text);
+                (pu.products, pu.paywall, pu.provider, pu.paywall_description) = (d.products, d.paywall, d.provider, d.paywall_description);
+                let _ = crate::purchases::save(&dir, &pu);
+                let _ = ctx.db.purchases_store(project_id, &serde_json::to_string(&pu).unwrap_or_default());
+            }
+            (ctx.emit)("open-purchases", json!({ "projectId": project_id }));
+            let reply = if language.starts_with("nl") {
+                "Voor aankopen heb ik een eigen pagina; ik heb alvast een concept klaargezet."
+            } else {
+                "For purchases there is a dedicated page; I have already set up a draft for you."
+            };
+            emit_event(Some(&sid), &ChatEvent::Text { message_id: "purchases".into(), text: reply.into() });
+            emit_event(Some(&sid), &ChatEvent::Done { ok: true, text: reply.into(), duration_ms: Some(0), code: None, cost_usd: None, turns: None, tokens: None, usage: None });
+            return;
+        }
+
         // Kleine hulptaken (zoals deze classificatie) altijd met het lichtste model; de naam komt uit de configuratie.
         let helper_alias = cfg_models.tier_index(&cfg_models.helper_tier).and_then(|t| cfg_models.resolve(t, &|m| self.engine.model_available(m)));
-        let purchases_flow = ctx.scopes.take_purchases(project_id);
         let decision = if ctx.ablation.no_router || purchases_flow {
             // Meting zonder scope-router: het hele project, geen classificatievraag.
             scope::Decision { level: scope::Level::Project, screen: None, why: scope::Why::Fallback }
@@ -776,6 +803,29 @@ mod tests {
         let stdin = std::fs::read_to_string(bin.join("stdin.txt")).unwrap();
         assert!(stdin.contains("undid your changes to lib/core/theme/app_theme.dart") && stdin.contains("breid_bereik_uit"));
         assert_eq!(db.runs_summary(&p.id, 5).unwrap().denied_edits, 2);
+    }
+
+    /// Over aankopen praat Claude niet zelf: Studio zet een concept klaar, opent de pagina en er draait geen model.
+    #[cfg(unix)]
+    #[test]
+    fn purchase_requests_are_sent_to_the_purchases_page_without_running_the_model() {
+        let (bin, proj, db, p, ctx, mgr) = scoped_fixture(false);
+        let events: Arc<Mutex<Vec<(String, Value)>>> = Arc::default();
+        let sink = events.clone();
+        let ctx = ChatCtx { emit: Arc::new(move |n, v| sink.lock().unwrap().push((n.to_string(), v))), ..ctx };
+        mgr.run_flow(&ctx, &p.id, "Ik wil een jaarabonnement met proefperiode voor onbeperkt exporteren", None, "nl", &RunHandle::default());
+        assert!(!bin.join("args.txt").exists(), "the model was never started");
+        let ev = events.lock().unwrap().clone();
+        assert!(ev.iter().any(|(n, v)| n == "open-purchases" && v["projectId"] == p.id.as_str()));
+        let said = ev.iter().filter_map(|(n, v)| (n == "chat-event" && v["event"]["type"] == "text").then(|| v["event"]["text"].as_str().unwrap().to_string())).next().unwrap();
+        assert!(said.contains("eigen pagina") && said.contains("concept"), "{said}");
+        let draft = crate::purchases::load(&proj).unwrap();
+        assert_eq!((draft.products[0].id.as_str(), draft.products[0].trial_days), ("pro_yearly", Some(7)));
+        assert!(db.purchases_load(&p.id).unwrap().is_some());
+        // Een gewone opdracht blijft gewoon naar het model gaan.
+        events.lock().unwrap().clear();
+        mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+        assert!(bin.join("args.txt").exists() && !events.lock().unwrap().iter().any(|(n, _)| n == "open-purchases"));
     }
 
     /// Een gekozen vak is een signaal, geen blokkade: een wijziging erbuiten blijft staan maar wordt gelogd; erbinnen geen melding.

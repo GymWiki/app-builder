@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, FolderSearch, ListTree, PanelLeft, PanelRight, Settings, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -53,6 +53,7 @@ function safeStorage(): Pick<Storage, "getItem" | "setItem"> {
 export default function ProjectPage() {
   const { t } = useTranslation();
   const { id = "" } = useParams();
+  const qc = useQueryClient();
   const project = useQuery({ queryKey: qk.project(id), queryFn: () => api.projectGet(id) });
   const [section, setSection] = useState<SectionId>("screens");
   const [device, setDevice] = useState<DeviceId>("medium");
@@ -132,6 +133,16 @@ export default function ProjectPage() {
     );
     return () => void un.then((f) => f());
   }, [id]);
+  // Vraagt de gebruiker in de chat om een aankoop of abonnement (of Claude opent de pagina met een voorstel), dan gaan we naar Aankopen.
+  useEffect(() => {
+    const un = onEvent<{ projectId: string }>("open-purchases", (e) => {
+      if (e.projectId === id) {
+        void qc.invalidateQueries({ queryKey: ["purchases", id] });
+        setSection("purchases");
+      }
+    });
+    return () => void un.then((f) => f());
+  }, [id, qc]);
   /** Bestemmingen uit de checklist: `secrets:<id>`, `integrations:<id>`, `leaks` of een gewone sectie. */
   const goto = (dest: string) => {
     if (dest.startsWith("secrets:")) return jumpTo("secrets", dest.slice(8));

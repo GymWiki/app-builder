@@ -55,13 +55,37 @@ pub fn play_track(track: &str) -> AppResult<&'static str> {
     }
 }
 
+/// Schrijft `{"REVENUECAT_SDK_KEY": "<waarde>"}` naar een tijdelijk bestand (alleen leesbaar voor de gebruiker).
+fn write_define_file(value: &str) -> AppResult<PathBuf> {
+    let path = std::env::temp_dir().join(format!("studio-defines-{}.json", uuid::Uuid::new_v4()));
+    std::fs::write(&path, serde_json::json!({ "REVENUECAT_SDK_KEY": value }).to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(path)
+}
+
 impl StorePublisher for PlayPublisher {
     fn id(&self) -> &'static str {
         "google-play"
     }
 
     fn build(&self, flutter: &Path, dir: &Path, env: &[(String, String)], on_line: &mut dyn FnMut(&str)) -> AppResult<PathBuf> {
-        let code = proc::run_streaming(flutter, &["build", "appbundle", "--release"], Some(dir), env, Duration::from_secs(1800), on_line)?;
+        // De publieke RevenueCat-sleutel gaat via een tijdelijk bestand mee (`--dart-define-from-file`), niet als argument van het
+        // proces en nooit in de projectbestanden; het bestand verdwijnt direct na de build.
+        let key_file = env.iter().find(|(k, _)| k == "STUDIO_REVENUECAT_SDK_KEY").map(|(_, v)| write_define_file(v)).transpose()?;
+        let mut args: Vec<String> = vec!["build".into(), "appbundle".into(), "--release".into()];
+        if let Some(f) = &key_file {
+            args.push(format!("--dart-define-from-file={}", f.display()));
+        }
+        let args_ref: Vec<&str> = args.iter().map(String::as_str).collect();
+        let code = proc::run_streaming(flutter, &args_ref, Some(dir), env, Duration::from_secs(1800), on_line);
+        if let Some(f) = &key_file {
+            let _ = std::fs::remove_file(f);
+        }
+        let code = code?;
         let aab = dir.join(AAB_REL);
         if code != Some(0) || !aab.is_file() {
             return Err(AppError::CommandFailed("flutter build appbundle failed; see the build log".into()));
@@ -105,6 +129,25 @@ mod tests {
     fn script(path: &Path, body: &str) {
         std::fs::write(path, format!("#!/bin/sh\n{body}")).unwrap();
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[test]
+    fn the_revenuecat_key_reaches_the_build_through_a_temporary_file_that_is_removed_afterwards() {
+        let d = std::env::temp_dir().join(format!("studio-build-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&d).unwrap();
+        let fake = d.join("flutter");
+        // De nep-flutter leest het bestand dat `--dart-define-from-file` noemt, en onthoudt waar het stond.
+        script(&fake, "echo \"args: $@\"\nf=$(echo \"$@\" | sed -n 's/.*--dart-define-from-file=\\([^ ]*\\).*/\\1/p')\necho \"$f\" > defines-path.txt\ncat \"$f\" > defines-content.txt\nmkdir -p build/app/outputs/bundle/release\necho aab > build/app/outputs/bundle/release/app-release.aab\n");
+        let secret = "appl_ABCDEFGHIJKLMNOP1234";
+        let env = vec![("STUDIO_REVENUECAT_SDK_KEY".to_string(), secret.to_string())];
+        let mut lines = vec![];
+        PlayPublisher.build(&fake, &d, &env, &mut |l| lines.push(l.to_string())).unwrap();
+        let args = lines.iter().find(|l| l.starts_with("args:")).unwrap();
+        assert!(args.contains("--dart-define-from-file=") && !args.contains(secret), "the key is never an argument: {args}");
+        assert!(std::fs::read_to_string(d.join("defines-content.txt")).unwrap().contains(secret), "the build could read it");
+        let path = std::fs::read_to_string(d.join("defines-path.txt")).unwrap();
+        assert!(!Path::new(path.trim()).exists(), "the temporary file is gone after the build");
+        std::fs::remove_dir_all(d).ok();
     }
 
     #[test]
