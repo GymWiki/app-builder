@@ -353,6 +353,7 @@ impl PreviewManager {
     }
 
     /// Start `flutter run` voor een project (zonder supervisor; voor tests). `target` = "web" of een apparaat-id uit `flutter devices`.
+    #[cfg(test)]
     pub fn start(&self, flutter: &Path, project_id: &str, dir: &Path, target: &str) -> AppResult<()> {
         self.generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.start_inner(flutter, project_id, dir, target)
