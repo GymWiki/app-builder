@@ -1909,5 +1909,17 @@
         }
       }
     }
+  },
+  "tasks": {
+    "title": "Background tasks",
+    "defaultTitle": "Claude is working on it",
+    "working": "Working on it…",
+    "stopping": "Stopping…",
+    "done": "Done. You can see what changed in the chat or under Versions.",
+    "cancelled": "Stopped. Nothing was changed after the last snapshot.",
+    "failed": "This didn’t work. You can try again.",
+    "retry": "Try again",
+    "cancel": "Stop",
+    "dismiss": "Dismiss"
   }
 }

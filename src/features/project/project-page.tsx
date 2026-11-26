@@ -35,6 +35,7 @@ import type { Selection } from "@/lib/types";
 import { pageForRoute } from "@/lib/routes";
 import { runTest } from "@/features/sections/publish/jobs-store";
 import { toastError } from "@/lib/toast";
+import { TaskTray } from "@/features/tasks/task-tray";
 import { usePreview } from "@/features/preview/preview-store";
 import { cn } from "@/lib/utils";
 import { DEVICES, type DeviceId } from "./phone-frame";
@@ -495,6 +496,7 @@ export default function ProjectPage() {
         )}
       </div>
       <AutoRetest projectId={p.id} />
+      <TaskTray projectId={p.id} />
     </div>
   );
 }

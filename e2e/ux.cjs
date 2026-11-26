@@ -57,6 +57,18 @@ const ok = (c, m) => {
   ok((await p.getByRole("region", { name: "Chat with Claude" }).count()) === 0, "no chat turn needed for data and login");
   ok(await p.getByRole("button", { name: "Design my own tables with Claude" }).isVisible(), "the AI is offered only for custom tables, as an option");
 
+  // Achtergrondtaak: wat toch de AI nodig heeft, loopt met voortgang en uitkomst, zonder dat de chat erbij komt kijken
+  await p.getByRole("navigation", { name: "Project menu" }).getByRole("button", { name: /^Assets/ }).click();
+  await p.getByRole("button", { name: "Set up a splash screen" }).click();
+  const tray = p.getByTestId("task-tray");
+  await tray.waitFor();
+  ok(await tray.getByText("Set up a splash screen").isVisible(), "the task shows what it is doing, outside the chat");
+  ok(await tray.getByRole("button", { name: /Stop|Dismiss/ }).first().isVisible(), "a running task can be stopped");
+  await tray.getByText(/Done\./).waitFor({ timeout: 20000 });
+  ok(true, "the task ends with a plain-language result");
+  ok((await p.getByRole("region", { name: "Chat with Claude" }).count()) === 0, "the chat was not needed to follow it");
+  await tray.getByRole("button", { name: "Dismiss" }).click();
+
   // Meting: in de ontwikkelaarsmodus staat dat Studio het zelf deed, zonder AI
   await p.goto("http://localhost:1420/?mock=ready#/settings");
   const ver = p.getByText(/^Studio \d/).first();

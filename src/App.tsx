@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
 import { initChatListeners } from "@/features/chat/chat-store";
+import { initTaskListeners } from "@/features/tasks/task-store";
 import { initJobListeners } from "@/features/sections/publish/jobs-store";
 import { initProfileListener } from "@/features/profile/profile-store";
 import { initPreviewListener } from "@/features/preview/preview-store";
@@ -53,6 +54,7 @@ const router = createHashRouter([
 
 export function App() {
   useEffect(() => initChatListeners(), []);
+  useEffect(() => initTaskListeners(), []);
   useEffect(() => initPreviewListener(), []);
   useEffect(() => initJobListeners(), []);
   useEffect(() => initProfileListener(), []);
