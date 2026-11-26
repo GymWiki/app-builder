@@ -1,0 +1,39 @@
+{
+  "id": "purchases",
+  "naam": "integrations.purchases.name",
+  "categorie": "stores",
+  "beschrijving": "integrations.purchases.desc",
+  "icoon": "key",
+  "scope": "project",
+  "velden": [
+    {
+      "id": "apple_iap_key",
+      "label": "integrations.purchases.fields.apple_iap_key.label",
+      "type": "file",
+      "geheim": true,
+      "verplicht": false,
+      "scope": "project",
+      "validatie": {
+        "bestandstype": ["p8"]
+      },
+      "hulptekst": "integrations.purchases.fields.apple_iap_key.help",
+      "guideId": null,
+      "envVar": "STUDIO_APPLE_IAP_KEY_PATH"
+    },
+    {
+      "id": "apple_iap_key_id",
+      "label": "integrations.purchases.fields.apple_iap_key_id.label",
+      "type": "text",
+      "geheim": false,
+      "verplicht": false,
+      "scope": "project",
+      "validatie": {
+        "regex": "^[A-Z0-9]{10}$"
+      },
+      "hulptekst": "integrations.purchases.fields.apple_iap_key_id.help",
+      "guideId": null,
+      "envVar": "STUDIO_APPLE_IAP_KEY_ID"
+    }
+  ],
+  "checklistItems": []
+}

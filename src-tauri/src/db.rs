@@ -161,6 +161,14 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE runs ADD COLUMN cache_read_tokens  INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE runs ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0;
     "#,
+    // v10 — kopie van studio/purchases.json voor de UI (geen geheimen)
+    r#"
+    CREATE TABLE purchases_copy (
+        project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        json       TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    "#,
 ];
 
 /// De verplichte (blokkerende) checklistpunten. Volgorde = weergavevolgorde.
@@ -437,6 +445,26 @@ impl Db {
     }
 
     // ── instellingen ──
+    pub fn purchases_store(&self, project_id: &str, json: &str) -> AppResult<()> {
+        self.lock().execute(
+            "INSERT INTO purchases_copy(project_id, json) VALUES (?1, ?2) ON CONFLICT(project_id) DO UPDATE SET json = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')",
+            params![project_id, json],
+        )?;
+        Ok(())
+    }
+
+    pub fn purchases_load(&self, project_id: &str) -> AppResult<Option<String>> {
+        Ok(self.lock().query_row("SELECT json FROM purchases_copy WHERE project_id = ?1", params![project_id], |r| r.get(0)).optional()?)
+    }
+
+    /// De laatste run van een project (om na een Aankopen-flow te zien of hij geslaagd is).
+    pub fn last_run(&self, project_id: &str) -> AppResult<Option<RunRecord>> {
+        let conn = self.lock();
+        let mut st = conn.prepare(&format!("SELECT {} FROM runs WHERE project_id = ?1 ORDER BY id DESC LIMIT 1", Self::RUN_COLS))?;
+        let rows: Vec<RunRecord> = st.query_map(params![project_id], Self::run_row)?.collect::<Result<_, _>>()?;
+        Ok(rows.into_iter().next())
+    }
+
     pub fn setting_get(&self, key: &str) -> AppResult<Option<String>> {
         Ok(self
             .lock()

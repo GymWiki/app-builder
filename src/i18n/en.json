@@ -1536,6 +1536,34 @@
           "help": "Only if the project belongs to a team. Starts with team_."
         }
       }
+    },
+    "purchases": {
+      "name": "In-app purchases (stores)",
+      "desc": "Optional extra keys so Studio can set up your products in the App Store and Google Play. The Google Play key from the Google Play card is used too.",
+      "fields": {
+        "apple_iap_key": {
+          "label": "App Store Connect key for purchases (.p8)",
+          "help": "Create it in App Store Connect under Users and Access, Integrations, In-App Purchase. Studio keeps it in your keychain."
+        },
+        "apple_iap_key_id": {
+          "label": "Key ID",
+          "help": "The 10 letters and digits shown next to the key in App Store Connect."
+        }
+      }
+    },
+    "revenuecat": {
+      "name": "RevenueCat",
+      "desc": "Handles renewals, restoring purchases and who has access to what. Recommended for subscriptions.",
+      "fields": {
+        "public_sdk_key": {
+          "label": "Public SDK key",
+          "help": "In RevenueCat under Project settings, API keys. It starts with appl_ or goog_."
+        },
+        "secret_api_key": {
+          "label": "Secret API key (optional)",
+          "help": "Only needed if Studio should create products and offerings in RevenueCat for you. It starts with sk_."
+        }
+      }
     }
   }
 }

@@ -1536,6 +1536,34 @@
           "help": "Alleen als het project bij een team hoort. Begint met team_."
         }
       }
+    },
+    "purchases": {
+      "name": "In-app aankopen (winkels)",
+      "desc": "Optionele extra sleutels zodat Studio je producten in de App Store en Google Play kan klaarzetten. De Google Play-sleutel van de Google Play-kaart wordt ook gebruikt.",
+      "fields": {
+        "apple_iap_key": {
+          "label": "App Store Connect-sleutel voor aankopen (.p8)",
+          "help": "Maak hem in App Store Connect onder Gebruikers en toegang, Integraties, In-App Purchase. Studio bewaart hem in je sleutelbos."
+        },
+        "apple_iap_key_id": {
+          "label": "Sleutel-ID",
+          "help": "De 10 letters en cijfers naast de sleutel in App Store Connect."
+        }
+      }
+    },
+    "revenuecat": {
+      "name": "RevenueCat",
+      "desc": "Regelt verlengingen, aankopen herstellen en wie waar toegang toe heeft. Aanbevolen voor abonnementen.",
+      "fields": {
+        "public_sdk_key": {
+          "label": "Publieke SDK-sleutel",
+          "help": "In RevenueCat onder Project settings, API keys. Begint met appl_ of goog_."
+        },
+        "secret_api_key": {
+          "label": "Geheime API-sleutel (optioneel)",
+          "help": "Alleen nodig als Studio producten en offerings in RevenueCat voor je moet aanmaken. Begint met sk_."
+        }
+      }
     }
   }
 }

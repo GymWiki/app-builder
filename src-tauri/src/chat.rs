@@ -182,7 +182,8 @@ impl ChatManager {
         let mut ai_questions = 0i64;
         // Kleine hulptaken (zoals deze classificatie) altijd met het lichtste model; de naam komt uit de configuratie.
         let helper_alias = cfg_models.tier_index(&cfg_models.helper_tier).and_then(|t| cfg_models.resolve(t, &|m| self.engine.model_available(m)));
-        let decision = if ctx.ablation.no_router {
+        let purchases_flow = ctx.scopes.take_purchases(project_id);
+        let decision = if ctx.ablation.no_router || purchases_flow {
             // Meting zonder scope-router: het hele project, geen classificatievraag.
             scope::Decision { level: scope::Level::Project, screen: None, why: scope::Why::Fallback }
         } else {
@@ -194,7 +195,8 @@ impl ChatManager {
         if let Some(s) = &decision.screen {
             let _ = ctx.db.setting_set(&current_key, s);
         }
-        let scope_state = RunScope::new(&index, &decision);
+        let mut scope_state = RunScope::new(&index, &decision);
+        scope_state.purchases_ok = purchases_flow;
         // Een vak dat de gebruiker op de preview tekende: het bereik waarbinnen Claude hoort te blijven (controle achteraf).
         let selection_ranges = ctx.scopes.take_selection(project_id);
         let key = decision.screen.clone().unwrap_or_else(|| decision.level.as_str().to_string());

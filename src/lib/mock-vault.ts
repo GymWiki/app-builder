@@ -6,6 +6,8 @@ import googlePlay from "../../integrations/google_play.json";
 import localDb from "../../integrations/local_db.json";
 import supabase from "../../integrations/supabase.json";
 import vercel from "../../integrations/vercel.json";
+import purchases from "../../integrations/purchases.json";
+import revenuecat from "../../integrations/revenuecat.json";
 import { AppError } from "./errors";
 import {
   validateFile,
@@ -16,7 +18,17 @@ import {
   type TestOutcome,
 } from "./integrations";
 
-const MANIFESTS = [apple, googlePlay, supabase, firebase, localDb, github, vercel] as unknown as Manifest[];
+const MANIFESTS = [
+  apple,
+  googlePlay,
+  supabase,
+  firebase,
+  localDb,
+  github,
+  vercel,
+  purchases,
+  revenuecat,
+] as unknown as Manifest[];
 const by = (id: string) => {
   const m = MANIFESTS.find((x) => x.id === id);
   if (!m) throw new AppError("not_found", `integration ${id}`);

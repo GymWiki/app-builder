@@ -21,6 +21,8 @@ pub struct AppState {
     pub chat_ctx: Arc<ChatCtx>,
     pub perms: Arc<Permissions>,
     pub preview: Arc<crate::preview::PreviewManager>,
+    /// Projecten waar nu een Aankopen-flow draait.
+    pub purchases_applying: std::sync::Mutex<std::collections::HashSet<String>>,
     pub data_dir: PathBuf,
     /// Projecten waarvoor nu een lange taak draait (test, build, upload): één tegelijk.
     pub jobs: std::sync::Mutex<std::collections::HashSet<String>>,
@@ -1241,4 +1243,220 @@ pub fn leak_fix_prompt(file: String, line: u32, kind: String) -> AppResult<Strin
          Do not print the value, do not copy it anywhere else, and tell the user in plain language that the key must be replaced with a new one because it was exposed.",
         if line > 0 { format!(" (around line {line})") } else { String::new() }
     ))
+}
+
+// ───────────── aankopen en abonnementen ─────────────
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PurchasesView {
+    pub purchases: crate::purchases::Purchases,
+    pub plan: crate::purchases::ApplyPlan,
+    pub summary: Vec<(String, usize)>,
+    pub missing: Vec<crate::purchases::Missing>,
+    pub problems: Vec<crate::purchases::Problem>,
+    pub tasks: Vec<crate::purchases_flow::StoreTask>,
+    pub bundle_id: String,
+    pub applying: bool,
+}
+
+fn purchases_load(state: &AppState, project_id: &str, dir: &std::path::Path) -> AppResult<crate::purchases::Purchases> {
+    // Het bestand in het project is de bron; de kopie in SQLite vangt op dat het bestand ontbreekt (bv. niet meegekomen met git).
+    if dir.join("studio/purchases.json").is_file() {
+        return crate::purchases::load(dir);
+    }
+    Ok(state.db.purchases_load(project_id)?.and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default())
+}
+
+fn purchases_store(state: &AppState, project_id: &str, dir: &std::path::Path, p: &crate::purchases::Purchases) -> AppResult<()> {
+    crate::purchases::save(dir, p)?;
+    state.db.purchases_store(project_id, &serde_json::to_string(p).unwrap_or_default())
+}
+
+fn purchases_view(state: &AppState, project_id: &str) -> AppResult<PurchasesView> {
+    let (p, dir) = project_and_dir(state, project_id)?;
+    let pu = purchases_load(state, project_id, &dir)?;
+    let vault = crate::vault::global();
+    let pid = project_id.to_string();
+    let has = move |i: &str, f: &str| vault.has(&pid, i, f);
+    let plan = crate::purchases::plan(&pu);
+    Ok(PurchasesView {
+        summary: crate::purchases_flow::describe(&plan).into_iter().map(|(k, n)| (k.to_string(), n)).collect(),
+        missing: crate::purchases::missing(&pu, pu.apple, pu.google, &has),
+        problems: crate::purchases::validate(&pu),
+        tasks: crate::purchases_flow::store_tasks(&pu, &p.bundle_id, pu.apple, pu.google),
+        bundle_id: p.bundle_id,
+        applying: state.chat.is_running(project_id) && state.purchases_applying.lock().unwrap_or_else(|e| e.into_inner()).contains(project_id),
+        plan,
+        purchases: pu,
+    })
+}
+
+#[tauri::command]
+pub fn purchases_get(state: State<'_, AppState>, project_id: String) -> AppResult<PurchasesView> {
+    purchases_view(&state, &project_id)
+}
+
+/// Slaat de bewerkbare delen op. Status per winkel, de toegepaste staat en de goedkeuring van het gating-plan komen nooit van de UI.
+#[tauri::command]
+pub fn purchases_save(state: State<'_, AppState>, project_id: String, purchases: crate::purchases::Purchases) -> AppResult<PurchasesView> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let disk = purchases_load(&state, &project_id, &dir)?;
+    let mut next = purchases;
+    next.applied = disk.applied.clone();
+    next.applied_version = disk.applied_version;
+    next.confirmations = disk.confirmations.clone();
+    for pr in &mut next.products {
+        match disk.products.iter().find(|o| o.id == pr.id) {
+            Some(old) => pr.status = old.status.clone(),
+            None => pr.status = Default::default(),
+        }
+        // Zodra een product in de app of een winkel staat, ligt de soort en het ID vast.
+        if let Some(old) = disk.products.iter().find(|o| o.id == pr.id && o.locked()) {
+            pr.kind = old.kind;
+        }
+    }
+    next.gating.approved = disk.gating.approved && disk.gating.points == next.gating.points;
+    purchases_store(&state, &project_id, &dir, &next)?;
+    purchases_view(&state, &project_id)
+}
+
+/// De gebruiker heeft het gating-plan in gewone taal gezien en keurt het goed.
+#[tauri::command]
+pub fn purchases_approve_gating(state: State<'_, AppState>, project_id: String) -> AppResult<PurchasesView> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let mut pu = purchases_load(&state, &project_id, &dir)?;
+    pu.gating.approved = true;
+    purchases_store(&state, &project_id, &dir, &pu)?;
+    purchases_view(&state, &project_id)
+}
+
+/// Handmatig bevestigde stap (belasting- en bankgegevens, sandbox-test enz.).
+#[tauri::command]
+pub fn purchases_confirm(state: State<'_, AppState>, project_id: String, key: String, value: bool) -> AppResult<PurchasesView> {
+    if !["paid_apps_agreement", "tax_bank", "merchant_account", "sandbox_tested", "apple_submitted"].contains(&key.as_str()) {
+        return Err(AppError::Invalid("unknown confirmation".into()));
+    }
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let mut pu = purchases_load(&state, &project_id, &dir)?;
+    pu.confirmations.insert(key, value);
+    purchases_store(&state, &project_id, &dir, &pu)?;
+    purchases_view(&state, &project_id)
+}
+
+/// Zet de status van een product in één winkel verder (aangemaakt, in review, live). Alleen vooruit en pas na "in de app".
+#[tauri::command]
+pub fn purchases_set_status(state: State<'_, AppState>, project_id: String, product: String, store: String, status: crate::purchases::StoreStatus) -> AppResult<PurchasesView> {
+    use crate::purchases::StoreStatus as S;
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let mut pu = purchases_load(&state, &project_id, &dir)?;
+    let pr = pu.products.iter_mut().find(|p| p.id == product).ok_or_else(|| AppError::NotFound(product.clone()))?;
+    let slot = match store.as_str() {
+        "apple" => &mut pr.status.apple,
+        "google" => &mut pr.status.google,
+        _ => return Err(AppError::Invalid("unknown store".into())),
+    };
+    if *slot < S::InApp || status <= *slot || status < S::Created {
+        return Err(AppError::Invalid("a status can only move forward, after the product is in the app".into()));
+    }
+    *slot = status;
+    // De toegepaste kopie meenemen, anders ziet "Update app" dit als een verschil.
+    if let Some(a) = pu.applied.as_mut() {
+        if let Some(ap) = a.products.iter_mut().find(|p| p.id == product) {
+            ap.status = pr.status.clone();
+        }
+    }
+    purchases_store(&state, &project_id, &dir, &pu)?;
+    purchases_view(&state, &project_id)
+}
+
+/// De vraag voor Claude om een gating-plan te maken (alleen lezen). De UI stuurt hem via de chat en verwerkt het antwoord.
+#[tauri::command]
+pub fn purchases_gating_prompt(state: State<'_, AppState>, project_id: String) -> AppResult<String> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let pu = purchases_load(&state, &project_id, &dir)?;
+    let mut ents: Vec<String> = pu.products.iter().map(|p| p.entitlement.clone()).filter(|e| !e.is_empty()).collect();
+    ents.sort();
+    ents.dedup();
+    let screens: Vec<(String, String)> = crate::studio_tools::list_screens(&dir)?.into_iter().map(|s| (s.class, s.file)).collect();
+    Ok(crate::purchases_flow::gating_prompt(&pu.paywall_description, &ents, &screens))
+}
+
+/// Verwerkt het antwoord van Claude op de gating-vraag (zet het plan klaar, nog niet goedgekeurd).
+#[tauri::command]
+pub fn purchases_set_gating_from_answer(state: State<'_, AppState>, project_id: String, answer: String) -> AppResult<PurchasesView> {
+    let points = crate::purchases_flow::parse_gating_plan(&answer).ok_or_else(|| AppError::Invalid("no usable gating plan in the answer".into()))?;
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let mut pu = purchases_load(&state, &project_id, &dir)?;
+    pu.gating = crate::purchases::GatingPlan { points, approved: false };
+    purchases_store(&state, &project_id, &dir, &pu)?;
+    purchases_view(&state, &project_id)
+}
+
+/// "Add to app" / "Update app": controles, momentopname, code door Claude (alleen via deze flow), en daarna de toegepaste staat vastleggen.
+#[tauri::command]
+pub fn purchases_apply(app: AppHandle, state: State<'_, AppState>, project_id: String, language: String, confirmed: bool) -> AppResult<()> {
+    if !confirmed {
+        return Err(AppError::Invalid("applying purchases needs confirmation".into()));
+    }
+    let (p, dir) = project_and_dir(&state, &project_id)?;
+    let view = purchases_view(&state, &project_id)?;
+    if let Some(m) = view.missing.first() {
+        return Err(AppError::Rejected { code: format!("purchases_{}", m.code), detail: Some(m.next.clone()) });
+    }
+    if view.plan.is_empty() && !view.plan.first_time {
+        return Err(AppError::Invalid("there is nothing to update".into()));
+    }
+    if state.chat.is_running(&project_id) {
+        return Err(AppError::Invalid("wait until Claude has finished".into()));
+    }
+    let pu = view.purchases.clone();
+    let legal = crate::meta::load(&dir).map(|m| m.legal).unwrap_or_default();
+    let prompt = crate::purchases_flow::codegen_prompt(&pu, &view.plan, &p.bundle_id, &legal.privacy_url, &legal.terms_url);
+    let emit = {
+        let (app, id) = (app.clone(), project_id.clone());
+        move |step: &str, detail: Option<String>| {
+            let _ = app.emit("purchases-progress", serde_json::json!({ "projectId": id, "step": step, "detail": detail }));
+        }
+    };
+    emit("snapshot", None);
+    let _ = crate::studio_tools::create_snapshot(&state.db, &p, "Before updating purchases", "auto");
+    state.chat_ctx.scopes.allow_purchases(&project_id);
+    state.purchases_applying.lock().unwrap_or_else(|e| e.into_inner()).insert(project_id.clone());
+    emit("code", None);
+    if let Err(e) = state.chat.send(state.chat_ctx.clone(), project_id.clone(), prompt, None, language, crate::modelsel::Purpose::Work) {
+        state.purchases_applying.lock().unwrap_or_else(|e| e.into_inner()).remove(&project_id);
+        let _ = state.chat_ctx.scopes.take_purchases(&project_id);
+        return Err(e);
+    }
+    // Wachten tot de run klaar is en kijken of hij geslaagd is (de kwaliteitscontrole draait en draait zo nodig terug).
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let st = handle.state::<AppState>();
+        while st.chat.is_running(&project_id) {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        let ok = st.db.last_run(&project_id).ok().flatten().is_some_and(|r| r.ok && !r.rolled_back);
+        st.purchases_applying.lock().unwrap_or_else(|e| e.into_inner()).remove(&project_id);
+        let done = (|| -> AppResult<()> {
+            let (p, dir) = project_and_dir(&st, &project_id)?;
+            let mut pu = purchases_load(&st, &project_id, &dir)?;
+            crate::purchases_flow::finalize(&mut pu);
+            purchases_store(&st, &project_id, &dir, &pu)?;
+            let _ = crate::studio_tools::create_snapshot(&st.db, &p, "Purchases added to the app", "auto");
+            Ok(())
+        })();
+        match (ok, done) {
+            (true, Ok(())) => emit("done", None),
+            (false, _) => emit("failed", Some("rolled_back".into())),
+            (true, Err(e)) => emit("failed", Some(e.to_string())),
+        }
+    });
+    Ok(())
+}
+
+/// Voorstel voor een product-ID uit naam, soort en periode (zodat ze overal op dezelfde manier gemaakt worden).
+#[tauri::command]
+pub fn purchases_suggest_id(name: String, kind: crate::purchases::Kind, period: Option<crate::purchases::Period>) -> String {
+    crate::purchases::suggest_id(&name, kind, period)
 }

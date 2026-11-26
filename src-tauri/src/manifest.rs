@@ -92,6 +92,8 @@ const SOURCES: &[&str] = &[
     include_str!("../../integrations/local_db.json"),
     include_str!("../../integrations/github.json"),
     include_str!("../../integrations/vercel.json"),
+    include_str!("../../integrations/purchases.json"),
+    include_str!("../../integrations/revenuecat.json"),
 ];
 
 pub fn parse(src: &str) -> AppResult<Manifest> {
@@ -268,7 +270,7 @@ mod tests {
         for m in all() {
             check(m, &ids()).unwrap_or_else(|e| panic!("{e}"));
         }
-        for id in ["apple", "google_play", "supabase", "firebase", "local_db", "github", "vercel"] {
+        for id in ["apple", "google_play", "supabase", "firebase", "local_db", "github", "vercel", "purchases", "revenuecat"] {
             assert!(get(id).is_some(), "{id}");
         }
         assert!(get("local_db").unwrap().velden.is_empty(), "local SQLite needs no secrets");

@@ -14,22 +14,13 @@
       "verplicht": true,
       "scope": "global",
       "validatie": {
-        "bestandstype": [
-          "json"
-        ],
-        "json": [
-          "type=service_account",
-          "client_email",
-          "private_key"
-        ]
+        "bestandstype": ["json"],
+        "json": ["type=service_account", "client_email", "private_key"]
       },
       "hulptekst": "integrations.google_play.fields.service_account.help",
       "guideId": null,
       "envVar": "STUDIO_PLAY_KEY_PATH",
-      "afgeleid": [
-        "client_email",
-        "project_id"
-      ]
+      "afgeleid": ["client_email", "project_id"]
     },
     {
       "id": "keystore",
@@ -39,12 +30,7 @@
       "verplicht": true,
       "scope": "project",
       "validatie": {
-        "bestandstype": [
-          "jks",
-          "keystore",
-          "p12",
-          "pfx"
-        ]
+        "bestandstype": ["jks", "keystore", "p12", "pfx"]
       },
       "hulptekst": "integrations.google_play.fields.keystore.help",
       "guideId": null,
@@ -95,10 +81,6 @@
     }
   ],
   "testVerbinding": "google_play_local",
-  "checklistItems": [
-    "accounts_signing"
-  ],
-  "acties": [
-    "keystore_genereren"
-  ]
+  "checklistItems": ["accounts_signing"],
+  "acties": ["keystore_genereren"]
 }

@@ -222,6 +222,8 @@ pub struct RunScope {
     /// (van, naar, reden)
     pub expansions: Vec<(Level, Level, String)>,
     pub denied: Vec<String>,
+    /// Alleen de flow van de Aankopen-pagina mag in `lib/core/purchases/` en `lib/features/paywall/` schrijven.
+    pub purchases_ok: bool,
 }
 
 const ALWAYS_FILES: &[&str] = &["STUDIO.md"];
@@ -229,7 +231,7 @@ const ALWAYS_PREFIXES: &[&str] = &[".studio/"];
 
 impl RunScope {
     pub fn new(idx: &CodeIndex, d: &Decision) -> Self {
-        let mut s = RunScope { level: d.level, screen: d.screen.clone(), files: BTreeSet::new(), prefixes: vec![], expansions: vec![], denied: vec![] };
+        let mut s = RunScope { level: d.level, screen: d.screen.clone(), files: BTreeSet::new(), prefixes: vec![], expansions: vec![], denied: vec![], purchases_ok: false };
         s.rebuild(idx);
         s
     }
@@ -269,6 +271,9 @@ impl RunScope {
 
     pub fn permits(&self, rel: &str) -> bool {
         let rel = rel.trim_start_matches("./");
+        if !self.purchases_ok && crate::purchases_flow::is_protected(rel) {
+            return false;
+        }
         self.level == Level::Project
             || ALWAYS_FILES.contains(&rel)
             || ALWAYS_PREFIXES.iter().any(|p| rel.starts_with(p))
@@ -352,11 +357,19 @@ pub struct ScopeRegistry {
     runs: Mutex<HashMap<String, RunScope>>,
     /// Door de gebruiker gekozen regelbereiken (bestand, begin, eind) voor de volgende run; de controle achteraf gebruikt ze.
     selections: Mutex<HashMap<String, Vec<Range>>>,
+    /// Projecten waarvan de volgende run de Aankopen-flow is (mag de beschermde mappen aanpassen, werkt op het hele project).
+    purchases_flow: Mutex<std::collections::HashSet<String>>,
 }
 
 impl ScopeRegistry {
     pub fn set(&self, project_id: &str, s: RunScope) {
         self.runs.lock().unwrap_or_else(|e| e.into_inner()).insert(project_id.to_string(), s);
+    }
+    pub fn allow_purchases(&self, project_id: &str) {
+        self.purchases_flow.lock().unwrap_or_else(|e| e.into_inner()).insert(project_id.to_string());
+    }
+    pub fn take_purchases(&self, project_id: &str) -> bool {
+        self.purchases_flow.lock().unwrap_or_else(|e| e.into_inner()).remove(project_id)
     }
     pub fn set_selection(&self, project_id: &str, ranges: Vec<(String, usize, usize)>) {
         let mut m = self.selections.lock().unwrap_or_else(|e| e.into_inner());
@@ -386,6 +399,20 @@ pub const EDIT_TOOLS: &[&str] = &["Edit", "Write", "MultiEdit", "NotebookEdit"];
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_purchases_folders_are_closed_to_normal_runs_even_at_project_level() {
+        let idx = CodeIndex::default();
+        let d = Decision { level: Level::Project, screen: None, why: Why::Fallback };
+        let mut s = RunScope::new(&idx, &d);
+        assert!(s.permits("lib/features/home/home_screen.dart"));
+        assert!(!s.permits("lib/core/purchases/entitlements.dart") && !s.permits("./lib/features/paywall/paywall_screen.dart"));
+        s.purchases_ok = true;
+        assert!(s.permits("lib/core/purchases/entitlements.dart") && s.permits("lib/features/paywall/paywall_screen.dart"));
+        let mut small = RunScope::new(&idx, &Decision { level: Level::Small, screen: None, why: Why::Fallback });
+        small.purchases_ok = true;
+        assert!(!small.permits("lib/core/purchases/entitlements.dart"), "the flow itself runs at project level; others never get in");
+    }
+
     use super::*;
     use crate::index::fixture;
 

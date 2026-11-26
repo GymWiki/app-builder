@@ -1,4 +1,6 @@
 mod extent;
+mod purchases;
+mod purchases_flow;
 mod inspect;
 mod selection;
 mod chat;
@@ -141,7 +143,7 @@ pub fn run() {
                     }
                 }
             });
-            app.manage(commands::AppState { db, pty: pty::PtyManager::default(), chat, chat_ctx, perms, preview, data_dir: dir.clone(), jobs: Default::default() });
+            app.manage(commands::AppState { purchases_applying: Default::default(), db, pty: pty::PtyManager::default(), chat, chat_ctx, perms, preview, data_dir: dir.clone(), jobs: Default::default() });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -183,6 +185,15 @@ pub fn run() {
             commands::theme_get,
             commands::theme_set,
             commands::screens_graph,
+            commands::purchases_suggest_id,
+            commands::purchases_get,
+            commands::purchases_save,
+            commands::purchases_approve_gating,
+            commands::purchases_confirm,
+            commands::purchases_set_status,
+            commands::purchases_gating_prompt,
+            commands::purchases_set_gating_from_answer,
+            commands::purchases_apply,
             commands::preview_select,
             commands::preview_viewport,
             commands::chat_set_selection,
