@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toAppError, AppError } from "./errors";
 import type {
+  EnginesView,
   ProductKind,
   ProductPeriod,
   Purchases,
@@ -98,6 +99,10 @@ export const api = {
   previewStart: (projectId: string, target: string) => call<void>("preview_start", { projectId, target }),
   previewStop: () => call<void>("preview_stop"),
   previewState: () => call<PreviewState>("preview_state"),
+  enginesList: () => call<EnginesView>("engines_list"),
+  enginesSetOrder: (order: string[]) => call<EnginesView>("engines_set_order", { order }),
+  engineClearLimit: (id: string) => call<EnginesView>("engine_clear_limit", { id }),
+  engineOpenLogin: (id: string) => call<string>("engine_open_login", { id }),
   purchasesGet: (projectId: string) => call<PurchasesView>("purchases_get", { projectId }),
   purchasesSave: (projectId: string, purchases: Purchases) =>
     call<PurchasesView>("purchases_save", { projectId, purchases }),

@@ -1481,3 +1481,74 @@ pub fn purchases_apply(app: AppHandle, state: State<'_, AppState>, project_id: S
 pub fn purchases_suggest_id(name: String, kind: crate::purchases::Kind, period: Option<crate::purchases::Period>) -> String {
     crate::purchases::suggest_id(&name, kind, period)
 }
+
+// ───────────── AI-verbindingen (Claude Code, Codex, Gemini) ─────────────
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnginesView {
+    pub engines: Vec<EngineRow>,
+    pub order: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EngineRow {
+    #[serde(flatten)]
+    pub status: crate::engine::registry::EngineStatus,
+    pub runs: i64,
+    pub clean: i64,
+    pub rolled_back: i64,
+}
+
+fn engines_view(state: &AppState) -> EnginesView {
+    use crate::engine::registry as reg;
+    let now = reg::now_unix();
+    let stats = state.db.runs_by_engine().unwrap_or_default();
+    let engines = reg::specs()
+        .iter()
+        .map(|s| {
+            let mut st = reg::detect(s);
+            st.limited_until = reg::limited_until(&state.db, &s.id, now);
+            let (runs, clean, rolled_back) = stats.iter().find(|r| r.0 == s.id).map(|r| (r.1, r.2, r.3)).unwrap_or_default();
+            EngineRow { status: st, runs, clean, rolled_back }
+        })
+        .collect();
+    EnginesView { engines, order: reg::order(&state.db) }
+}
+
+#[tauri::command]
+pub async fn engines_list(app: AppHandle) -> AppResult<EnginesView> {
+    blocking(move || Ok(engines_view(&app.state::<AppState>()))).await
+}
+
+/// Volgorde van voorkeur: de eerste die klaar is en niet op "limiet" staat krijgt de volgende opdracht.
+#[tauri::command]
+pub async fn engines_set_order(app: AppHandle, order: Vec<String>) -> AppResult<EnginesView> {
+    blocking(move || {
+        let st = app.state::<AppState>();
+        crate::engine::registry::set_order(&st.db, &order)?;
+        Ok(engines_view(&st))
+    })
+    .await
+}
+
+/// "Nu opnieuw proberen": haalt de limiet-markering weg.
+#[tauri::command]
+pub async fn engine_clear_limit(app: AppHandle, id: String) -> AppResult<EnginesView> {
+    blocking(move || {
+        let st = app.state::<AppState>();
+        crate::engine::registry::spec(&id).ok_or_else(|| AppError::NotFound(id.clone()))?;
+        crate::engine::registry::clear_limit(&st.db, &id);
+        Ok(engines_view(&st))
+    })
+    .await
+}
+
+/// Opent de inlog van een AI in een terminal; de gebruiker logt zelf in (Studio ziet en bewaart geen tokens).
+#[tauri::command]
+pub fn engine_open_login(app: AppHandle, state: State<'_, AppState>, id: String) -> AppResult<String> {
+    let spec = crate::engine::registry::spec(&id).ok_or_else(|| AppError::NotFound(id.clone()))?;
+    let program = proc::find(&spec.binary).ok_or_else(|| AppError::ToolMissing(spec.binary.clone()))?;
+    state.pty.spawn(&app, &program, &spec.login_args, None)
+}

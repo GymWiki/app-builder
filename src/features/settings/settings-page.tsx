@@ -10,6 +10,7 @@ import { Card } from "@/components/ds/card";
 import { LanguageSwitch } from "@/components/ds/language-switch";
 import { ThemeToggle } from "@/components/ds/theme-toggle";
 import { Logo } from "@/components/layout/top-bar";
+import { EnginesCard } from "./engines-card";
 import { DevPanel } from "@/features/profile/dev-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -138,6 +139,10 @@ export function SettingsPage() {
               {t("common.save")}
             </Button>
           </div>
+        </Section>
+
+        <Section title={t("settings.engines.title")}>
+          <EnginesCard />
         </Section>
 
         <Section title={t("settings.tools")}>

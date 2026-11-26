@@ -602,6 +602,11 @@ mod tests {
         let mcp = crate::mcp::start(crate::mcp::Deps { db: db.clone(), perms, preview: Arc::new(crate::preview::PreviewManager::new(Arc::new(|_, _| {}))), work_dir: root.join("shots"), scopes: scopes.clone(), vault: crate::vault::global(), emit: Arc::new(|_, _| {}) }).unwrap();
         let ablation = if variant == "baseline" { crate::chat::Ablation { no_router: true, no_profile: true } } else { Default::default() };
         let ctx = ChatCtx { db: db.clone(), mcp, config_dir: root.join("mcp"), scopes, checks: true, flutter: Some(flutter.clone()), ablation, emit: Arc::new(|_, _| {}) };
+        // Een andere AI meten: STUDIO_EVAL_ENGINE=codex of gemini (vereist een geïnstalleerde en ingelogde CLI; modelnamen worden dan genegeerd,
+        // gebruik STUDIO_EVAL_ALIASES=default). Het resultaat landt in dezelfde `runs`-tabel met de naam van de AI erbij.
+        if let Ok(id) = std::env::var("STUDIO_EVAL_ENGINE") {
+            crate::engine::registry::set_order(&db, &[id]).unwrap();
+        }
         let mgr = ChatManager::new(Arc::new(ClaudeEngine::new()));
         let cfg = EngineConfig::embedded();
 

@@ -1,8 +1,11 @@
 //! Engine-abstractielaag: Studio praat nooit rechtstreeks met een AI-API, alleen met een
-//! `AiEngine`. Nu is er één implementatie (Claude Code CLI); Codex CLI, Gemini CLI of een
-//! API-sleutel kunnen later naast `claude.rs` worden gezet zonder de rest te wijzigen.
+//! `AiEngine`: de officiële CLI's van Claude Code, Codex en Gemini, elk als subproces.
 
 pub mod claude;
+pub mod codex;
+pub mod gemini;
+pub mod registry;
+pub mod runner;
 pub mod stream;
 
 use crate::error::AppResult;

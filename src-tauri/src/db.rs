@@ -445,6 +445,24 @@ impl Db {
     }
 
     // ── instellingen ──
+    /// De laatste gebruikersberichten van een project (nieuwste laatst), voor de overdrachtsnotitie bij een andere AI.
+    /// Per AI: aantal opdrachten, schoon in één keer en teruggedraaid (alle projecten), voor "AI-verbindingen".
+    pub fn runs_by_engine(&self) -> AppResult<Vec<(String, i64, i64, i64)>> {
+        let conn = self.lock();
+        let mut st = conn.prepare("SELECT engine, COUNT(*), SUM(CASE WHEN ok = 1 AND rolled_back = 0 AND issues_before = 0 AND repairs = 0 THEN 1 ELSE 0 END), SUM(rolled_back) FROM runs WHERE purpose != 'helper' GROUP BY engine")?;
+        let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, Option<i64>>(2)?.unwrap_or(0), r.get::<_, Option<i64>>(3)?.unwrap_or(0))))?;
+        Ok(rows.filter_map(Result::ok).collect())
+    }
+
+    pub fn recent_user_texts(&self, project_id: &str, limit: i64) -> AppResult<Vec<String>> {
+        let conn = self.lock();
+        let mut st = conn.prepare("SELECT m.data FROM messages m JOIN sessions s ON s.id = m.session_id WHERE s.project_id = ?1 AND m.kind = 'user' ORDER BY m.id DESC LIMIT ?2")?;
+        let rows: Vec<String> = st.query_map(params![project_id, limit], |r| r.get::<_, String>(0))?.filter_map(Result::ok).collect();
+        let mut out: Vec<String> = rows.iter().filter_map(|d| serde_json::from_str::<serde_json::Value>(d).ok().and_then(|v| v["text"].as_str().map(String::from))).collect();
+        out.reverse();
+        Ok(out)
+    }
+
     pub fn purchases_store(&self, project_id: &str, json: &str) -> AppResult<()> {
         self.lock().execute(
             "INSERT INTO purchases_copy(project_id, json) VALUES (?1, ?2) ON CONFLICT(project_id) DO UPDATE SET json = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')",

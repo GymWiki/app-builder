@@ -168,14 +168,11 @@ pub fn parse_line(line: &str, project_dir: &Path) -> Vec<ChatEvent> {
             let text = v["result"].as_str().unwrap_or("").to_string();
             let ok = !v["is_error"].as_bool().unwrap_or(false) && v["subtype"].as_str().unwrap_or("success") == "success";
             let lower = text.to_lowercase();
-            let code = (!ok).then(|| {
-                if lower.contains("/login") || lower.contains("not logged in") || lower.contains("invalid api key") {
-                    "not_logged_in"
-                } else {
-                    "failed"
-                }
-                .to_string()
-            });
+            let code = (!ok).then(|| match super::runner::failure_code(&text) {
+                "failed" if lower.contains("/login") => "not_logged_in",
+                c => c,
+            }
+            .to_string());
             vec![ChatEvent::Done { ok, text, duration_ms: v["duration_ms"].as_u64(), code, cost_usd: v["total_cost_usd"].as_f64(), turns: v["num_turns"].as_u64().map(|n| n as u32), tokens: total_tokens(&v["usage"]), usage: token_usage(&v["usage"]) }]
         }
         _ => vec![],

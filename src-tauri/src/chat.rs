@@ -21,6 +21,10 @@ pub type Emit = Arc<dyn Fn(&str, Value) + Send + Sync>;
 
 pub struct ChatManager {
     engine: Arc<dyn AiEngine>,
+    /// Alle bekende engines (Claude Code, Codex, Gemini) op id; per opdracht wordt er één gekozen.
+    engines: HashMap<&'static str, Arc<dyn AiEngine>>,
+    /// Alleen voor tests: welke engines als "klaar" gelden (anders wordt het echt gecontroleerd).
+    ready_override: Mutex<Option<Vec<String>>>,
     running: Mutex<HashMap<String, Arc<RunHandle>>>,
     /// Modelkeuze (fase 11): tiers, klassen en gewichten uit `engines/<engine>.json`.
     config: Mutex<Arc<EngineConfig>>,
@@ -93,12 +97,46 @@ pub fn mcp_extras(project_id: &str, dir: &std::path::Path) -> Value {
 
 impl ChatManager {
     pub fn new(engine: Arc<dyn AiEngine>) -> Self {
-        Self { engine, running: Mutex::new(HashMap::new()), config: Mutex::new(Arc::new(EngineConfig::embedded())) }
+        let mut engines: HashMap<&'static str, Arc<dyn AiEngine>> = HashMap::new();
+        engines.insert("codex", Arc::new(crate::engine::codex::CodexEngine::new()));
+        engines.insert("gemini", Arc::new(crate::engine::gemini::GeminiEngine::new()));
+        engines.insert(engine.id(), engine.clone());
+        Self { engine, engines, ready_override: Mutex::new(None), running: Mutex::new(HashMap::new()), config: Mutex::new(Arc::new(EngineConfig::embedded())) }
+    }
+
+    /// Kiest de AI voor een nieuwe opdracht (volgorde in de instellingen, klaar en niet op "limiet"). Alleen aan het begin van een
+    /// opdracht: een lopende opdracht wisselt nooit van AI. Staat er niets ingesteld, dan is het gewoon de standaard-engine.
+    /// Staat deze AI klaar (geïnstalleerd en niet uitgelogd)? De standaard-engine geldt altijd als klaar: die meldt zelf wat er mis is.
+    fn engine_ready(&self, id: &str) -> bool {
+        if let Some(f) = self.ready_override.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            return f.iter().any(|x| x == id);
+        }
+        id == self.engine.id() || crate::engine::registry::spec(id).map(|s| crate::engine::registry::detect(&s).ready()).unwrap_or(false)
+    }
+
+    fn engine_for(&self, ctx: &ChatCtx) -> Arc<dyn AiEngine> {
+        use crate::engine::registry as reg;
+        let order = reg::order(&ctx.db);
+        if order.len() == 1 && order[0] == self.engine.id() {
+            return self.engine.clone();
+        }
+        let now = reg::now_unix();
+        let ready = |id: &str| self.engine_ready(id);
+        let limited = |id: &str| reg::limited_until(&ctx.db, id, now).is_some();
+        let id = reg::pick_engine(&order, &ready, &limited);
+        self.engines.get(id.as_str()).cloned().unwrap_or_else(|| self.engine.clone())
     }
 
     /// Nieuwe modelconfiguratie (uit de app-datamap); geldt vanaf de volgende opdracht.
     pub fn set_config(&self, c: EngineConfig) {
         *self.config.lock().unwrap_or_else(|e| e.into_inner()) = Arc::new(c);
+    }
+
+    #[cfg(test)]
+    pub fn with_engine(mut self, e: Arc<dyn AiEngine>, ready: &[&str]) -> Self {
+        self.engines.insert(e.id(), e);
+        *self.ready_override.lock().unwrap_or_else(|x| x.into_inner()) = Some(ready.iter().map(|s| s.to_string()).collect());
+        self
     }
 
     fn config(&self) -> Arc<EngineConfig> {
@@ -148,6 +186,7 @@ impl ChatManager {
     pub fn run_flow_for(&self, ctx: &ChatCtx, project_id: &str, text: &str, context: Option<String>, language: &str, handle: &RunHandle, purpose: Purpose) {
         let started = Instant::now();
         let cfg_models = self.config();
+        let engine = self.engine_for(ctx);
         // Wat de gebruiker intikt of selecteert kan een geheim bevatten: dat gaat nooit naar het model (ook niet naar de
         // goedkope classificatievraag) en komt niet in de opgeslagen berichten.
         let text = &crate::scrub::scrub(text);
@@ -175,7 +214,7 @@ impl ChatManager {
         let dir = PathBuf::from(&project.path);
 
         // 1. Werkgebied kiezen (de gebruiker merkt hier niets van).
-        let _ = ctx.db.session_for_scope(project_id, "", self.engine.id()); // begin van het gesprek
+        let _ = ctx.db.session_for_scope(project_id, "", engine.id()); // begin van het gesprek
         let index = CodeIndex::build(&dir).unwrap_or_default();
         let current_key = format!("scope:{project_id}:screen");
         let current = ctx.db.setting_get(&current_key).ok().flatten();
@@ -184,7 +223,7 @@ impl ChatManager {
         // 1a. Over aankopen of abonnementen begint Claude niet zelf aan code: daar is de pagina Aankopen voor. Studio zet een concept klaar,
         // opent de pagina en antwoordt in één vriendelijke zin; er draait geen model.
         if !purchases_flow && crate::purchases::intent(text) {
-            let sid = match ctx.db.session_for_scope(project_id, "project", self.engine.id()) {
+            let sid = match ctx.db.session_for_scope(project_id, "project", engine.id()) {
                 Ok(s) => s.id,
                 Err(e) => return emit_event(None, &ChatEvent::Error { code: error_code(&e).into(), message: crate::logging::redact(&e.to_string()) }),
             };
@@ -209,14 +248,14 @@ impl ChatManager {
         }
 
         // Kleine hulptaken (zoals deze classificatie) altijd met het lichtste model; de naam komt uit de configuratie.
-        let helper_alias = cfg_models.tier_index(&cfg_models.helper_tier).and_then(|t| cfg_models.resolve(t, &|m| self.engine.model_available(m)));
+        let helper_alias = cfg_models.tier_index(&cfg_models.helper_tier).and_then(|t| cfg_models.resolve(t, &|m| engine.model_available(m)));
         let decision = if ctx.ablation.no_router || purchases_flow {
             // Meting zonder scope-router: het hele project, geen classificatievraag.
             scope::Decision { level: scope::Level::Project, screen: None, why: scope::Why::Fallback }
         } else {
             scope::decide(&index, text, context.as_deref(), current.as_deref(), &mut |q| {
                 ai_questions += 1;
-                self.engine.classify(q, helper_alias.as_deref())
+                engine.classify(q, helper_alias.as_deref())
             })
         };
         if let Some(s) = &decision.screen {
@@ -227,7 +266,7 @@ impl ChatManager {
         // Een vak dat de gebruiker op de preview tekende: het bereik waarbinnen Claude hoort te blijven (controle achteraf).
         let selection_ranges = ctx.scopes.take_selection(project_id);
         let key = decision.screen.clone().unwrap_or_else(|| decision.level.as_str().to_string());
-        let session = match ctx.db.session_for_scope(project_id, &key, self.engine.id()) {
+        let session = match ctx.db.session_for_scope(project_id, &key, engine.id()) {
             Ok(s) => s,
             Err(e) => return emit_event(None, &ChatEvent::Error { code: error_code(&e).into(), message: crate::logging::redact(&e.to_string()) }),
         };
@@ -295,9 +334,9 @@ impl ChatManager {
             .collect();
         // Een handmatige keuze telt alleen in de ontwikkelaarsmodus.
         let dev = ctx.db.setting_get("dev_mode").ok().flatten().as_deref() == Some("true");
-        let override_value = dev.then(|| ctx.db.setting_get("model_override").ok().flatten()).flatten().filter(|v| !v.is_empty() && v != "auto");
+        let override_value = dev.then(|| ctx.db.setting_get("model_override").ok().flatten()).flatten().filter(|v| !v.is_empty() && v != "auto").filter(|_| engine.id() == crate::engine::registry::DEFAULT_ENGINE);
         let choice = modelsel::choose(&cfg_models, &assessment, purpose, &history, override_value.as_deref());
-        let avail = |m: &str| self.engine.model_available(m);
+        let avail = |m: &str| engine.model_available(m);
         let model = choice.explicit_model.clone().or_else(|| cfg_models.resolve(choice.tier, &avail));
         let exec_model = model.clone();
         emit_event(Some(&sid), &ChatEvent::Status { code: "model".into(), detail: Some(format!("{}|{}|{}|{}|{}", assessment.class.as_str(), choice.tier_id, model.clone().unwrap_or_default(), choice.reason, assessment.reasons.join("; "))) });
@@ -311,6 +350,21 @@ impl ChatManager {
             Some(c) if !c.trim().is_empty() => format!("[Studio scope: {scope_text}]\n[Studio context: {c}]\n\n{text}"),
             _ => format!("[Studio scope: {scope_text}]\n\n{text}"),
         };
+        // Overdracht: werkte een andere AI eerder aan dit project, dan krijgt deze een korte, neutrale notitie (de rest staat in STUDIO.md,
+        // de schermindex en de momentopnames in het project zelf).
+        let engine_last_key = format!("engine_last:{project_id}");
+        let previous_engine = ctx.db.setting_get(&engine_last_key).ok().flatten().filter(|p| !p.is_empty() && p != engine.id());
+        let prompt = match &previous_engine {
+            Some(from) => {
+                let recent = ctx.db.recent_user_texts(project_id, 4).unwrap_or_default();
+                let note = crate::engine::registry::handover_note(from, engine.id(), gitops::last_commit_subject(&dir).ok().as_deref(), &recent);
+                emit_event(Some(&sid), &ChatEvent::Status { code: "handover".into(), detail: Some(format!("{from}|{}", engine.id())) });
+                format!("[Studio handover: {note}]\n\n{prompt}")
+            }
+            None => prompt,
+        };
+        let _ = ctx.db.setting_set(&engine_last_key, engine.id());
+        let limit_hit = std::cell::Cell::new(false);
 
         let mut stats = TurnStats::default();
         let mut resume = session.engine_session_id.clone();
@@ -327,7 +381,7 @@ impl ChatManager {
             };
             let mut last_ok = None;
             let mut last_text = String::new();
-            let outcome = self.engine.run_turn(&req, handle, &mut |e| {
+            let outcome = engine.run_turn(&req, handle, &mut |e| {
                 if let ChatEvent::Init { mcp, .. } = &e {
                     for (name, status) in mcp.iter().filter(|(n, s)| n == "dart" && s != "connected" && s != "pending") {
                         log::warn!("MCP server {name} is {status}; continuing without it");
@@ -335,6 +389,9 @@ impl ChatManager {
                 }
                 if let ChatEvent::Text { text, .. } = &e {
                     last_text = text.clone();
+                }
+                if matches!(&e, ChatEvent::Done { ok: false, code: Some(c), .. } | ChatEvent::Error { code: c, .. } if c == "limit") {
+                    limit_hit.set(true);
                 }
                 if let ChatEvent::Done { ok, cost_usd, turns, tokens, usage, .. } = &e {
                     last_ok = Some(*ok);
@@ -433,6 +490,8 @@ impl ChatManager {
                 emit_event(Some(&sid), &ChatEvent::Status { code: "checking".into(), detail: None });
                 let mut check = || {
                     let level = ctx.scopes.with(project_id, |s| s.level).unwrap_or(decision.level);
+                    // Een AI die nog niet lang in gebruik is krijgt altijd de volledige controle (analyse én tests), ook bij een kleine taak.
+                    let level = if crate::engine::registry::spec(engine.id()).is_some_and(|s| !s.proven) { level.max(scope::Level::Shared) } else { level };
                     quality::run_checks(&dir, flutter, level, &changed(&dir))
                 };
                 let mut repair = |issues: &[quality::Issue], n: u32| {
@@ -502,6 +561,16 @@ impl ChatManager {
 
         // 6. Metingen (alleen lokaal).
         let (final_level, expansions, denied) = final_scope.map(|s| (s.level, s.expansions.len(), s.denied.len())).unwrap_or((decision.level, 0, 0));
+        // Limiet bereikt: deze AI wacht tot de tijd om is; de volgende opdracht gebruikt de volgende in de volgorde. De lopende opdracht
+        // wordt niet door een andere AI overgenomen.
+        if limit_hit.get() {
+            use crate::engine::registry as reg;
+            let now = reg::now_unix();
+            reg::mark_limited(&ctx.db, engine.id(), now);
+            let order = reg::order(&ctx.db);
+            let next = order.iter().find(|id| id.as_str() != engine.id() && reg::limited_until(&ctx.db, id, now).is_none() && self.engine_ready(id)).cloned().unwrap_or_default();
+            emit_event(Some(&sid), &ChatEvent::Status { code: "engine_limit".into(), detail: Some(format!("{}|{next}", engine.id())) });
+        }
         let _ = ctx.db.run_insert(
             project_id,
             &RunRecord {
@@ -523,7 +592,7 @@ impl ChatManager {
                 class: assessment.class.as_str().into(),
                 tier: choice.tier_id.clone(),
                 model: model.clone().unwrap_or_default(),
-                engine: self.engine.id().into(),
+                engine: engine.id().into(),
                 purpose: if override_value.is_some() { "override".into() } else { purpose.as_str().into() },
                 escalated: escalated.get(),
                 tokens: stats.tokens as i64,
@@ -826,6 +895,52 @@ mod tests {
         events.lock().unwrap().clear();
         mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
         assert!(bin.join("args.txt").exists() && !events.lock().unwrap().iter().any(|(n, _)| n == "open-purchases"));
+    }
+
+    /// Limiet bereikt: de lopende opdracht blijft bij haar AI, de volgende gebruikt de volgende in de volgorde, met een korte overdracht.
+    #[cfg(unix)]
+    #[test]
+    fn a_usage_limit_moves_the_next_task_to_the_next_engine_with_a_handover_and_never_switches_mid_task() {
+        use std::os::unix::fs::PermissionsExt;
+        let (bin, proj, db, p, ctx, mgr) = scoped_fixture(false);
+        // Claude meldt de limiet; Codex (nep) doet de volgende opdracht.
+        std::fs::write(
+            bin.join("claude"),
+            "#!/bin/sh\nd=$(dirname \"$0\")\nif [ \"$1\" = \"--help\" ]; then cat \"$d/help.txt\"; exit 0; fi\necho x >> \"$d/claude_runs.txt\"\ncat > /dev/null\necho '{\"type\":\"result\",\"subtype\":\"error\",\"is_error\":true,\"result\":\"Claude AI usage limit reached|1795700000\",\"duration_ms\":5}'\n",
+        )
+        .unwrap();
+        let codex = bin.join("codex");
+        let sample = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/engines/codex_ok.jsonl");
+        std::fs::write(&codex, format!("#!/bin/sh\ncat >> \"$(dirname \"$0\")/codex_stdin.txt\"\necho '// edit by codex' >> \"$PWD/lib/features/home/home_screen.dart\"\ncat \"{sample}\"\n")).unwrap();
+        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mgr = mgr.with_engine(Arc::new(crate::engine::codex::CodexEngine::with_program(codex)), &["claude-code", "codex"]);
+        crate::engine::registry::set_order(&db, &["claude-code".into(), "codex".into()]).unwrap();
+        let events: Arc<Mutex<Vec<Value>>> = Arc::default();
+        let sink = events.clone();
+        let ctx = ChatCtx { emit: Arc::new(move |n, v| if n == "chat-event" { sink.lock().unwrap().push(v["event"].clone()) }), ..ctx };
+
+        // 1. eerste opdracht: Claude, de limiet wordt herkend, er wordt niet midden in de opdracht gewisseld
+        mgr.run_flow(&ctx, &p.id, "make the title bigger on the home screen", None, "en", &RunHandle::default());
+        assert!(!bin.join("codex_stdin.txt").exists(), "Codex took nothing over mid-task");
+        let st = statuses(&db, &p.id);
+        assert!(st.iter().any(|s| s == "engine_limit:claude-code|codex"), "{st:?}");
+        assert!(crate::engine::registry::limited_until(&db, "claude-code", crate::engine::registry::now_unix()).is_some());
+        let first_done = events.lock().unwrap().iter().rev().find(|e| e["type"] == "done").cloned().unwrap();
+        assert_eq!((first_done["ok"].as_bool(), first_done["code"].as_str()), (Some(false), Some("limit")));
+        // 2. de volgende opdracht gaat naar Codex, met een overdracht en de volledige controle
+        let claude_calls = std::fs::read_to_string(bin.join("claude_runs.txt")).unwrap().lines().count();
+        std::fs::remove_file(bin.join("flutter_args.txt")).ok();
+        mgr.run_flow(&ctx, &p.id, "now make the subtitle smaller", None, "en", &RunHandle::default());
+        assert_eq!(std::fs::read_to_string(bin.join("claude_runs.txt")).unwrap().lines().count(), claude_calls, "Claude is not called at all while it is limited");
+        let stdin = std::fs::read_to_string(bin.join("codex_stdin.txt")).unwrap();
+        assert!(stdin.contains("Handover: this app was worked on with Claude Code before; you are Codex CLI now") && stdin.contains("STUDIO.md") && stdin.contains("make the title bigger"), "{stdin}");
+        assert!(stdin.contains("now make the subtitle smaller"));
+        assert!(statuses(&db, &p.id).iter().any(|s| s == "handover:claude-code|codex"));
+        assert!(std::fs::read_to_string(proj.join("lib/features/home/home_screen.dart")).unwrap().contains("// edit by codex"));
+        let runs = db.runs_summary(&p.id, 10).unwrap();
+        assert_eq!(runs.runs, 2);
+        // 3. de stand wordt per engine bijgehouden
+        assert_eq!(db.setting_get(&format!("engine_last:{}", p.id)).unwrap().as_deref(), Some("codex"));
     }
 
     /// Een gekozen vak is een signaal, geen blokkade: een wijziging erbuiten blijft staan maar wordt gelogd; erbinnen geen melding.

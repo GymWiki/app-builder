@@ -211,7 +211,36 @@
     "version": "Studio {{version}} on {{os}}",
     "logs": "Log folder",
     "showInFolder": "Show in folder",
-    "designSystem": "Design system"
+    "designSystem": "Design system",
+    "engines": {
+      "title": "AI connections",
+      "intro": "Studio works with the official command-line tools of Claude Code, Codex and Gemini. You log in yourself in their own window; Studio never sees or keeps your login.",
+      "notice": "When {{name}} works on your app, your app’s code is sent to {{provider}}.",
+      "terms": "Your use is subject to {{provider}}’s own terms and your own account.",
+      "unproven": "Newer in Studio: every change from this AI gets the full checks.",
+      "status": {
+        "ready": "Ready",
+        "notInstalled": "Not installed",
+        "notLoggedIn": "Not logged in",
+        "unknown": "Installed, login not checked",
+        "limited": "Limit reached, back around {{time}}"
+      },
+      "install": "How to install",
+      "installHint": "Run this in a terminal: {{command}}",
+      "login": "Log in",
+      "use": "Use this AI",
+      "usedFirst": "Used first",
+      "usedNext": "Next in line",
+      "moveUp": "Move {{name}} up",
+      "moveDown": "Move {{name}} down",
+      "retry": "Try again now",
+      "stats": "{{runs}} tasks, {{clean}} right the first time, {{rolled}} undone",
+      "order": "The first AI in the list that is ready and hasn’t reached its limit takes the next task. A task never switches AI halfway; the next one does.",
+      "linkTitle": "Link {{name}}?",
+      "linkBody": "When {{name}} works on your app, your app’s code is sent to {{provider}}. You can remove it from the list at any time.",
+      "linkConfirm": "Link",
+      "terminalTitle": "Log in to {{name}}"
+    }
   },
   "setup": {
     "title": "Let’s get your computer ready",
@@ -552,7 +581,10 @@
       "leak_blocked": "Saving a version was paused: a secret was found in your files. See Secrets.",
       "model": "class {{cls}} · tier {{tier}} · model {{model}} · {{reason}}",
       "model_escalated": "escalated to {{model}} after a failed check",
-      "selection_exceeded": "Claude also changed something outside the marked box."
+      "selection_exceeded": "Claude also changed something outside the marked box.",
+      "engine_limit": "{{name}} has reached its limit. The next task will use {{next}}.",
+      "engine_limit_none": "{{name}} has reached its limit. No other AI is ready yet: add one under Settings, AI connections.",
+      "handover": "Handing over from {{from}} to {{to}} with a short note."
     }
   },
   "preview": {

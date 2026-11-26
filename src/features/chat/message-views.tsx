@@ -138,6 +138,19 @@ export function StatusLine({ item }: { item: Extract<Item, { kind: "status" }> }
       </p>
     );
   }
+  // Een AI heeft zijn limiet bereikt / de opdracht is overgedragen aan een andere AI.
+  if (item.code === "engine_limit" || item.code === "handover") {
+    const [a, b] = (item.detail ?? "").split("|");
+    const name = (id?: string) => (id === "codex" ? "Codex CLI" : id === "gemini" ? "Gemini CLI" : "Claude Code");
+    return (
+      <p role="status" className="text-muted-foreground t-small flex items-center justify-center gap-1.5">
+        <AlertTriangle className="size-3.5" aria-hidden />
+        {item.code === "handover"
+          ? t("chat.status.handover", { from: name(a), to: name(b) })
+          : t(b ? "chat.status.engine_limit" : "chat.status.engine_limit_none", { name: name(a), next: name(b) })}
+      </p>
+    );
+  }
   // Of Claude buiten het gemarkeerde vak is gekomen is een signaal voor ontwikkelaars, niet voor de gebruiker.
   if (item.code === "selection_exceeded") {
     if (!dev) return null;

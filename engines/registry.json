@@ -1,0 +1,34 @@
+{
+  "engines": [
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "provider": "Anthropic",
+      "binary": "claude",
+      "proven": true,
+      "loginArgs": ["auth", "login"],
+      "installHint": "winget install Anthropic.ClaudeCode",
+      "docs": "https://docs.claude.com/en/docs/claude-code/overview"
+    },
+    {
+      "id": "codex",
+      "name": "Codex CLI",
+      "provider": "OpenAI",
+      "binary": "codex",
+      "proven": false,
+      "loginArgs": ["login"],
+      "installHint": "npm install -g @openai/codex",
+      "docs": "https://developers.openai.com/codex/cli"
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini CLI",
+      "provider": "Google",
+      "binary": "gemini",
+      "proven": false,
+      "loginArgs": [],
+      "installHint": "npm install -g @google/gemini-cli",
+      "docs": "https://github.com/google-gemini/gemini-cli"
+    }
+  ]
+}

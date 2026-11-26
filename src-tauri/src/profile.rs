@@ -105,8 +105,18 @@ fn owned_files() -> Vec<Owned> {
     skill!("studio-data-auth", "accounts.md");
     skill!("studio-release", "checklist.md");
     skill!("studio-store-listing", "legal.md");
+    // Dezelfde skills voor de andere AI's, uit dezelfde bron: Codex leest `.agents/skills`, Gemini `.gemini/skills`.
+    let copies: Vec<Owned> = v
+        .iter()
+        .filter(|o| o.path.starts_with(".claude/skills/"))
+        .flat_map(|o| [".agents/skills/", ".gemini/skills/"].map(|p| Owned { path: o.path.replacen(".claude/skills/", p, 1), contents: o.contents.clone() }))
+        .collect();
+    v.extend(copies);
     v
 }
+
+/// De instructiebestanden per AI uit één bron: `CLAUDE.md` (Claude Code), `AGENTS.md` (Codex) en `GEMINI.md` (Gemini).
+pub const INSTRUCTION_FILES: &[&str] = &["CLAUDE.md", "AGENTS.md", "GEMINI.md"];
 
 /// Wat we in `.claude/settings.json` willen hebben (wordt samengevoegd, nooit vervangen).
 pub fn desired_settings() -> Value {
@@ -201,8 +211,8 @@ fn apply_owned(dir: &Path, man: &mut Manifest, file: &Owned, rep: &mut ProfileRe
     Ok(())
 }
 
-fn apply_claude_md(dir: &Path, block: &str, rep: &mut ProfileReport) -> AppResult<()> {
-    let path = dir.join("CLAUDE.md");
+fn apply_claude_md(dir: &Path, name: &str, block: &str, rep: &mut ProfileReport) -> AppResult<()> {
+    let path = dir.join(name);
     let managed = block.to_string();
     let existing = std::fs::read_to_string(&path).ok();
     let new_text = match existing.as_deref() {
@@ -215,14 +225,14 @@ fn apply_claude_md(dir: &Path, block: &str, rep: &mut ProfileReport) -> AppResul
         },
     };
     match existing {
-        Some(ref t) if *t == new_text => rep.unchanged.push("CLAUDE.md".into()),
+        Some(ref t) if *t == new_text => rep.unchanged.push(name.into()),
         Some(_) => {
             std::fs::write(&path, new_text)?;
-            rep.updated.push("CLAUDE.md".into());
+            rep.updated.push(name.into());
         }
         None => {
             std::fs::write(&path, new_text)?;
-            rep.written.push("CLAUDE.md".into());
+            rep.written.push(name.into());
         }
     }
     Ok(())
@@ -250,10 +260,12 @@ fn apply_feature_notes(dir: &Path, rep: &mut ProfileReport) -> AppResult<()> {
     let Ok(rd) = std::fs::read_dir(dir.join("lib/features")) else { return Ok(()) };
     for e in rd.flatten().filter(|e| e.path().is_dir()) {
         let name = e.file_name().to_string_lossy().into_owned();
-        let rel = format!("lib/features/{name}/CLAUDE.md");
-        if !dir.join(&rel).exists() {
-            write_file(dir, &rel, &format!("# Feature: {name}\n- Screen in `{name}_screen.dart`; logic in a Riverpod Notifier in `{name}_controller.dart`; widgets in `widgets/`.\n- Use `AppSpacing`/`AppRadius` and the color scheme; no hard-coded colors.\n- Shared models and widgets go to lib/core.\n"))?;
-            rep.written.push(rel);
+        for file in INSTRUCTION_FILES {
+            let rel = format!("lib/features/{name}/{file}");
+            if !dir.join(&rel).exists() {
+                write_file(dir, &rel, &format!("# Feature: {name}\n- Screen in `{name}_screen.dart`; logic in a Riverpod Notifier in `{name}_controller.dart`; widgets in `widgets/`.\n- Use `AppSpacing`/`AppRadius` and the color scheme; no hard-coded colors.\n- Shared models and widgets go to lib/core.\n"))?;
+                rep.written.push(rel);
+            }
         }
     }
     Ok(())
@@ -266,7 +278,10 @@ pub fn apply(dir: &Path, facts: &ProjectFacts) -> AppResult<ProfileReport> {
     for f in owned_files() {
         apply_owned(dir, &mut man, &f, &mut rep)?;
     }
-    apply_claude_md(dir, &claude_block(facts, true), &mut rep)?;
+    let block = claude_block(facts, true);
+    for name in INSTRUCTION_FILES {
+        apply_claude_md(dir, name, &block, &mut rep)?;
+    }
     apply_settings(dir, &mut rep)?;
     apply_feature_notes(dir, &mut rep)?;
     man.version = CURRENT;
@@ -357,11 +372,34 @@ mod tests {
             ".claude/skills/studio-screen/SKILL.md", ".claude/skills/studio-theme/SKILL.md", ".claude/skills/studio-ui-kit/SKILL.md",
             ".claude/skills/studio-data-auth/SKILL.md", ".claude/skills/studio-release/SKILL.md", ".claude/skills/studio-store-listing/SKILL.md",
             ".studio/profile.json", "lib/features/home/CLAUDE.md",
+            "AGENTS.md", "GEMINI.md", ".agents/skills/studio-screen/SKILL.md", ".agents/skills/studio-release/references/checklist.md", ".gemini/skills/studio-theme/SKILL.md",
+            "lib/features/home/AGENTS.md", "lib/features/home/GEMINI.md",
         ] {
             assert!(d.join(f).is_file(), "missing {f}");
         }
         assert!(r.skipped.is_empty() && r.version == CURRENT);
         assert_eq!(load_manifest(&d).version, CURRENT);
+    }
+
+    #[test]
+    fn every_ai_gets_the_same_instructions_from_one_source_and_the_users_own_text_survives() {
+        let d = tmp();
+        apply(&d, &facts()).unwrap();
+        let claude = read(&d, "CLAUDE.md");
+        assert_eq!(read(&d, "AGENTS.md"), claude);
+        assert_eq!(read(&d, "GEMINI.md"), claude);
+        assert_eq!(read(&d, ".agents/skills/studio-screen/SKILL.md"), read(&d, ".claude/skills/studio-screen/SKILL.md"));
+        assert_eq!(read(&d, ".gemini/skills/studio-ui-kit/references/kits.md"), read(&d, ".claude/skills/studio-ui-kit/references/kits.md"));
+        // eigen tekst in AGENTS.md blijft staan en ons blok wordt bijgewerkt
+        std::fs::write(d.join("AGENTS.md"), "# My notes\nAlways answer in Dutch.\n").unwrap();
+        apply(&d, &facts()).unwrap();
+        let a = read(&d, "AGENTS.md");
+        assert!(a.starts_with("# My notes") && a.contains("Always answer in Dutch.") && a.contains(BLOCK_START), "{a}");
+        assert_eq!(read(&d, "GEMINI.md"), claude, "the other files are untouched");
+        // geen geheimen of tokens in het profiel
+        for f in ["AGENTS.md", "GEMINI.md"] {
+            assert!(!read(&d, f).to_lowercase().contains("bearer"));
+        }
     }
 
     #[test]
@@ -505,8 +543,9 @@ mod tests {
             assert!(f.contents.lines().count() < 25, "{} should stay short; details go in references/", f.path);
             assert!(f.contents.contains("references/") || name == "studio-theme" || name == "studio-release", "{}", f.path);
         }
-        let refs = owned_files().iter().filter(|f| f.path.contains("/references/")).count();
+        let refs = owned_files().iter().filter(|f| f.path.starts_with(".claude/") && f.path.contains("/references/")).count();
         assert_eq!(refs, 6);
+        assert_eq!(owned_files().iter().filter(|f| f.path.contains("/references/")).count(), 18, "the same six for each of the three AIs");
     }
 
     #[test]

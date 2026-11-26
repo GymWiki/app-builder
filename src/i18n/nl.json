@@ -211,7 +211,36 @@
     "version": "Studio {{version}} op {{os}}",
     "logs": "Logmap",
     "showInFolder": "Tonen in map",
-    "designSystem": "Designsysteem"
+    "designSystem": "Designsysteem",
+    "engines": {
+      "title": "AI-verbindingen",
+      "intro": "Studio werkt met de officiële opdrachtregel-programma’s van Claude Code, Codex en Gemini. Je logt zelf in, in hun eigen venster; Studio ziet of bewaart je inlog nooit.",
+      "notice": "Als {{name}} aan je app werkt, wordt de code van je app naar {{provider}} gestuurd.",
+      "terms": "Voor het gebruik gelden de eigen voorwaarden van {{provider}} en je eigen account.",
+      "unproven": "Nieuwer in Studio: elke wijziging van deze AI krijgt de volledige controles.",
+      "status": {
+        "ready": "Klaar",
+        "notInstalled": "Niet geïnstalleerd",
+        "notLoggedIn": "Niet ingelogd",
+        "unknown": "Geïnstalleerd, inlog niet gecontroleerd",
+        "limited": "Limiet bereikt, weer rond {{time}}"
+      },
+      "install": "Hoe installeer ik het",
+      "installHint": "Voer dit uit in een terminal: {{command}}",
+      "login": "Inloggen",
+      "use": "Deze AI gebruiken",
+      "usedFirst": "Wordt eerst gebruikt",
+      "usedNext": "Volgende in de rij",
+      "moveUp": "{{name}} omhoog",
+      "moveDown": "{{name}} omlaag",
+      "retry": "Nu opnieuw proberen",
+      "stats": "{{runs}} opdrachten, {{clean}} in één keer goed, {{rolled}} teruggedraaid",
+      "order": "De eerste AI in de lijst die klaar is en zijn limiet niet bereikt heeft, krijgt de volgende opdracht. Een opdracht wisselt nooit halverwege van AI; de volgende wel.",
+      "linkTitle": "{{name}} koppelen?",
+      "linkBody": "Als {{name}} aan je app werkt, wordt de code van je app naar {{provider}} gestuurd. Je kunt hem op elk moment uit de lijst halen.",
+      "linkConfirm": "Koppelen",
+      "terminalTitle": "Inloggen bij {{name}}"
+    }
   },
   "setup": {
     "title": "We maken je computer klaar",
@@ -552,7 +581,10 @@
       "leak_blocked": "Het opslaan van een versie is gepauzeerd: er is een geheim gevonden in je bestanden. Zie Geheimen.",
       "model": "klasse {{cls}} · niveau {{tier}} · model {{model}} · {{reason}}",
       "model_escalated": "opgeschaald naar {{model}} na een mislukte controle",
-      "selection_exceeded": "Claude heeft ook iets buiten het gemarkeerde vak aangepast."
+      "selection_exceeded": "Claude heeft ook iets buiten het gemarkeerde vak aangepast.",
+      "engine_limit": "{{name}} heeft zijn limiet bereikt. De volgende opdracht gebruikt {{next}}.",
+      "engine_limit_none": "{{name}} heeft zijn limiet bereikt. Er is nog geen andere AI klaar: voeg er een toe onder Instellingen, AI-verbindingen.",
+      "handover": "Overdracht van {{from}} naar {{to}} met een korte notitie."
     }
   },
   "preview": {

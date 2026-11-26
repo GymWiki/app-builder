@@ -73,6 +73,59 @@ function mockVersionInfo(p?: Project) {
   };
 }
 if (scenario === "purchases") vaultPreloadForPurchases("friday_scores");
+let enginesOrder = ["claude-code"];
+const enginesLimited = new Map<string, number>();
+const enginesView = () => ({
+  order: enginesOrder,
+  engines: [
+    {
+      id: "claude-code",
+      name: "Claude Code",
+      provider: "Anthropic",
+      installed: true,
+      version: "2.1.0 (Claude Code)",
+      loggedIn: true,
+      proven: true,
+      installHint: "winget install Anthropic.ClaudeCode",
+      docs: "",
+      limitedUntil: enginesLimited.get("claude-code") ?? null,
+      runs: 42,
+      clean: 36,
+      rolledBack: 2,
+    },
+    {
+      id: "codex",
+      name: "Codex CLI",
+      provider: "OpenAI",
+      installed: true,
+      version: "codex-cli 0.172.0",
+      loggedIn: false,
+      proven: false,
+      installHint: "npm install -g @openai/codex",
+      docs: "",
+      limitedUntil: enginesLimited.get("codex") ?? null,
+      runs: 0,
+      clean: 0,
+      rolledBack: 0,
+    },
+    {
+      id: "gemini",
+      name: "Gemini CLI",
+      provider: "Google",
+      installed: false,
+      version: null,
+      loggedIn: false,
+      proven: false,
+      installHint: "npm install -g @google/gemini-cli",
+      docs: "",
+      limitedUntil: null,
+      runs: 0,
+      clean: 0,
+      rolledBack: 0,
+    },
+  ],
+});
+if (scenario === "limit") enginesLimited.set("claude-code", Math.floor(Date.now() / 1000) + 7200);
 const purchasesStore = new Map<string, Purchases>();
 const purchasesApplying = new Set<string>();
 const purchasesOf = (id: string): Purchases => {
@@ -696,6 +749,27 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
     case "preview_stop":
       setPreview({ status: "stopped", url: null, problems: [] });
       return;
+    case "engines_list":
+      return enginesView();
+    case "engines_set_order":
+      enginesOrder = (args.order as string[]).filter((x, i, a) => a.indexOf(x) === i);
+      if (!enginesOrder.length) enginesOrder = ["claude-code"];
+      return enginesView();
+    case "engine_clear_limit":
+      enginesLimited.delete(args.id as string);
+      return enginesView();
+    case "engine_open_login": {
+      setTimeout(
+        () =>
+          emit("pty-data", {
+            id: "mock-pty",
+            data: "\x1b[1mCodex login\x1b[0m\r\nOpen the browser to sign in…\r\n",
+            end: 1,
+          }),
+        200,
+      );
+      return "mock-pty";
+    }
     case "purchases_suggest_id":
       return pur.suggestId(args.name as string, args.kind as never, args.period as never);
     case "purchases_get":

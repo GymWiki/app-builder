@@ -414,3 +414,24 @@ export interface PurchasesView {
   bundleId: string;
   applying: boolean;
 }
+
+// ───────────── AI-verbindingen ─────────────
+export interface EngineRow {
+  id: string;
+  name: string;
+  provider: string;
+  installed: boolean;
+  version: string | null;
+  loggedIn: boolean | null;
+  proven: boolean;
+  installHint: string;
+  docs: string;
+  limitedUntil: number | null;
+  runs: number;
+  clean: number;
+  rolledBack: number;
+}
+export interface EnginesView {
+  engines: EngineRow[];
+  order: string[];
+}
