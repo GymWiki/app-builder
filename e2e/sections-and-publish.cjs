@@ -85,16 +85,18 @@ const ok = (c, m) => {
   await menu("App settings").click();
   await p.locator("#s-bundle").waitFor();
   await p.locator("#s-bundle").fill("Bad Id");
-  ok(await p.getByRole("button", { name: "Save" }).nth(1).isDisabled(), "invalid bundle id cannot be saved");
+  ok(await p.getByRole("alert").filter({ hasText: "lowercase letters" }).isVisible(), "invalid bundle id is explained while typing");
+  await p.locator("#s-bundle").blur();
+  ok((await p.getByText("Updated:").count()) === 0, "an invalid bundle id is never applied");
   await p.locator("#s-bundle").fill("fail.demo");
-  await p.getByRole("button", { name: "Save" }).nth(1).click();
+  await p.locator("#s-bundle").blur(); // toegepast bij het verlaten van het veld: geen opslaanknop
   await p.getByText("couldn’t change everything automatically").waitFor();
   ok(
     await p.getByRole("button", { name: "Ask Claude to fix this" }).isVisible(),
     "skipped files are reported with an Ask Claude action",
   );
   await p.locator("#s-bundle").fill("nl.bakker.scores");
-  await p.getByRole("button", { name: "Save" }).nth(1).click();
+  await p.locator("#s-bundle").blur();
   await p.getByText("Updated: Android: applicationId").waitFor();
   ok(true, "bundle id written");
   await p.getByRole("switch", { name: "Camera" }).click();

@@ -894,7 +894,8 @@
       "iosReason": "Waarom heeft de app dit nodig? (zichtbaar op iPhones)",
       "iosReasonDefault": "Deze app heeft toegang nodig om zijn functies te bieden.",
       "bundleDefault": "Nog het voorbeeld-ID. Kies je eigen ID vóór het publiceren.",
-      "notFound": "Niet gevonden in de projectbestanden"
+      "notFound": "Niet gevonden in de projectbestanden",
+      "bundleInvalid": "Gebruik kleine letters, cijfers en punten, zoals com.jounaam.mijnapp."
     },
     "versions": {
       "title": "Versies",

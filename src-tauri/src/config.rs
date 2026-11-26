@@ -442,6 +442,18 @@ mod tests {
     }
 
     #[test]
+    fn remembered_brand_choices_survive_a_round_trip_and_apply_to_a_new_project() {
+        let t = ThemeCfg { seed: Some("#112233".into()), font: Some("Inter".into()), kit: Some("rounded".into()) };
+        let back: ThemeCfg = serde_json::from_str(&serde_json::to_string(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+        let d = tmp("brand");
+        let mut c = load(&d);
+        c.theme = back;
+        let r = apply(&d, &c).unwrap();
+        assert!(r.wired && std::fs::read_to_string(d.join("lib/core/theme/app_theme.dart")).unwrap().contains("0xFF112233"));
+    }
+
+    #[test]
     fn invalid_values_are_refused() {
         let mut c = Config::default();
         c.theme.seed = Some("nope".into());

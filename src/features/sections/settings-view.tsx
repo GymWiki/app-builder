@@ -1,7 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/ipc";
 import { toastError } from "@/lib/toast";
@@ -68,6 +67,13 @@ function SettingsForm({
       toastError(e, t);
     }
   };
+  // Wijzigingen worden toegepast zodra je het veld verlaat (geen aparte opslaanknop); alleen als er echt iets veranderd is.
+  const saveMinOs = () => {
+    const a = minAndroid ? Number(minAndroid) : null;
+    const i = /^\d+(\.\d+)?$/.test(minIos) ? minIos : null;
+    if ((a === null && i === null) || (a === (p.minAndroid ?? null) && i === (p.minIos ?? null))) return;
+    void run(() => api.platformSetMinOs(id, a, i));
+  };
   const bundleValid = BUNDLE_RE.test(bundle);
   const exampleId = bundle.startsWith("com.example.");
 
@@ -75,38 +81,31 @@ function SettingsForm({
     <SectionPage title={t("sec.settings.title")} intro={t("sec.settings.intro")}>
       <Card2>
         <Field label={t("sec.settings.name")} help={t("sec.settings.nameHelp")} htmlFor="s-name">
-          <div className="flex gap-2">
-            <input
-              id="s-name"
-              value={name}
-              maxLength={30}
-              onChange={(e) => setName(e.target.value)}
-              className={inputCls}
-            />
-            <Button
-              disabled={!name.trim() || name === (p.appName ?? project.name)}
-              onClick={() => void run(() => api.platformSetName(id, name))}
-            >
-              {t("sec.common.save")}
-            </Button>
-          </div>
+          <input
+            id="s-name"
+            value={name}
+            maxLength={30}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => name.trim() && name !== (p.appName ?? project.name) && void run(() => api.platformSetName(id, name))}
+            className={inputCls}
+          />
         </Field>
         <Field label={t("sec.settings.bundle")} help={t("sec.settings.bundleHelp")} htmlFor="s-bundle">
-          <div className="flex gap-2">
-            <input
-              id="s-bundle"
-              value={bundle}
-              onChange={(e) => setBundle(e.target.value.trim())}
-              aria-invalid={!bundleValid}
-              className={cn(inputCls, "font-mono")}
-            />
-            <Button
-              disabled={!bundleValid || bundle === (p.androidApplicationId ?? p.bundleId)}
-              onClick={() => void run(() => api.platformSetBundle(id, bundle))}
-            >
-              {t("sec.common.save")}
-            </Button>
-          </div>
+          <input
+            id="s-bundle"
+            value={bundle}
+            onChange={(e) => setBundle(e.target.value.trim())}
+            onBlur={() =>
+              bundleValid && bundle !== (p.androidApplicationId ?? p.bundleId) && void run(() => api.platformSetBundle(id, bundle))
+            }
+            aria-invalid={!bundleValid}
+            className={cn(inputCls, "font-mono")}
+          />
+          {!bundleValid && (
+            <p role="alert" className="text-destructive t-small">
+              {t("sec.settings.bundleInvalid")}
+            </p>
+          )}
           {exampleId && <p className="text-warning t-small">{t("sec.settings.bundleDefault")}</p>}
         </Field>
       </Card2>
@@ -120,6 +119,7 @@ function SettingsForm({
               inputMode="numeric"
               placeholder="24"
               onChange={(e) => setMinAndroid(e.target.value.replace(/\D/g, ""))}
+              onBlur={saveMinOs}
               className={inputCls}
             />
           </Field>
@@ -129,24 +129,11 @@ function SettingsForm({
               value={minIos}
               placeholder="13.0"
               onChange={(e) => setMinIos(e.target.value.trim())}
+              onBlur={saveMinOs}
               className={inputCls}
             />
           </Field>
         </div>
-        <Button
-          disabled={!minAndroid && !minIos}
-          onClick={() =>
-            void run(() =>
-              api.platformSetMinOs(
-                id,
-                minAndroid ? Number(minAndroid) : null,
-                /^\d+(\.\d+)?$/.test(minIos) ? minIos : null,
-              ),
-            )
-          }
-        >
-          {t("sec.common.save")}
-        </Button>
       </Card2>
 
       <Card2 title={t("sec.settings.permissions")}>
@@ -172,21 +159,17 @@ function SettingsForm({
                   />
                 </div>
                 {on && IOS_REASON_KEYS.has(key) && (
-                  <div className="flex gap-2">
-                    <input
-                      aria-label={`${t(`sec.settings.permission.${key}`)}: ${t("sec.settings.iosReason")}`}
-                      value={reasons[key] ?? ""}
-                      placeholder={t("sec.settings.iosReason")}
-                      onChange={(e) => setReasons({ ...reasons, [key]: e.target.value })}
-                      className={inputCls}
-                    />
-                    <Button
-                      variant="outline"
-                      onClick={() => void run(() => api.platformSetPermission(id, key, true, reasons[key] ?? ""))}
-                    >
-                      {t("sec.common.save")}
-                    </Button>
-                  </div>
+                  <input
+                    aria-label={`${t(`sec.settings.permission.${key}`)}: ${t("sec.settings.iosReason")}`}
+                    value={reasons[key] ?? ""}
+                    placeholder={t("sec.settings.iosReason")}
+                    onChange={(e) => setReasons({ ...reasons, [key]: e.target.value })}
+                    onBlur={() =>
+                      (reasons[key] ?? "") !== (st?.ios_reason ?? "") &&
+                      void run(() => api.platformSetPermission(id, key, true, reasons[key] ?? ""))
+                    }
+                    className={inputCls}
+                  />
                 )}
               </li>
             );

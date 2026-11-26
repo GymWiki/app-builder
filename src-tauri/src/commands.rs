@@ -314,9 +314,12 @@ pub async fn project_create(app: AppHandle, state: State<'_, AppState>, args: Cr
     let handle = app.clone();
     blocking(move || {
         let state = handle.state::<AppState>();
-        projects::create_project(&state.db, &Tools { flutter, git }, &dir, &req, &|step| {
+        let tools = Tools { flutter, git };
+        let p = projects::create_project(&state.db, &tools, &dir, &req, &|step| {
             let _ = app2.emit("project-create-progress", Progress { step: step.into() });
-        })
+        })?;
+        apply_brand_defaults(&state, &p, &tools.flutter);
+        Ok(p)
     })
     .await
     .inspect(|p| {
@@ -324,6 +327,23 @@ pub async fn project_create(app: AppHandle, state: State<'_, AppState>, args: Cr
         spawn_profile(&app, &p.id, PathBuf::from(&p.path), false);
     })
     .inspect_err(|e| log::error!("project creation failed: {e}"))
+}
+
+/// Keuzes onthouden over projecten heen: de laatst gekozen merkkleur, lettertype en stijl gelden voor een nieuw project (stil, mislukt het dan blijft de standaard).
+fn apply_brand_defaults(state: &AppState, p: &Project, flutter: &std::path::Path) {
+    let Some(theme) = state.db.setting_get("theme_defaults").ok().flatten().and_then(|j| serde_json::from_str::<crate::config::ThemeCfg>(&j).ok()) else { return };
+    let dir = PathBuf::from(&p.path);
+    let mut cfg = crate::config::load(&dir);
+    cfg.theme = theme;
+    match crate::config::apply(&dir, &cfg) {
+        Ok(rep) => {
+            if rep.needs_pub_get {
+                let _ = proc::run(flutter, &["pub", "get"], Some(&dir), std::time::Duration::from_secs(180));
+            }
+            let _ = state.db.ux_record(Some(&p.id), "new_project", "deterministic");
+        }
+        Err(e) => log::warn!("brand defaults not applied: {e}"),
+    }
 }
 
 /// Verwijdert het project uit Studio; de map alleen als `delete_files` expliciet aan staat
@@ -590,6 +610,9 @@ pub async fn theme_apply(state: State<'_, AppState>, project_id: String, patch: 
                 None => true,
             };
         }
+        if let Ok(j) = serde_json::to_string(&cfg.theme) {
+            let _ = db.setting_set("theme_defaults", &j);
+        }
         let _ = db.ux_record(Some(&p.id), "theme", "deterministic");
         let _ = db.ux_record(Some(&p.id), "theme", "setting_done");
         // Een nieuw pakket vraagt een herstart (hot reload pakt het niet op); anders hot reload door de preview zelf.
@@ -682,9 +705,17 @@ pub fn platform_get(state: State<'_, AppState>, project_id: String) -> AppResult
     Ok(crate::platform::read_settings(&dir))
 }
 
+/// Elke instelling die Studio zelf toepast: eerst een automatische momentopname (één klik terug), daarna meten dat het zonder AI ging.
+fn applied_by_studio(state: &AppState, p: &Project, label: &str, flow: &str) {
+    let _ = crate::studio_tools::create_snapshot(&state.db, p, label, "auto");
+    let _ = state.db.ux_record(Some(&p.id), flow, "deterministic");
+    let _ = state.db.ux_record(Some(&p.id), flow, "setting_done");
+}
+
 #[tauri::command]
 pub fn platform_set_name(state: State<'_, AppState>, project_id: String, name: String) -> AppResult<crate::platform::Applied> {
-    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let (p, dir) = project_and_dir(&state, &project_id)?;
+    applied_by_studio(&state, &p, "Before changing the app name", "settings");
     let r = crate::platform::set_app_name(&dir, &name)?;
     state.db.project_rename(&project_id, name.trim())?;
     Ok(r)
@@ -692,7 +723,8 @@ pub fn platform_set_name(state: State<'_, AppState>, project_id: String, name: S
 
 #[tauri::command]
 pub fn platform_set_bundle(state: State<'_, AppState>, project_id: String, bundle_id: String) -> AppResult<crate::platform::Applied> {
-    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let (p, dir) = project_and_dir(&state, &project_id)?;
+    applied_by_studio(&state, &p, "Before changing the bundle ID", "settings");
     let r = crate::platform::set_bundle_id(&dir, &bundle_id)?;
     state.db.project_set_bundle(&project_id, &bundle_id)?;
     Ok(r)
@@ -700,13 +732,15 @@ pub fn platform_set_bundle(state: State<'_, AppState>, project_id: String, bundl
 
 #[tauri::command]
 pub fn platform_set_min_os(state: State<'_, AppState>, project_id: String, android: Option<u32>, ios: Option<String>) -> AppResult<crate::platform::Applied> {
-    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let (p, dir) = project_and_dir(&state, &project_id)?;
+    applied_by_studio(&state, &p, "Before changing the minimum OS versions", "settings");
     crate::platform::set_min_os(&dir, android, ios.as_deref())
 }
 
 #[tauri::command]
 pub fn platform_set_permission(state: State<'_, AppState>, project_id: String, key: String, enabled: bool, ios_reason: String) -> AppResult<crate::platform::Applied> {
-    let (_, dir) = project_and_dir(&state, &project_id)?;
+    let (p, dir) = project_and_dir(&state, &project_id)?;
+    applied_by_studio(&state, &p, "Before changing permissions", "settings");
     crate::platform::set_permission(&dir, &key, enabled, &ios_reason)
 }
 
