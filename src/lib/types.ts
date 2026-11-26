@@ -138,6 +138,8 @@ export interface ScreenNode {
   file: string;
   line: number;
   children: string[];
+  /** go_router-pad, als het scherm er een heeft (de preview springt er dan naartoe). */
+  route?: string | null;
 }
 export interface ScreenGraph {
   home: string | null;

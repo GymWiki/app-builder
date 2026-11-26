@@ -254,3 +254,10 @@ Gecontroleerd tegen de actuele documentatie (web, november 2026); afwijkingen va
 - **Fase 2:** stream-formaat, MCP over HTTP en de `approve`-route zijn getest met een échte `claude` (`real_claude_smoke`). Niet getest: Windows (`.cmd`-start, pty) en langdurige gesprekken.
 - **Winget-ID's** (`Git.Git`, `Anthropic.ClaudeCode`) en de installatieflow, **Windows-/macOS-builds en installers**, en de volledige **`claude auth login`-flow** zijn niet geprobeerd. Op macOS erven GUI-apps niet je shell-`PATH`.
 - De **productie-CSP** is alleen in dev gezien.
+
+## UI-herindeling: Schermen als enige werkpagina met preview en chat
+
+- **Alleen "Schermen" heeft preview en chat.** Alle andere secties (Thema, Data, Assets, Instellingen, Versies, Integraties, Geheimen, Publiceren) zijn volledige pagina's zonder rechterpaneel, preview of chat. Thema is daarvoor van het zijpaneel naar een eigen pagina verhuisd.
+- **Indeling bij Schermen:** projectmenu | uitklapbare pagina-boom | preview | chat over de volle hoogte rechts. De chat-context is nu uitsluitend de gekozen pagina; de sectie-context (voor de oude gedeelde chat) is vervallen.
+- **Mappen zijn alleen ordening in Studio.** Ze staan per project in `localStorage` (`studio-screens-tree:<id>`), niet in de projectmap, git of SQLite: de code van de app verandert er niet door en er is geen migratie. Geen opslag beschikbaar → de indeling geldt alleen die sessie. Een map verwijderen verplaatst de inhoud een niveau omhoog (vraagt wel bevestiging); verwijzingen naar verdwenen pagina's worden bij het tonen genegeerd. Slepen én het menu "Verplaats naar map" werken (toetsenbord/screenreader via het menu). Lussen (map in eigen submap) worden geweigerd.
+- **Preview springt naar de pagina** via het go_router-pad (`screens::Node.route`, afgeleid van `route_map`): iframe-URL `…#/pad`. Flutter web gebruikt standaard hash-routing. Pagina's zonder eigen pad (alleen `Navigator.push`) laten de preview ongemoeid; de chat gebruikt de pagina dan wel. Niet getest met een echte draaiende Flutter-preview; alleen de URL-opbouw en de mock-preview zijn getest.

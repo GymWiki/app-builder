@@ -599,8 +599,14 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
         : {
             home: "HomeScreen",
             nodes: [
-              { class: "HomeScreen", file: "lib/main.dart", line: 24, children: ["SettingsScreen"] },
-              { class: "SettingsScreen", file: "lib/settings_screen.dart", line: 5, children: ["AboutPage"] },
+              { class: "HomeScreen", file: "lib/main.dart", line: 24, children: ["SettingsScreen"], route: "/" },
+              {
+                class: "SettingsScreen",
+                file: "lib/settings_screen.dart",
+                line: 5,
+                children: ["AboutPage"],
+                route: "/settings",
+              },
               { class: "AboutPage", file: "lib/about_page.dart", line: 3, children: [] },
               { class: "LonelyScreen", file: "lib/lonely.dart", line: 1, children: [] },
             ],

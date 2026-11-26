@@ -17,7 +17,7 @@ const ok = (c, m) => {
   ok(true, "empty chat shows suggestions");
 
   // select a screen -> context chip
-  await p.getByRole("button", { name: /HomeScreen/ }).click();
+  await p.getByRole("button", { name: /^HomeScreen/ }).click();
   await p.getByText("Screen: HomeScreen").waitFor();
   ok(true, "selecting a screen adds a context chip");
 
@@ -104,7 +104,7 @@ const ok = (c, m) => {
   ok(true, "advanced tab opens the raw terminal");
   await p.screenshot({ path: `${S}/25-advanced.png` });
 
-  await p.getByRole("button", { name: /HomeScreen/ }).click();
+  await p.getByRole("button", { name: /^HomeScreen/ }).click();
   // dismiss context chip
   await p.getByRole("tab", { name: "Chat" }).click();
   await p.getByRole("button", { name: "Don’t include this context" }).click();

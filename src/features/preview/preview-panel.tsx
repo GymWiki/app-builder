@@ -19,7 +19,18 @@ const TONE: Record<PreviewStatus, Tone> = {
   error: "danger",
 };
 
-export function PreviewPanel({ projectId, device, dark }: { projectId: string; device: DeviceId; dark: boolean }) {
+export function PreviewPanel({
+  projectId,
+  device,
+  dark,
+  route,
+}: {
+  projectId: string;
+  device: DeviceId;
+  dark: boolean;
+  /** Pad van de gekozen pagina (go_router); de preview springt er naartoe. */
+  route?: string | null;
+}) {
   const { t, i18n } = useTranslation();
   const state = usePreview((s) => s.state);
   const mine = state.projectId === projectId;
@@ -137,7 +148,7 @@ export function PreviewPanel({ projectId, device, dark }: { projectId: string; d
           {active && !onDevice && state.url ? (
             <iframe
               key={frameKey}
-              src={state.url}
+              src={route ? `${state.url.replace(/#.*$/, "")}#${route}` : state.url}
               title={t("preview.title")}
               className="absolute inset-0 size-full border-0 bg-white"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups"

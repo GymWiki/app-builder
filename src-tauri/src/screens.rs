@@ -14,6 +14,8 @@ pub struct Node {
     pub file: String,
     pub line: usize,
     pub children: Vec<String>,
+    /// go_router-pad van dit scherm (voor de preview); leeg als het scherm geen eigen pad heeft.
+    pub route: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -157,7 +159,8 @@ pub fn screen_graph(project_dir: &Path) -> AppResult<ScreenGraph> {
                 }
             }
         }
-        nodes.push(Node { class: s.class.clone(), file: s.file.clone(), line: s.line, children });
+        let route = routes.iter().find(|(_, v)| **v == s.class).map(|(k, _)| format!("/{}", k.trim_start_matches('/')));
+        nodes.push(Node { class: s.class.clone(), file: s.file.clone(), line: s.line, children, route });
     }
     let home = routes.get("").cloned().or_else(|| find_home(project_dir, &names)).or_else(|| names.first().map(|s| s.to_string()));
     // Wie bereikbaar is vanaf home?

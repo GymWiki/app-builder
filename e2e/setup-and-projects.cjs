@@ -66,12 +66,12 @@ const ok = (c, m) => {
 
   // ── panels: collapse + persistence
   await p.goto("http://localhost:1420/?mock=ready#/project/friday_scores");
-  await p.getByRole("button", { name: "Hide menu" }).click();
+  await p.getByRole("button", { name: "Hide pages" }).click();
   await p.waitForTimeout(400);
-  const nav = p.getByRole("navigation", { name: "Project menu" });
-  const w = await nav.evaluate((el) => el.closest("[data-panel]")?.getBoundingClientRect().width ?? -1);
-  ok(w < 2, "menu collapses (panel width " + w + ")");
-  ok(await p.getByRole("button", { name: "Show menu" }).isVisible(), "toggle label flips to Show menu");
+  const treePanel = p.locator("[data-panel][id$='tree'], #tree").first();
+  const w = await treePanel.evaluate((el) => el.getBoundingClientRect().width);
+  ok(w < 2, "pages tree collapses (panel width " + w + ")");
+  ok(await p.getByRole("button", { name: "Show pages" }).isVisible(), "toggle label flips to Show pages");
   await p.reload();
   await p.getByRole("heading", { name: "Friday Scores" }).waitFor();
   await p.waitForTimeout(500);
@@ -83,9 +83,12 @@ const ok = (c, m) => {
   );
   ok(stored.length > 0, "layout stored in localStorage: " + stored.slice(0, 120));
   const w2 = await p
-    .getByRole("navigation", { name: "Project menu" })
-    .evaluate((el) => el.closest("[data-panel]")?.getBoundingClientRect().width ?? -1);
+    .locator("[data-panel][id$='tree'], #tree")
+    .first()
+    .evaluate((el) => el.getBoundingClientRect().width);
   ok(w2 < 2, "collapsed layout restored after reload (width " + w2 + ")");
+  await p.getByRole("button", { name: "Hide menu" }).click();
+  ok(!(await p.getByRole("navigation", { name: "Project menu" }).isVisible()), "project menu can be hidden");
   await p.screenshot({ path: `${S}/12-project-collapsed.png` });
 
   // ── back + remove with confirmation

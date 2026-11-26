@@ -186,7 +186,8 @@
       "selected": "Gekozen voor de chat",
       "hint": "Kies een scherm om er direct in de chat over te praten."
     },
-    "askInChat": "Gebruik de chat om dit aan te passen: beschrijf wat je wilt en Claude doet het. Het paneel in het midden toont de details."
+    "askInChat": "Gebruik de chat om dit aan te passen: beschrijf wat je wilt en Claude doet het. Het paneel in het midden toont de details.",
+    "chatLabel": "Chat met Claude"
   },
   "settings": {
     "title": "Instellingen",
@@ -645,7 +646,25 @@
       "addScreen": "Scherm toevoegen",
       "linkScreens": "Schermen verbinden",
       "addPrompt": "Voeg een nieuw scherm toe aan de app. Vraag me wat het moet tonen als dat niet duidelijk is, voeg het toe aan de navigatie en werk STUDIO.md bij.",
-      "linkPrompt": "Bekijk de schermen en hoe ze samenhangen. Stel voor en voeg daarna zinnige navigatie toe tussen schermen die nog niet bereikbaar zijn, en werk STUDIO.md bij."
+      "linkPrompt": "Bekijk de schermen en hoe ze samenhangen. Stel voor en voeg daarna zinnige navigatie toe tussen schermen die nog niet bereikbaar zijn, en werk STUDIO.md bij.",
+      "tree": {
+        "title": "Pagina’s",
+        "hint": "Klik op een pagina om hem in de preview te zien en erover te praten in de chat. Sleep pagina’s naar mappen om ze te ordenen.",
+        "newFolder": "Nieuwe map",
+        "newInside": "Nieuwe map hierin",
+        "rename": "Hernoemen",
+        "delete": "Map verwijderen",
+        "moveTo": "Verplaats naar map",
+        "noFolder": "Geen map (bovenaan)",
+        "folderName": "Naam van de map",
+        "folderMenu": "Opties voor map {{name}}",
+        "pageMenu": "Opties voor pagina {{name}}",
+        "notLinked": "Niet gekoppeld",
+        "deleteTitle": "De map “{{name}}” verwijderen?",
+        "deleteBody": "De pagina’s erin blijven in je app en gaan een niveau omhoog. Alleen de map in deze lijst verdwijnt.",
+        "show": "Pagina’s tonen",
+        "hide": "Pagina’s verbergen"
+      }
     },
     "theme": {
       "title": "Kleuren",

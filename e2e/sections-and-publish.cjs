@@ -14,18 +14,53 @@ const ok = (c, m) => {
   const menu = (name) => p.getByRole("navigation", { name: "Project menu" }).getByRole("button", { name });
   await p.goto("http://localhost:1420/?mock=ready#/project/friday_scores");
 
-  // Screens tree
-  await p.getByText("Start screen").waitFor();
-  ok(await p.getByText("Not linked from anywhere").isVisible(), "unlinked screens listed separately");
-  const home = p.getByRole("button", { name: /HomeScreen/ });
-  const settings = p.getByRole("button", { name: /SettingsScreen/ });
-  const hb = await home.boundingBox(),
-    sb = await settings.boundingBox();
-  ok(sb.x > hb.x + 10, "child screens are indented in the tree");
+  // Pages tree: alleen bij Schermen staan preview en chat
+  await p.getByRole("button", { name: /^HomeScreen/ }).waitFor();
+  ok(await p.getByText("Not linked").first().isVisible(), "unlinked pages are marked");
+  ok(await p.getByRole("region", { name: "Live preview" }).isVisible(), "preview shown on Screens");
+  ok(await p.getByRole("region", { name: "Chat with Claude" }).isVisible(), "chat shown on Screens");
+  const settings = p.getByRole("button", { name: /^SettingsScreen/ });
   await settings.click();
   await p.getByText("Screen: SettingsScreen").waitFor();
-  ok(true, "selecting a screen adds chat context");
+  ok((await settings.getAttribute("aria-pressed")) === "true", "clicking a page makes it the active page for the chat");
+  const frame = await p
+    .locator("iframe")
+    .first()
+    .getAttribute("src")
+    .catch(() => null);
+  ok(frame === null || /#\/settings$/.test(frame), "preview jumps to the page's route when running (" + frame + ")");
+
+  // Folders: create, move a page in, collapse, persists after reload, delete keeps the page
+  await p.getByRole("button", { name: "New folder", exact: true }).click();
+  await p.getByRole("textbox", { name: "Folder name" }).fill("Account");
+  await p.keyboard.press("Enter");
+  await p.getByRole("button", { name: /^Account/ }).waitFor();
+  await p.getByRole("button", { name: "Options for page SettingsScreen" }).click();
+  await p.getByRole("menuitem", { name: "Move to folder" }).click();
+  await p.getByRole("menuitem", { name: "Account" }).click();
+  const folderBox = await p.getByRole("button", { name: /^Account/ }).boundingBox();
+  const pageBox = await settings.boundingBox();
+  ok(pageBox.y > folderBox.y && pageBox.x >= folderBox.x, "page now sits under its folder");
+  await p.reload();
+  await p.getByRole("button", { name: /^Account/ }).waitFor();
+  ok(await p.getByRole("button", { name: /^SettingsScreen/ }).isVisible(), "folders persist after reload");
+  await p.getByRole("button", { name: /^Account/ }).click();
+  ok(!(await p.getByRole("button", { name: /^SettingsScreen/ }).isVisible()), "folder collapses");
+  await p.getByRole("button", { name: /^Account/ }).click();
   await p.screenshot({ path: `${S}/50-screens.png` });
+  await p.getByRole("button", { name: "Options for folder Account" }).click();
+  await p.getByRole("menuitem", { name: "Delete folder" }).click();
+  await p.getByRole("alertdialog").getByRole("button", { name: "Delete folder" }).click();
+  ok(await p.getByRole("button", { name: /^SettingsScreen/ }).isVisible(), "deleting a folder keeps its pages");
+
+  // Andere secties: geen preview, geen chat
+  await menu("Theme").click();
+  ok(
+    (await p.locator("iframe").count()) === 0 &&
+      (await p.getByRole("region", { name: "Chat with Claude" }).count()) === 0,
+    "other pages have no preview or chat",
+  );
+  await menu("Screens").click();
 
   // Theme
   await menu("Theme").click();

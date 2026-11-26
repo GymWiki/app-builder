@@ -1,11 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, FolderSearch, PanelLeft, PanelRight, Settings, Sparkles } from "lucide-react";
+import { ArrowLeft, FolderSearch, ListTree, PanelLeft, PanelRight, Settings, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router";
 import { ChatPanel, type ChatContext } from "@/features/chat/chat-panel";
-import type { Screen } from "@/lib/types";
-import { ScreensList } from "./screens-list";
+import { ScreensTree, type PickedScreen } from "./screens-tree";
 import { ThemePanel } from "@/features/sections/theme-panel";
 import { DataView } from "@/features/sections/data-view";
 import { AssetsView } from "@/features/sections/assets-view";
@@ -20,7 +19,7 @@ import { AutoRetest } from "@/features/sections/publish/auto-retest";
 import { PreviewPanel } from "@/features/preview/preview-panel";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import { EmptyState } from "@/components/ds/empty-state";
-import { Panel as Pane, PanelHeader } from "@/components/ds/card";
+import { Panel as Pane } from "@/components/ds/card";
 import { Spinner } from "@/components/ds/spinner";
 import { StatusBadge } from "@/components/ds/status-badge";
 import { Logo } from "@/components/layout/top-bar";
@@ -54,7 +53,7 @@ export default function ProjectPage() {
   const [section, setSection] = useState<SectionId>("screens");
   const [device, setDevice] = useState<DeviceId>("medium");
   const [previewDark, setPreviewDark] = useState(false);
-  const [screen, setScreen] = useState<Screen | null>(null);
+  const [screen, setScreen] = useState<PickedScreen | null>(null);
   const [contextOff, setContextOff] = useState(false);
   const [publishTab, setPublishTab] = useState<PublishTab>("checklist");
   const [jump, setJump] = useState<JumpTarget | null>(null);
@@ -63,12 +62,12 @@ export default function ProjectPage() {
   const evalTotal = checklist.data?.total ?? 9;
   const canPublish = checklist.data?.canPublish ?? false;
 
-  const menuRef = usePanelRef();
-  const sideRef = usePanelRef();
+  const treeRef = usePanelRef();
+  const chatRef = usePanelRef();
   const [menuHidden, setMenuHidden] = useState(false);
-  const [sideHidden, setSideHidden] = useState(false);
-  const layout = useDefaultLayout({ id: "studio-project-layout", storage: safeStorage() });
-  const sideLayout = useDefaultLayout({ id: "studio-side-layout", storage: safeStorage() });
+  const [treeHidden, setTreeHidden] = useState(false);
+  const [chatHidden, setChatHidden] = useState(false);
+  const layout = useDefaultLayout({ id: "studio-screens-layout", storage: safeStorage() });
 
   // Bijhouden wanneer het project voor het laatst is geopend.
   useEffect(() => {
@@ -127,41 +126,16 @@ export default function ProjectPage() {
   }
 
   const p = project.data;
-  const wide =
-    section === "data" ||
-    section === "assets" ||
-    section === "settings" ||
-    section === "versions" ||
-    section === "integrations" ||
-    section === "secrets" ||
-    section === "publish";
-  const current = SECTIONS.find((s) => s.id === section)!;
-  const sectionNameEn = {
-    screens: "Screens",
-    data: "Data & login",
-    theme: "Theme",
-    assets: "Assets",
-    settings: "App settings",
-    versions: "Versions",
-    integrations: "Integrations",
-    secrets: "Secrets",
-    publish: "Publish",
-  }[section];
+  const onScreens = section === "screens";
   // Wat de gebruiker nu bekijkt gaat automatisch mee naar Claude (een gekozen scherm gaat voor het menu).
-  const context: ChatContext | null = contextOff
-    ? null
-    : screen
-      ? {
+  const context: ChatContext | null =
+    contextOff || !screen
+      ? null
+      : {
           label: t("chat.context.screen", { name: screen.class }),
           prompt: `The user selected the screen "${screen.class}" (${screen.file}). "This screen" means that one.`,
-        }
-      : section !== "screens"
-        ? {
-            label: t("chat.context.section", { name: t(`workspace.sections.${section}.name`) }),
-            prompt: `The user is looking at the "${sectionNameEn}" section of Studio.`,
-          }
-        : null;
-  const toggle = (ref: typeof menuRef, hidden: boolean) => (hidden ? ref.current?.expand() : ref.current?.collapse());
+        };
+  const toggle = (ref: typeof treeRef, hidden: boolean) => (hidden ? ref.current?.expand() : ref.current?.collapse());
 
   return (
     <div className="flex h-full flex-col">
@@ -250,20 +224,34 @@ export default function ProjectPage() {
           aria-pressed={!menuHidden}
           aria-label={t(menuHidden ? "workspace.panels.showMenu" : "workspace.panels.hideMenu")}
           title={t(menuHidden ? "workspace.panels.showMenu" : "workspace.panels.hideMenu")}
-          onClick={() => toggle(menuRef, menuHidden)}
+          onClick={() => setMenuHidden((h) => !h)}
         >
           <PanelLeft />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-pressed={!sideHidden}
-          aria-label={t(sideHidden ? "workspace.panels.showRight" : "workspace.panels.hideRight")}
-          title={t(sideHidden ? "workspace.panels.showRight" : "workspace.panels.hideRight")}
-          onClick={() => toggle(sideRef, sideHidden)}
-        >
-          <PanelRight />
-        </Button>
+        {onScreens && (
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-pressed={!treeHidden}
+              aria-label={t(treeHidden ? "sec.screens.tree.show" : "sec.screens.tree.hide")}
+              title={t(treeHidden ? "sec.screens.tree.show" : "sec.screens.tree.hide")}
+              onClick={() => toggle(treeRef, treeHidden)}
+            >
+              <ListTree />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-pressed={!chatHidden}
+              aria-label={t(chatHidden ? "workspace.panels.showRight" : "workspace.panels.hideRight")}
+              title={t(chatHidden ? "workspace.panels.showRight" : "workspace.panels.hideRight")}
+              onClick={() => toggle(chatRef, chatHidden)}
+            >
+              <PanelRight />
+            </Button>
+          </>
+        )}
         <Button asChild variant="ghost" size="icon" aria-label={t("settings.title")} title={t("settings.title")}>
           <Link to="/settings">
             <Settings />
@@ -271,132 +259,120 @@ export default function ProjectPage() {
         </Button>
       </header>
 
-      {/* ── werkruimte: menu | preview | eigenschappen + chat ── */}
-      <Group
-        orientation="horizontal"
-        className="min-h-0 flex-1"
-        defaultLayout={layout.defaultLayout}
-        onLayoutChanged={layout.onLayoutChanged}
-      >
-        <Panel
-          id="menu"
-          panelRef={menuRef}
-          defaultSize="18%"
-          minSize="13%"
-          maxSize="30%"
-          collapsible
-          collapsedSize={0}
-          onResize={(s) => setMenuHidden(s.asPercentage === 0)}
+      {/* ── werkruimte: menu | (alleen bij Schermen: pagina-boom | preview | chat) of een volledige pagina ── */}
+      <div className="flex min-h-0 flex-1">
+        <Pane
+          className={cn("bg-sidebar w-56 shrink-0 border-r", menuHidden && "hidden")}
+          inert={menuHidden}
+          aria-hidden={menuHidden}
         >
-          <Pane className="bg-sidebar h-full border-r" inert={menuHidden}>
-            <nav aria-label={t("workspace.menuLabel")} className="flex flex-col gap-0.5 p-2">
-              {SECTIONS.map(({ id: sid, icon: Icon }) => (
-                <button
-                  key={sid}
-                  type="button"
-                  aria-current={section === sid ? "page" : undefined}
-                  onClick={() => {
-                    setSection(sid);
+          <nav aria-label={t("workspace.menuLabel")} className="flex flex-col gap-0.5 p-2">
+            {SECTIONS.map(({ id: sid, icon: Icon }) => (
+              <button
+                key={sid}
+                type="button"
+                aria-current={section === sid ? "page" : undefined}
+                onClick={() => {
+                  setSection(sid);
+                  setContextOff(false);
+                }}
+                className={cn(
+                  "t-body flex items-center gap-2.5 rounded-lg px-3 py-2 text-left font-medium transition-colors duration-[var(--dur)]",
+                  section === sid
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <Icon className="size-4 shrink-0" />
+                <span className="truncate">{t(`workspace.sections.${sid}.name`)}</span>
+              </button>
+            ))}
+          </nav>
+        </Pane>
+
+        {onScreens ? (
+          <Group
+            orientation="horizontal"
+            className="min-h-0 min-w-0 flex-1"
+            defaultLayout={layout.defaultLayout}
+            onLayoutChanged={layout.onLayoutChanged}
+          >
+            <Panel
+              id="tree"
+              panelRef={treeRef}
+              defaultSize="22%"
+              minSize="15%"
+              maxSize="35%"
+              collapsible
+              collapsedSize={0}
+              onResize={(s) => setTreeHidden(s.asPercentage === 0)}
+            >
+              <Pane className="h-full border-r" aria-label={t("sec.screens.tree.title")} inert={treeHidden}>
+                <ScreensTree
+                  key={p.id}
+                  projectId={p.id}
+                  selected={screen?.class ?? null}
+                  onSelect={(sc) => {
+                    setScreen(sc);
                     setContextOff(false);
                   }}
-                  className={cn(
-                    "t-body flex items-center gap-2.5 rounded-lg px-3 py-2 text-left font-medium transition-colors duration-[var(--dur)]",
-                    section === sid
-                      ? "bg-accent text-accent-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  <Icon className="size-4 shrink-0" />
-                  <span className="truncate">{t(`workspace.sections.${sid}.name`)}</span>
-                </button>
-              ))}
-            </nav>
-          </Pane>
-        </Panel>
-        <ResizeHandle />
-
-        <Panel id="preview" minSize="30%">
-          {/* De preview blijft draaien (alleen verborgen) als je een brede sectie opent. */}
-          <section aria-label={t("workspace.previewLabel")} className={cn("h-full", wide && "hidden")}>
-            <PreviewPanel projectId={p.id} device={device} dark={previewDark} />
-          </section>
-          {wide && (
-            <section aria-label={t(`workspace.sections.${section}.name`)} className="bg-background h-full">
-              {section === "data" && <DataView projectId={p.id} />}
-              {section === "assets" && <AssetsView projectId={p.id} />}
-              {section === "settings" && <SettingsView project={p} />}
-              {section === "versions" && <VersionsView project={p} />}
-              {section === "integrations" && (
-                <IntegrationsView
-                  projectId={p.id}
-                  target={jump}
-                  onAddSecrets={(t2) => jumpTo("secrets", t2.integration, t2.field)}
                 />
-              )}
-              {section === "secrets" && (
-                <SecretsView projectId={p.id} target={jump} onGoIntegrations={() => setSection("integrations")} />
-              )}
-              {section === "publish" && <PublishView project={p} tab={publishTab} onTab={setPublishTab} goto={goto} />}
-            </section>
-          )}
-        </Panel>
-        <ResizeHandle />
+              </Pane>
+            </Panel>
+            <ResizeHandle />
 
-        <Panel
-          id="side"
-          panelRef={sideRef}
-          defaultSize="28%"
-          minSize="20%"
-          maxSize="45%"
-          collapsible
-          collapsedSize={0}
-          onResize={(s) => setSideHidden(s.asPercentage === 0)}
-        >
-          <Pane className="h-full border-l" aria-label={t("workspace.propertiesLabel")} inert={sideHidden}>
-            <Group
-              orientation="vertical"
-              id="studio-side"
-              defaultLayout={sideLayout.defaultLayout}
-              onLayoutChanged={sideLayout.onLayoutChanged}
+            <Panel id="preview" minSize="25%">
+              <section aria-label={t("workspace.previewLabel")} className="h-full">
+                <PreviewPanel projectId={p.id} device={device} dark={previewDark} route={screen?.route} />
+              </section>
+            </Panel>
+            <ResizeHandle />
+
+            <Panel
+              id="chat"
+              panelRef={chatRef}
+              defaultSize="30%"
+              minSize="22%"
+              maxSize="50%"
+              collapsible
+              collapsedSize={0}
+              onResize={(s) => setChatHidden(s.asPercentage === 0)}
             >
-              <Panel id="properties" defaultSize="26%" minSize="12%" collapsible collapsedSize={0}>
-                <div className="flex h-full flex-col">
-                  <PanelHeader title={t(`workspace.sections.${section}.name`)} />
-                  <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                    {section === "screens" ? (
-                      <ScreensList
-                        projectId={p.id}
-                        selected={screen?.class ?? null}
-                        onSelect={(sc) => {
-                          setScreen(sc);
-                          setContextOff(false);
-                        }}
-                      />
-                    ) : section === "theme" ? (
-                      <ThemePanel projectId={p.id} />
-                    ) : (
-                      <>
-                        <p className="t-body text-muted-foreground">{t(`workspace.sections.${section}.desc`)}</p>
-                        <div className="bg-muted/50 mt-4 rounded-xl border border-dashed p-4">
-                          <p className="t-body flex items-center gap-2 font-medium">
-                            <current.icon aria-hidden className="text-primary-text size-4" />{" "}
-                            {t(`workspace.sections.${section}.name`)}
-                          </p>
-                          <p className="t-small text-muted-foreground mt-1">{t("workspace.askInChat")}</p>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </Panel>
-              <HorizontalHandle />
-              <Panel id="chat" minSize="30%">
+              <Pane className="h-full border-l" aria-label={t("workspace.chatLabel")} inert={chatHidden}>
                 <ChatPanel projectId={p.id} context={context} onDismissContext={() => setContextOff(true)} />
-              </Panel>
-            </Group>
-          </Pane>
-        </Panel>
-      </Group>
+              </Pane>
+            </Panel>
+          </Group>
+        ) : (
+          <section
+            aria-label={t(`workspace.sections.${section}.name`)}
+            className="bg-background min-w-0 flex-1 overflow-y-auto"
+          >
+            {section === "theme" && (
+              <div className="mx-auto max-w-2xl p-6">
+                <h2 className="t-heading mb-1">{t("workspace.sections.theme.name")}</h2>
+                <p className="t-body text-muted-foreground mb-5">{t("workspace.sections.theme.desc")}</p>
+                <ThemePanel projectId={p.id} />
+              </div>
+            )}
+            {section === "data" && <DataView projectId={p.id} />}
+            {section === "assets" && <AssetsView projectId={p.id} />}
+            {section === "settings" && <SettingsView project={p} />}
+            {section === "versions" && <VersionsView project={p} />}
+            {section === "integrations" && (
+              <IntegrationsView
+                projectId={p.id}
+                target={jump}
+                onAddSecrets={(t2) => jumpTo("secrets", t2.integration, t2.field)}
+              />
+            )}
+            {section === "secrets" && (
+              <SecretsView projectId={p.id} target={jump} onGoIntegrations={() => setSection("integrations")} />
+            )}
+            {section === "publish" && <PublishView project={p} tab={publishTab} onTab={setPublishTab} goto={goto} />}
+          </section>
+        )}
+      </div>
       <AutoRetest projectId={p.id} />
     </div>
   );
@@ -405,11 +381,5 @@ export default function ProjectPage() {
 function ResizeHandle() {
   return (
     <Separator className="bg-border data-[separator=hover]:bg-primary/60 data-[separator=active]:bg-primary focus-visible:bg-primary relative w-px transition-colors duration-[var(--dur)] outline-none after:absolute after:-inset-x-1 after:inset-y-0 focus-visible:w-0.5" />
-  );
-}
-
-function HorizontalHandle() {
-  return (
-    <Separator className="bg-border data-[separator=hover]:bg-primary/60 data-[separator=active]:bg-primary focus-visible:bg-primary relative h-px transition-colors duration-[var(--dur)] outline-none after:absolute after:inset-x-0 after:-inset-y-1 focus-visible:h-0.5" />
   );
 }

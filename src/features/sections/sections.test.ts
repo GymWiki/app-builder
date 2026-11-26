@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Questionnaire, ScreenGraph } from "@/lib/types";
-import { treeRows } from "@/features/project/screens-list";
+import { treeRows } from "@/features/project/screens-order";
 import { summaryKeys } from "@/features/sections/publish/listing-tab";
 import { isHex } from "@/features/sections/theme-panel";
 

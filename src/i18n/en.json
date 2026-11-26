@@ -186,7 +186,8 @@
       "selected": "Selected for chat",
       "hint": "Pick a screen to talk about it directly in the chat."
     },
-    "askInChat": "Use the chat to change this: describe what you want and Claude does it. The panel in the middle shows the details."
+    "askInChat": "Use the chat to change this: describe what you want and Claude does it. The panel in the middle shows the details.",
+    "chatLabel": "Chat with Claude"
   },
   "settings": {
     "title": "Settings",
@@ -645,7 +646,25 @@
       "addScreen": "Add a screen",
       "linkScreens": "Connect screens",
       "addPrompt": "Add a new screen to the app. Ask me what it should show if that isn’t clear, add it to the navigation, and update STUDIO.md.",
-      "linkPrompt": "Look at the screens and how they connect. Suggest and then add sensible navigation between screens that are not reachable yet, and update STUDIO.md."
+      "linkPrompt": "Look at the screens and how they connect. Suggest and then add sensible navigation between screens that are not reachable yet, and update STUDIO.md.",
+      "tree": {
+        "title": "Pages",
+        "hint": "Click a page to see it in the preview and talk about it in the chat. Drag pages onto folders to sort them.",
+        "newFolder": "New folder",
+        "newInside": "New folder inside",
+        "rename": "Rename",
+        "delete": "Delete folder",
+        "moveTo": "Move to folder",
+        "noFolder": "No folder (top level)",
+        "folderName": "Folder name",
+        "folderMenu": "Options for folder {{name}}",
+        "pageMenu": "Options for page {{name}}",
+        "notLinked": "Not linked",
+        "deleteTitle": "Delete the folder “{{name}}”?",
+        "deleteBody": "The pages inside stay in your app and move up one level. Only the folder in this list goes away.",
+        "show": "Show pages",
+        "hide": "Hide pages"
+      }
     },
     "theme": {
       "title": "Colors",
