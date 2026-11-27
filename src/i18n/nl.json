@@ -861,13 +861,23 @@
         "no_platforms": "Er zijn geen Android-, iOS- of webmappen gevonden."
       },
       "splashTitle": "Startscherm",
-      "splashHelp": "Het scherm dat je ziet terwijl de app opstart.",
-      "splash": "Startscherm instellen",
-      "splashPrompt": "Zet een native startscherm op dat past bij de hoofdkleur van de app en het app-icoon gebruikt, met het package flutter_native_splash, en voer het uit.",
+      "splashHelp": "Het scherm dat je ziet terwijl de app start. Studio zet het zelf op voor Android en iOS.",
       "imagesTitle": "Afbeeldingen in de app",
       "imagesHelp": "Zet je afbeeldingen in de map assets/images en vraag Claude ze te gebruiken.",
       "images": "Mijn afbeeldingen gebruiken",
-      "imagesPrompt": "Kijk in assets/images, registreer die afbeeldingen in pubspec.yaml en gebruik ze waar dat zinvol is in de app. Vraag me waar als je twijfelt."
+      "imagesPrompt": "Kijk in assets/images, registreer die afbeeldingen in pubspec.yaml en gebruik ze waar dat zinvol is in de app. Vraag me waar als je twijfelt.",
+      "splashColor": "Achtergrondkleur",
+      "splashLogo": "Toon mijn app-icoon in het midden",
+      "splashNoIcon": "Kies eerst hierboven een app-icoon.",
+      "splashApply": "Splash-scherm toepassen",
+      "splashAndroid12": "Op Android 12 en nieuwer toont het systeem altijd het app-icoon op deze kleur.",
+      "splashWarnings": {
+        "no_android": "Dit project heeft geen Android-deel.",
+        "no_ios": "Dit project heeft geen iOS-deel.",
+        "ios_custom": "Het iOS-launchscherm heeft een eigen opzet, dus Studio liet het zoals het is.",
+        "no_icon": "Er is nog geen app-icoon, dus er is geen logo toegevoegd.",
+        "no_platforms": "Er kon niets worden geschreven."
+      }
     },
     "settings": {
       "title": "App-instellingen",

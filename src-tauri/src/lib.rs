@@ -2,6 +2,7 @@ mod extent;
 mod config;
 mod data_gen;
 mod preflight;
+mod splash;
 mod derive;
 mod purchases;
 mod purchases_flow;
@@ -223,6 +224,7 @@ pub fn run() {
             commands::version_set,
             commands::version_info,
             commands::assets_generate_icon,
+            commands::assets_splash_apply,
             commands::snapshots_list,
             commands::snapshot_create,
             commands::snapshot_restore,

@@ -782,6 +782,20 @@ pub fn assets_generate_icon(state: State<'_, AppState>, project_id: String, sour
     crate::assets::generate_icons(&dir, std::path::Path::new(&source_path))
 }
 
+/// Splash-scherm (kleur + optioneel het app-icoon als logo) voor Android en iOS, zonder extra pakketten en zonder AI.
+#[tauri::command]
+pub fn assets_splash_apply(state: State<'_, AppState>, project_id: String, color: String, use_logo: bool) -> AppResult<crate::splash::SplashReport> {
+    let (p, dir) = project_and_dir(&state, &project_id)?;
+    let icon = dir.join("store/icon-512.png");
+    let logo = (use_logo && icon.is_file()).then_some(icon);
+    applied_by_studio(&state, &p, "Before changing the splash screen", "assets");
+    let mut rep = crate::splash::apply(&dir, &color, logo.as_deref())?;
+    if use_logo && logo.is_none() {
+        rep.warnings.push("no_icon".into());
+    }
+    Ok(rep)
+}
+
 // ───────────── versies ─────────────
 
 #[tauri::command]

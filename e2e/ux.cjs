@@ -59,10 +59,15 @@ const ok = (c, m) => {
 
   // Achtergrondtaak: wat toch de AI nodig heeft, loopt met voortgang en uitkomst, zonder dat de chat erbij komt kijken
   await p.getByRole("navigation", { name: "Project menu" }).getByRole("button", { name: /^Assets/ }).click();
-  await p.getByRole("button", { name: "Set up a splash screen" }).click();
+  // Splash-scherm: één handeling (standaard is de themakleur en het app-icoon), zonder chat of AI
+  const s0 = actions;
+  await act(() => p.getByRole("button", { name: "Apply splash screen" }).click());
+  await p.getByText(/files? created/).last().waitFor();
+  ok(actions - s0 === 1, "a splash screen takes one action");
+  await p.getByRole("button", { name: "Use my images" }).click();
   const tray = p.getByTestId("task-tray");
   await tray.waitFor();
-  ok(await tray.getByText("Set up a splash screen").isVisible(), "the task shows what it is doing, outside the chat");
+  ok(await tray.getByText("Use my images").isVisible(), "the task shows what it is doing, outside the chat");
   ok(await tray.getByRole("button", { name: /Stop|Dismiss/ }).first().isVisible(), "a running task can be stopped");
   await tray.getByText(/Done\./).waitFor({ timeout: 20000 });
   ok(true, "the task ends with a plain-language result");
@@ -77,7 +82,7 @@ const ok = (c, m) => {
   await ov.waitFor();
   const text = await ov.innerText();
   ok(/theme\s+3\s+0\s+0/.test(text.replace(/\n/g, " ").replace(/\s+/g, " ")), "overview: theme = 3 done by Studio, 0 AI calls, 0 chat turns: " + text.replace(/\n/g, " "));
-  ok(/Estimated tokens saved: 96,000/.test(text), "token saving is estimated");
+  ok(/Estimated tokens saved: 104,000/.test(text), "token saving is estimated");
   await p.screenshot({ path: `${S}/52-ux-overview.png` });
   ok(errs.length === 0, "no console errors " + errs.join("|"));
   await b.close();

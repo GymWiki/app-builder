@@ -861,13 +861,23 @@
         "no_platforms": "No Android, iOS or web folders were found."
       },
       "splashTitle": "Splash screen",
-      "splashHelp": "The screen shown while the app starts.",
-      "splash": "Set up a splash screen",
-      "splashPrompt": "Set up a native splash screen that matches the app’s main color and uses the app icon, using the flutter_native_splash package, and run it.",
+      "splashHelp": "The screen shown while the app starts. Studio sets it up for Android and iOS itself.",
       "imagesTitle": "Images in the app",
       "imagesHelp": "Put your pictures in the assets/images folder, then ask Claude to use them.",
       "images": "Use my images",
-      "imagesPrompt": "Look in assets/images, register those images in pubspec.yaml, and use them where it makes sense in the app. Ask me where if unsure."
+      "imagesPrompt": "Look in assets/images, register those images in pubspec.yaml, and use them where it makes sense in the app. Ask me where if unsure.",
+      "splashColor": "Background color",
+      "splashLogo": "Show my app icon in the middle",
+      "splashNoIcon": "Choose an app icon above first.",
+      "splashApply": "Apply splash screen",
+      "splashAndroid12": "On Android 12 and newer the system always shows the app icon on this color.",
+      "splashWarnings": {
+        "no_android": "This project has no Android part.",
+        "no_ios": "This project has no iOS part.",
+        "ios_custom": "The iOS launch screen has its own layout, so Studio left it as it is.",
+        "no_icon": "There is no app icon yet, so no logo was added.",
+        "no_platforms": "Nothing could be written."
+      }
     },
     "settings": {
       "title": "App settings",

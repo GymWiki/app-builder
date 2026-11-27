@@ -149,6 +149,8 @@ export const api = {
       pubAddFailed: boolean;
       accountDeletionSet: boolean;
     }>("data_apply", { projectId }),
+  assetsSplashApply: (projectId: string, color: string, useLogo: boolean) =>
+    call<{ written: string[]; warnings: string[] }>("assets_splash_apply", { projectId, color, useLogo }),
   uxSummary: () =>
     call<{ flows: Record<string, Record<string, number>>; avgTokensPerAiRun: number; estimatedTokensSaved: number }>(
       "ux_summary",

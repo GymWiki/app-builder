@@ -1045,6 +1045,9 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
     case "assets_generate_icon":
       fs.icon = true;
       return { written: new Array(26).fill("x"), warnings: [] };
+    case "assets_splash_apply":
+      uxCounts.assets = { ...(uxCounts.assets ?? {}), deterministic: (uxCounts.assets?.deterministic ?? 0) + 1 };
+      return { written: ["android/launch_background.xml", "ios/LaunchScreen.storyboard"], warnings: [] };
     case "snapshots_list":
       return snaps;
     case "snapshot_create":
