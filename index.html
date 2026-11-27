@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Flutter Studio – Download</title>
+<meta name="description" content="Download Local Flutter Studio: bouw en test Flutter-apps volledig lokaal op je eigen computer.">
+<style>
+  :root{
+    --bg:#0b1020; --bg2:#121a33; --card:#161f3d; --line:#26325c;
+    --text:#eef1fb; --muted:#9aa6cf; --accent:#4cc9f0; --accent2:#7b61ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+  nav{display:flex;justify-content:space-between;align-items:center;padding:20px 0}
+  .logo{font-weight:800;font-size:1.1rem;display:flex;align-items:center;gap:10px}
+  .logo i{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:inline-block}
+  nav a.link{color:var(--muted);font-size:.95rem}
+  .hero{text-align:center;padding:64px 0 48px;background:radial-gradient(600px 300px at 50% 0,rgba(123,97,255,.25),transparent 70%)}
+  .badge{display:inline-block;padding:4px 14px;border:1px solid var(--line);border-radius:99px;color:var(--muted);font-size:.85rem;margin-bottom:22px}
+  h1{font-size:clamp(2.2rem,6vw,3.8rem);line-height:1.1;letter-spacing:-.02em}
+  h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lead{color:var(--muted);max-width:620px;margin:20px auto 34px;font-size:1.1rem}
+  .btn{display:inline-flex;align-items:center;gap:10px;padding:14px 28px;border-radius:12px;font-weight:700;border:0;cursor:pointer;font-size:1rem;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#07101f;transition:transform .15s,box-shadow .15s}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(76,201,240,.25)}
+  .btn:focus-visible,.dl a:focus-visible{outline:3px solid #fff;outline-offset:3px}
+  .sub{margin-top:14px;color:var(--muted);font-size:.9rem}
+  section{padding:56px 0}
+  h2{font-size:1.8rem;text-align:center;margin-bottom:8px}
+  .section-sub{color:var(--muted);text-align:center;margin-bottom:36px}
+  .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px}
+  .card h3{margin:10px 0 6px;font-size:1.05rem}
+  .card p{color:var(--muted);font-size:.95rem}
+  .ico{font-size:1.6rem}
+  .dl{display:flex;flex-direction:column;gap:12px}
+  .dl .card{display:flex;flex-direction:column;gap:6px;text-align:center;align-items:center}
+  .dl .card.rec{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .dl .os{font-size:2rem}
+  .dl small{color:var(--muted)}
+  .dl a.get{margin-top:10px;display:inline-block;padding:10px 20px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);font-weight:600}
+  .dl a.get:hover{border-color:var(--accent)}
+  .rec a.get{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#07101f;border:0}
+  .dl-grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  ol{max-width:640px;margin:0 auto;padding-left:22px;color:var(--muted)}
+  ol li{margin-bottom:10px} ol b{color:var(--text)}
+  code{background:var(--bg2);border:1px solid var(--line);padding:2px 7px;border-radius:6px;font-size:.9em;color:var(--accent)}
+  details{max-width:720px;margin:0 auto 10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px}
+  summary{cursor:pointer;font-weight:600}
+  details p{color:var(--muted);margin-top:10px}
+  footer{border-top:1px solid var(--line);padding:28px 0;text-align:center;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <nav>
+    <div class="logo"><i></i> Local Flutter Studio</div>
+    <a class="link" href="#downloads">Downloads</a>
+  </nav>
+
+  <header class="hero">
+    <span class="badge">Versie <span id="ver">1.0.0</span> · Gratis te downloaden</span>
+    <h1>Bouw Flutter-apps<br><span>helemaal lokaal</span></h1>
+    <p class="lead">Local Flutter Studio draait op je eigen computer. Geen cloud nodig, je code en data blijven van jou.</p>
+    <a id="mainBtn" class="btn" href="#downloads">⬇ Download</a>
+    <p class="sub" id="mainSub">Beschikbaar voor Windows, macOS en Linux</p>
+  </header>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>Waarom lokaal?</h2>
+    <p class="section-sub">Alles wat je nodig hebt, zonder internetafhankelijkheid.</p>
+    <div class="grid">
+      <div class="card"><div class="ico">🔒</div><h3>Privé</h3><p>Je projecten blijven op je eigen schijf. Niets wordt geüpload.</p></div>
+      <div class="card"><div class="ico">⚡</div><h3>Snel</h3><p>Directe builds en hot reload, zonder wachttijden of limieten.</p></div>
+      <div class="card"><div class="ico">📴</div><h3>Offline</h3><p>Werk overal verder, ook zonder verbinding.</p></div>
+      <div class="card"><div class="ico">🧩</div><h3>Flutter-native</h3><p>Gebruikt je eigen Flutter SDK en werkt met bestaande projecten.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="downloads" style="background:var(--bg2)">
+  <div class="wrap">
+    <h2>Downloaden</h2>
+    <p class="section-sub">Kies je besturingssysteem.</p>
+    <div class="dl-grid dl" id="dlGrid"></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Installeren in 3 stappen</h2>
+    <p class="section-sub">&nbsp;</p>
+    <ol>
+      <li><b>Download</b> het bestand voor jouw systeem.</li>
+      <li><b>Installeer</b> de app (op Linux: <code>chmod +x</code> en start het AppImage).</li>
+      <li><b>Open</b> Local Flutter Studio en kies de map van je Flutter SDK.</li>
+    </ol>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <h2>Veelgestelde vragen</h2>
+    <p class="section-sub">&nbsp;</p>
+    <details><summary>Heb ik Flutter al geïnstalleerd nodig?</summary><p>Ja, de app gebruikt je lokale Flutter SDK. Installeer die via flutter.dev als je hem nog niet hebt.</p></details>
+    <details><summary>Wat zijn de systeemvereisten?</summary><p>64-bit Windows 10+, macOS 12+ of een recente Linux-distributie, met minimaal 8 GB RAM.</p></details>
+    <details><summary>Kost het iets?</summary><p>Nee, de download is gratis.</p></details>
+  </div>
+</section>
+
+<footer><div class="wrap">© <span id="yr"></span> Local Flutter Studio</div></footer>
+
+<script>
+  // ▼ Pas hier de versie en je echte downloadlinks aan (bijv. GitHub Releases) ▼
+  const VERSION = "1.0.0";
+  const DOWNLOADS = [
+    { id:"windows", icon:"🪟", name:"Windows",  file:".exe installer", url:"downloads/LocalFlutterStudio-Setup.exe" },
+    { id:"mac",     icon:"🍎", name:"macOS",    file:".dmg",           url:"downloads/LocalFlutterStudio.dmg" },
+    { id:"linux",   icon:"🐧", name:"Linux",    file:".AppImage",      url:"downloads/LocalFlutterStudio.AppImage" }
+  ];
+  // ▲ ▲ ▲
+
+  document.getElementById("ver").textContent = VERSION;
+  document.getElementById("yr").textContent = new Date().getFullYear();
+
+  const ua = navigator.userAgent;
+  const current = /Windows/i.test(ua) ? "windows"
+                : /Mac/i.test(ua) && !/iPhone|iPad/i.test(ua) ? "mac"
+                : /Linux/i.test(ua) && !/Android/i.test(ua) ? "linux" : null;
+
+  const grid = document.getElementById("dlGrid");
+  DOWNLOADS.forEach(d => {
+    const el = document.createElement("div");
+    el.className = "card" + (d.id === current ? " rec" : "");
+    el.innerHTML = `<div class="os">${d.icon}</div><h3>${d.name}</h3>
+      <small>${d.file} · v${VERSION}</small>
+      ${d.id === current ? "<small>✓ Aanbevolen voor jouw systeem</small>" : ""}
+      <a class="get" href="${d.url}" download>Download voor ${d.name}</a>`;
+    grid.appendChild(el);
+  });
+
+  const match = DOWNLOADS.find(d => d.id === current);
+  if (match) {
+    const b = document.getElementById("mainBtn");
+    b.href = match.url; b.setAttribute("download", "");
+    b.textContent = "⬇ Download voor " + match.name;
+    document.getElementById("mainSub").textContent = "v" + VERSION + " · " + match.file;
+  }
+</script>
+</body>
+</html>
