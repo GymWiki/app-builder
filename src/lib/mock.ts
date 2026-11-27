@@ -139,7 +139,7 @@ const purchasesView = (id: string): PurchasesView =>
     projects.find((p) => p.id === id)?.bundleId ?? "com.example.app",
     purchasesApplying.has(id),
   );
-let projects: Project[] = ["ready", "nodevices", "noscreens", "inspect", "purchases", "iframe", "slowstart", "nopreview"].includes(scenario)
+let projects: Project[] = ["ready", "nodevices", "noscreens", "inspect", "purchases", "iframe", "slowstart", "nopreview", "update"].includes(scenario)
   ? [
       mk("friday_scores", "Friday Scores", "scoreboard", "testing", 12, 4),
       mk("water_tracker", "Water Tracker", "tracker", "draft", 60 * 26, 1),

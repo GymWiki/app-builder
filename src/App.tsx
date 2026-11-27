@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
 import { initChatListeners } from "@/features/chat/chat-store";
+import { UpdatePrompt } from "@/features/update/update-prompt";
 import { initTaskListeners } from "@/features/tasks/task-store";
 import { initJobListeners } from "@/features/sections/publish/jobs-store";
 import { initProfileListener } from "@/features/profile/profile-store";
@@ -67,6 +68,7 @@ export function App() {
             <RouterProvider router={router} />
           </div>
         </div>
+        <UpdatePrompt />
         <Toaster />
       </TooltipProvider>
     </ErrorBoundary>

@@ -56,6 +56,13 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> AppResult<T> + Send + '
 
 // ───────────── app ─────────────
 
+/// Studio opnieuw starten na een update (de gebruiker koos daar zelf voor).
+#[tauri::command]
+pub fn app_restart(app: AppHandle) {
+    app.restart();
+}
+
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppInfo {

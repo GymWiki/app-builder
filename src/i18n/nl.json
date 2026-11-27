@@ -1921,5 +1921,14 @@
     "retry": "Opnieuw proberen",
     "cancel": "Stoppen",
     "dismiss": "Sluiten"
+  },
+  "update": {
+    "title": "Studio {{version}} is beschikbaar",
+    "body": "Je hebt versie {{current}}. Update nu voor de nieuwste verbeteringen. Studio start daarna opnieuw; je projecten blijven zoals ze zijn.",
+    "now": "Update en herstart",
+    "later": "Later",
+    "installing": "Downloaden en installeren…",
+    "failed": "De update is niet gelukt. Controleer je internetverbinding en probeer het opnieuw.",
+    "retry": "Opnieuw proberen"
   }
 }

@@ -69,6 +69,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let db = Arc::new(db::Db::open(&dir.join("studio.db"))?);
@@ -190,6 +191,7 @@ pub fn run() {
             commands::theme_set,
             commands::theme_apply,
             commands::ux_summary,
+            commands::app_restart,
             commands::data_apply,
             commands::ux_event,
             commands::screens_graph,
