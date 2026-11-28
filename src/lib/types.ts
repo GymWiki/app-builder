@@ -54,7 +54,7 @@ export interface AppInfo {
 }
 
 export type Settings = Partial<
-  Record<"projects_dir" | "setup_completed" | "org" | "dev_mode" | "model_override", string>
+  Record<"projects_dir" | "setup_completed" | "org" | "dev_mode" | "model_override" | "build_parallel", string>
 >;
 
 export interface Screen {
@@ -440,4 +440,30 @@ export interface EngineRow {
 export interface EnginesView {
   engines: EngineRow[];
   order: string[];
+}
+
+/** Voortgang van het bouwen van een nieuwe app (Rust: `appbuild::Progress`). */
+export interface BuildProgress {
+  phase: "scaffold" | "core" | "pages" | "integrate" | "done";
+  coreDone: boolean;
+  pages: { id: string; name: string; status: "waiting" | "building" | "done" | "failed" | "attention"; attempts: number; seconds: number }[];
+  done: number;
+  total: number;
+  building: string[];
+  etaSeconds: number | null;
+  parallel: number;
+}
+export interface BuildReport {
+  phases: { name: string; seconds: number; aiCalls: number; tokens: number }[];
+  totalSeconds: number;
+  parallel: number;
+  pagesTotal: number;
+  pagesFirstTry: number;
+  pagesDone: number;
+  pagesFailed: string[];
+  pagesAttention: string[];
+  coreOk: boolean;
+  analyzeOk: boolean | null;
+  limited: boolean;
+  cancelled: boolean;
 }

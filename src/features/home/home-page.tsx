@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Plus, Search, SearchX, Sparkles, Wrench } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { EmptyState } from "@/components/ds/empty-state";
 import { PageHeader } from "@/components/ds/page-header";
 import { AppTopBar } from "@/components/layout/top-bar";
@@ -22,12 +22,11 @@ export function HomePage() {
   const settings = useSettings();
   const [search, setSearch] = useState("");
   const query = useDeferredValue(search.trim());
-  const [creating, setCreating] = useState(false);
-  const [dialogKey, setDialogKey] = useState(0);
-  const startCreating = () => {
-    setDialogKey((k) => k + 1);
-    setCreating(true);
-  };
+  const [params] = useSearchParams();
+  // "Nieuw project" opent de onboarding (beschrijf je app); de lege-projectdialoog blijft bereikbaar via "Begin met een lege app" (?blank=1).
+  const [creating, setCreating] = useState(() => params.get("blank") === "1");
+  const [dialogKey] = useState(0);
+  const startCreating = () => navigate("/new");
   const [removing, setRemoving] = useState<Project | null>(null);
 
   const projects = useQuery({

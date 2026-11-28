@@ -28,7 +28,7 @@ interface Done {
 
 import { create } from "zustand";
 
-const useLic = create<{ running: boolean; progress: LicProgress | null; done: Done | null }>(() => ({
+export const useLic = create<{ running: boolean; progress: LicProgress | null; done: Done | null }>(() => ({
   running: false,
   progress: null,
   done: null,

@@ -35,7 +35,8 @@ import type {
   TemplateId,
   ToolStatus,
 } from "./types";
-import type { Purpose } from "./types";
+import type { Blueprint } from "./blueprint";
+import type { BuildProgress, Purpose } from "./types";
 import type { IntegrationOverview, IntegrationStatus, Leak, TestOutcome } from "./integrations";
 
 export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -156,6 +157,27 @@ export const api = {
     }>("data_apply", { projectId }),
   assetsSplashApply: (projectId: string, color: string, useLogo: boolean) =>
     call<{ written: string[]; warnings: string[] }>("assets_splash_apply", { projectId, color, useLogo }),
+  onboardingFeatures: (description: string, language: string) =>
+    call<{ features: { title: string; capability: string }[]; unsupported: { id: string; title: string; alternative: string }[]; ai: boolean }>(
+      "onboarding_features",
+      { description, language },
+    ),
+  onboardingStyles: (description: string) =>
+    call<{ id: string; seed: string; font: string; kit: string }[]>("onboarding_styles", { description }),
+  onboardingPlan: (description: string, features: string[], cardId: string, seed: string | null, language: string) =>
+    call<{ blueprint: Blueprint; fallback: boolean; issues: string[]; nameSuggestions: string[] }>("onboarding_plan", {
+      description,
+      features,
+      cardId,
+      seed,
+      language,
+    }),
+  onboardingDraftGet: () => call<string | null>("onboarding_draft_get"),
+  onboardingDraftSet: (draft: string | null) => call<void>("onboarding_draft_set", { draft }),
+  onboardingBuild: (blueprint: Blueprint) => call<Project>("onboarding_build", { blueprint }),
+  onboardingCancel: (projectId: string) => call<void>("onboarding_cancel", { projectId }),
+  onboardingStatus: (projectId: string) => call<BuildProgress | null>("onboarding_status", { projectId }),
+  onboardingRetry: (projectId: string, pages: string[]) => call<void>("onboarding_retry", { projectId, pages }),
   uxSummary: () =>
     call<{ flows: Record<string, Record<string, number>>; avgTokensPerAiRun: number; estimatedTokensSaved: number }>(
       "ux_summary",

@@ -23,7 +23,7 @@
     { "id": "purchases", "title": "In-app purchases (via the Purchases page)", "needs": { "purchases": true } }
   ],
   "unsupported": [
-    { "id": "realtime_multiplayer", "title": "Live play on several phones", "keywords": ["realtime", "real-time", "multiplayer", "live meespelen", "tegelijk spelen", "online spel"], "alternative": "One phone for everyone, or share the result as a picture.", "alternative_id": "share_text_image" },
+    { "id": "realtime_multiplayer", "title": "Live play on several phones", "keywords": ["realtime", "real-time", "multiplayer", "live meespelen", "live play", "live spelen", "meerdere telefoons", "several phones", "meerdere toestellen", "tegelijk spelen", "online spel"], "alternative": "One phone for everyone, or share the result as a picture.", "alternative_id": "share_text_image" },
     { "id": "video_streaming", "title": "Video streaming or video calls", "keywords": ["video", "livestream", "videobellen", "video call"], "alternative": "Show pictures and lists instead.", "alternative_id": "lists" },
     { "id": "three_d", "title": "3D or augmented reality", "keywords": ["3d", "ar ", "augmented", "virtual reality", "vr "], "alternative": "Use flat pictures and simple animations.", "alternative_id": "charts" },
     { "id": "custom_native_sdk", "title": "Special hardware or a custom native SDK", "keywords": ["bluetooth", "nfc", "smartwatch", "sdk van", "hardware"], "alternative": "Enter the values by hand for now.", "alternative_id": "forms" }

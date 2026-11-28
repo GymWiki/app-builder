@@ -1996,5 +1996,151 @@
       "Gebruik overal hetzelfde lettertype",
       "Voeg een terug-knop toe op elke pagina"
     ]
+  },
+  "onboarding": {
+    "title": "Maak je app",
+    "progress": "Stappen",
+    "next": "Volgende",
+    "build": "Bouw mijn app",
+    "restored": "Je eerdere concept is teruggezet.",
+    "startOver": "Opnieuw beginnen",
+    "toolchainBackground": "Android wordt op de achtergrond klaargezet. Je kunt gewoon doorgaan.",
+    "moveUp": "Omhoog",
+    "moveDown": "Omlaag",
+    "remove": "Verwijderen",
+    "steps": {
+      "idea": "Idee",
+      "features": "Functies",
+      "style": "Stijl",
+      "plan": "Plan"
+    },
+    "idea": {
+      "title": "Wat voor app wil je maken en voor wie?",
+      "help": "Beschrijf het in je eigen woorden. Een paar zinnen is genoeg; Studio vult de rest in.",
+      "placeholder": "Een scorebord voor onze vrijdagavond-bordspellen met vrienden…",
+      "surprise": "Verras me met standaardkeuzes",
+      "examplesLabel": "Een idee nodig?",
+      "quickLabel": "Snelstart",
+      "blank": "Begin liever met een lege app",
+      "examples": [
+        "Een loopschema voor mijn eerste 10 km",
+        "Een gedeelde boodschappenlijst voor het gezin",
+        "Een fooienoverzicht voor mijn horecapersoneel",
+        "Een klantenkaart voor mijn bakkerij"
+      ],
+      "quickNames": [
+        "Scorebord",
+        "Checklist",
+        "Tracker",
+        "Rekentool"
+      ],
+      "quickTexts": [
+        "Een scorebord om de score van spelletjes met vrienden bij te houden, met spelers en een seizoensranglijst.",
+        "Een checklist-app voor dagelijkse taken met categorieën en een voortgangsoverzicht.",
+        "Een gewoonte-tracker waarin ik elke dag iets noteer en een grafiek van mijn voortgang zie.",
+        "Een handige rekentool om een rekening te delen tussen vrienden, met fooi en afronden."
+      ]
+    },
+    "features": {
+      "title": "Wat moet je app kunnen?",
+      "help": "Dit denk ik dat je nodig hebt. Zet dingen uit, hernoem ze, voeg je eigen toe of schuif iets naar later.",
+      "loading": "Ik denk na over functies…",
+      "on": "“{{title}}” opnemen",
+      "name": "Naam van de functie",
+      "when": "Wanneer",
+      "now": "Nu",
+      "later": "Later",
+      "add": "Functie toevoegen",
+      "addPlaceholder": "Bijvoorbeeld: herinner me elke ochtend",
+      "unsupportedTitle": "“{{title}}” kan nog niet",
+      "unsupportedBody": "Studio kan dit op dit moment niet bouwen. Dit lukt wel: {{alternative}}",
+      "useAlternative": "Gebruik dit in plaats daarvan",
+      "dismiss": "Laat maar weg"
+    },
+    "style": {
+      "title": "Kies een stijl",
+      "help": "Eén klik is genoeg. Je kunt alles later nog aanpassen.",
+      "ownColor": "Je eigen hoofdkleur",
+      "optional": "Optioneel",
+      "cards": {
+        "calm": "Rustig",
+        "lively": "Levendig",
+        "sleek": "Strak"
+      },
+      "sampleOk": "Ok",
+      "sampleCancel": "Annuleer"
+    },
+    "plan": {
+      "loadingTitle": "Je plan wordt gemaakt…",
+      "loadingBody": "Dit duurt even. Studio bedenkt pagina’s, gegevens en de stijl.",
+      "title": "Dit is het plan",
+      "help": "Controleer het, pas aan wat je wilt en bouw dan. Niets is hier definitief.",
+      "fallback": "Ik kon geen uitgebreid plan maken, dus dit is een eenvoudige start. Je kunt pagina’s en functies toevoegen.",
+      "issues": "Dit plan heeft nog problemen:",
+      "name": "Naam van de app",
+      "pages": "Pagina’s",
+      "navigation": "Navigatie",
+      "nav": {
+        "tabs": "Tabbladen",
+        "menu": "Menu",
+        "single": "Eén pagina"
+      },
+      "pageName": "Naam van de pagina",
+      "purpose": "Waar deze pagina voor dient",
+      "purposePlaceholder": "Waar is deze pagina voor?",
+      "removePage": "{{name}} verwijderen",
+      "addPage": "Pagina toevoegen",
+      "addPagePlaceholder": "Naam van de nieuwe pagina",
+      "data": "Wat wordt bewaard",
+      "dataList": "Bewaard op de telefoon: {{models}}.",
+      "dataNone": "Er wordt niets bijzonders bewaard.",
+      "connections": "Koppelingen",
+      "connectionsDefault": "Standaard: alles wordt op de telefoon bewaard, geen account, geen internet nodig. Zet deze alleen aan als je ze nodig hebt.",
+      "signIn": "Inloggen met een account",
+      "signInHelp": "Mensen loggen in met e-mail. Nodig als verschillende mensen andere gegevens moeten zien.",
+      "sync": "Synchroniseren tussen toestellen",
+      "syncHelp": "Gegevens staan ook online (Supabase) zodat meerdere telefoons hetzelfde tonen. De database stel je later in.",
+      "assumptions": "Aannames",
+      "assumption": "Aanname",
+      "addAssumption": "Aanname toevoegen",
+      "addAssumptionPlaceholder": "Bijvoorbeeld: alleen voor volwassenen"
+    }
+  },
+  "build": {
+    "title": "Je app wordt gebouwd",
+    "starting": "Bezig met starten…",
+    "phase": {
+      "scaffold": "Je app wordt klaargezet…",
+      "core": "De basis wordt gebouwd…",
+      "pages": "Pagina {{n}} van {{total}} wordt gebouwd",
+      "integrate": "Controleren of alles werkt…"
+    },
+    "done": "Je app is klaar!",
+    "partial": "Je app is klaar, op een paar pagina’s na.",
+    "cancelled": "Gestopt. Alles wat klaar was blijft bewaard.",
+    "eta": "Nog ongeveer {{minutes}} min (een schatting uit de pagina’s die al klaar zijn)",
+    "etaUnknown": "Studio schat de tijd in…",
+    "parallel_one": "{{count}} pagina tegelijk",
+    "parallel_other": "{{count}} pagina’s tegelijk",
+    "pages": "Pagina’s",
+    "lookAround": "Kijk rond in je app",
+    "building": "Wordt gebouwd",
+    "ready": "Klaar",
+    "problem": "Heeft aandacht nodig",
+    "waiting": "Wacht",
+    "status": {
+      "waiting": "Wacht",
+      "building": "Bouwen…",
+      "done": "Klaar",
+      "failed": "Niet af",
+      "attention": "Even naar kijken"
+    },
+    "cancel": "Stop met bouwen",
+    "notReady": "Nog niet klaar: {{pages}}.",
+    "retry": "Deze opnieuw proberen",
+    "open": "Open mijn app",
+    "tip": "Tip: kies een pagina in de lijst om alleen die pagina aan te passen, of kies “Hele app” om alles tegelijk te veranderen.",
+    "banner": "Je app wordt nog gebouwd: pagina {{n}} van {{total}}.",
+    "bannerLink": "Bekijk de voortgang"
   }
 }

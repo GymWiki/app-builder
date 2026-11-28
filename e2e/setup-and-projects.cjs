@@ -52,6 +52,8 @@ const ok = (c, m) => {
 
   // ── create project
   await p.getByRole("button", { name: "New project" }).first().click();
+  await p.waitForURL(/#\/new/);
+  await p.getByRole("button", { name: "Start with an empty app instead" }).click(); // de onboarding is getest in onboarding.cjs
   await p.getByLabel("App name").fill("Fail please");
   await p.getByRole("radio", { name: /Tracker/ }).click();
   await p.getByRole("button", { name: "Create project" }).click();

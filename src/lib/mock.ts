@@ -139,7 +139,7 @@ const purchasesView = (id: string): PurchasesView =>
     projects.find((p) => p.id === id)?.bundleId ?? "com.example.app",
     purchasesApplying.has(id),
   );
-let projects: Project[] = ["ready", "nodevices", "noscreens", "inspect", "purchases", "iframe", "slowstart", "nopreview", "update", "licstall"].includes(scenario)
+let projects: Project[] = ["ready", "nodevices", "noscreens", "inspect", "purchases", "iframe", "slowstart", "nopreview", "update", "licstall", "buildfail"].includes(scenario)
   ? [
       mk("friday_scores", "Friday Scores", "scoreboard", "testing", 12, 4),
       mk("water_tracker", "Water Tracker", "tracker", "draft", 60 * 26, 1),
@@ -370,6 +370,82 @@ function startMockFrames() {
     () => (preview.status === "stopped" ? framesTimer && clearInterval(framesTimer) : sendMockFrame()),
     500,
   );
+}
+let buildCancelled = false;
+const lastBuild: Record<string, { pages: { id: string; name: string; status: string; attempts: number; seconds: number }[] } & Record<string, unknown>> = {};
+const buildAttempts: Record<string, number> = {};
+const lastProg: Record<string, unknown> = {};
+/** Gesimuleerde bouw: kern, daarna vier pagina's tegelijk; met mock=buildfail faalt de pagina 'history' twee keer (daarna lukt een nieuwe poging). */
+async function mockBuild(projectId: string, pages: { id: string; name: string }[], only: string[] | null) {
+  buildCancelled = false;
+  const st = (lastBuild[projectId] ??= {
+    pages: pages.map((p) => ({ id: p.id, name: p.name, status: "waiting", attempts: 0, seconds: 0 })),
+  } as never);
+  const send = (phase: string, extra: Record<string, unknown> = {}) => {
+    const done = st.pages.filter((p) => p.status === "done").length;
+    const prog = { phase, coreDone: phase !== "scaffold" && phase !== "core", pages: st.pages.map((p) => ({ ...p })), done, total: st.pages.length, building: st.pages.filter((p) => p.status === "building").map((p) => p.id), etaSeconds: done > 0 ? (st.pages.length - done) * 20 : null, parallel: 4, ...extra };
+    lastProg[projectId] = prog;
+    emit("build-progress", { projectId, progress: prog });
+  };
+  if (only) for (const p of st.pages) p.status = only.includes(p.id) ? "waiting" : "done";
+  send("scaffold");
+  await sleep(300);
+  if (!only) {
+    send("core");
+    await sleep(900);
+  }
+  send("pages");
+  const queue = st.pages.filter((p) => p.status === "waiting").map((p) => p.id);
+  const failing = scenario === "buildfail" && !only ? "history" : null;
+  const worker = async () => {
+    for (;;) {
+      const id = queue.shift();
+      if (!id || buildCancelled) return;
+      const p = st.pages.find((x) => x.id === id)!;
+      p.status = "building";
+      p.attempts += 1;
+      send("pages");
+      await sleep(700);
+      const key = `${projectId}:${id}`;
+      buildAttempts[key] = (buildAttempts[key] ?? 0) + 1;
+      p.status = id === failing ? "failed" : "done";
+      p.seconds = 1;
+      send("pages");
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  // één gerichte herpoging per mislukte pagina
+  for (const p of st.pages.filter((x) => x.status === "failed" && x.attempts < 2 && !buildCancelled)) {
+    p.status = "building";
+    p.attempts += 1;
+    send("pages");
+    await sleep(500);
+    p.status = p.id === failing ? "failed" : "done";
+    send("pages");
+  }
+  if (!buildCancelled) {
+    send("integrate");
+    await sleep(500);
+  }
+  const failed = st.pages.filter((p) => p.status === "failed" || p.status === "waiting").map((p) => p.id);
+  send("done");
+  emit("build-done", {
+    projectId,
+    report: {
+      phases: [{ name: "core", seconds: 1, aiCalls: 1, tokens: 12000 }, { name: "pages", seconds: 3, aiCalls: st.pages.length, tokens: 30000 }],
+      totalSeconds: 5,
+      parallel: 4,
+      pagesTotal: st.pages.length,
+      pagesFirstTry: st.pages.length - failed.length,
+      pagesDone: st.pages.length - failed.length,
+      pagesFailed: failed,
+      pagesAttention: [],
+      coreOk: true,
+      analyzeOk: true,
+      limited: false,
+      cancelled: buildCancelled,
+    },
+  });
 }
 let licenseConsent = false;
 let licenseCancelled = false;
@@ -1342,6 +1418,85 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       };
       projects = [p, ...projects];
       return p;
+    }
+    case "onboarding_features": {
+      const d = (args.description as string).toLowerCase();
+      const nl = String(args.language).startsWith("nl");
+      await sleep(500);
+      const unsupported = /live meespelen|live play|several phones|meerdere telefoons|realtime|multiplayer|video|3d|bluetooth/.test(d)
+        ? [{ id: "realtime_multiplayer", title: "Live play on several phones", alternative: "One phone for everyone, or share the result as a picture." }]
+        : [];
+      return {
+        features: nl
+          ? [
+              { title: "Spelers toevoegen en verwijderen", capability: "forms" },
+              { title: "Punten bijhouden per spel", capability: "lists" },
+              { title: "Ranglijst van het seizoen", capability: "charts" },
+            ]
+          : [
+              { title: "Add and remove players", capability: "forms" },
+              { title: "Keep points per game", capability: "lists" },
+              { title: "Season ranking", capability: "charts" },
+            ],
+        unsupported,
+        ai: true,
+      };
+    }
+    case "onboarding_styles":
+      return [
+        { id: "calm", seed: "#0D9488", font: "Inter", kit: "rounded" },
+        { id: "lively", seed: "#DB2777", font: "Poppins", kit: "rounded" },
+        { id: "sleek", seed: "#2563EB", font: "Roboto", kit: "minimal" },
+      ];
+    case "onboarding_plan": {
+      await sleep(900);
+      const card = ["calm", "lively", "sleek"].indexOf(args.cardId as string);
+      const seeds = ["#0D9488", "#DB2777", "#2563EB"];
+      const feats = (args.features as string[]).map((t, i) => ({ id: `f${i + 1}`, title: t.replace(/ \(later\)$/, ""), capability: "lists", pages: ["home"], status: t.endsWith("(later)") ? "later" : "now" }));
+      return {
+        blueprint: {
+          version: 1,
+          app: { name: "Friday Scores", purpose: String(args.description).slice(0, 120), audience: "Friends", language: String(args.language), description: args.description },
+          style: { card: (args.cardId as string) || "calm", seed: (args.seed as string | null) ?? seeds[Math.max(card, 0)], font: "Inter", kit: "rounded", logo: null },
+          navigation: { kind: "tabs", order: ["home", "players", "settings"] },
+          pages: [
+            { id: "home", name: "Scoreboard", purpose: "Overview and ranking", route: "/", components: ["ranking list"], models: ["player"], features: [], links: ["players"] },
+            { id: "players", name: "Players", purpose: "Manage players", route: "/players", components: ["list", "add form"], models: ["player"], features: [], links: [] },
+            { id: "history", name: "History", purpose: "All past games", route: "/history", components: ["list"], models: ["player"], features: [], links: [] },
+            { id: "settings", name: "Settings", purpose: "Name and theme", route: "/settings", components: ["theme choice"], models: [], features: [], links: [] },
+          ],
+          models: [{ id: "player", name: "Player", fields: [{ name: "name", type: "text", ref: null, values: [] }, { name: "points", type: "int", ref: null, values: [] }], sample: [{ name: "Anna", points: 12 }] }],
+          features: feats,
+          integrations: { storage: "local", auth: [], purchases: false, notifications: false },
+          assumptions: [{ id: "local", text: "I assumed everything is stored on the phone, no account.", editable: true }],
+        },
+        fallback: false,
+        issues: [],
+        nameSuggestions: ["Friday Scores", "Game Night", "Score Buddy"],
+      };
+    }
+    case "onboarding_draft_get":
+      return localStorage.getItem("mock-onboarding-draft");
+    case "onboarding_draft_set":
+      if (args.draft) localStorage.setItem("mock-onboarding-draft", args.draft as string);
+      else localStorage.removeItem("mock-onboarding-draft");
+      return;
+    case "onboarding_build": {
+      const bp = args.blueprint as { app: { name: string; purpose: string }; pages: { id: string; name: string }[] };
+      const p = (await mockInvoke("project_create", { args: { name: bp.app.name, template: "blank", description: bp.app.purpose } })) as { id: string };
+      void mockBuild(p.id, bp.pages, null);
+      return p;
+    }
+    case "onboarding_cancel":
+      buildCancelled = true;
+      return;
+    case "onboarding_status":
+      return lastProg[args.projectId as string] ?? null;
+    case "onboarding_retry": {
+      const ids = args.pages as string[];
+      const known = (lastBuild[args.projectId as string]?.pages ?? []).filter((x) => ids.includes(x.id));
+      void mockBuild(args.projectId as string, known, ids);
+      return;
     }
     case "project_delete":
       projects = projects.filter((p) => p.id !== args.id);

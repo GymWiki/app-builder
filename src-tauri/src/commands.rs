@@ -28,7 +28,7 @@ pub struct AppState {
     pub jobs: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
-const SETTING_KEYS: [&str; 6] = ["projects_dir", "setup_completed", "org", "dev_mode", "model_override", "contact_email"];
+const SETTING_KEYS: [&str; 7] = ["projects_dir", "setup_completed", "org", "dev_mode", "model_override", "contact_email", "build_parallel"];
 const DEFAULT_ORG: &str = "com.example";
 
 fn default_projects_dir(app: &AppHandle) -> PathBuf {
@@ -222,7 +222,17 @@ pub async fn onboarding_plan(state: State<'_, AppState>, description: String, fe
         let (mut bp, fallback, issues) = crate::onboarding::make_plan(&mut ask, &description, &features, &card, &language);
         crate::onboarding::apply_style(&mut bp, &card, seed.as_deref());
         bp.app.description = description.chars().take(4000).collect();
-        Ok(serde_json::json!({ "blueprint": bp, "fallback": fallback, "issues": issues }))
+        // Een paar naamsuggesties (klein model); zonder antwoord blijft de gekozen naam gewoon staan.
+        let names_q = format!("Suggest 3 short, friendly app names (at most 20 characters, in the language \"{language}\") for this app. Answer with ONLY a JSON array of 3 strings.\nApp: {description}");
+        let names: Vec<String> = chat
+            .ask_text(&ctx, &names_q, crate::chat::StepTier::Light, std::time::Duration::from_secs(60))
+            .and_then(|t| crate::onboarding::extract_array(&t).and_then(|a| serde_json::from_str::<Vec<String>>(a).ok()))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|n| !n.trim().is_empty() && n.chars().count() <= 30)
+            .take(3)
+            .collect();
+        Ok(serde_json::json!({ "blueprint": bp, "fallback": fallback, "issues": issues, "nameSuggestions": names }))
     })
     .await
 }
@@ -264,6 +274,10 @@ pub async fn onboarding_build(app: AppHandle, state: State<'_, AppState>, bluepr
         })?;
         let pdir = PathBuf::from(&p.path);
         let rep = crate::scaffold::scaffold(&pdir, &bp)?;
+        // Een eigen logo (optioneel): alle iconformaten uit die ene afbeelding.
+        if let Some(logo) = bp.style.logo.as_deref().filter(|l| !l.is_empty()) {
+            let _ = crate::assets::generate_icons(&pdir, std::path::Path::new(logo));
+        }
         if rep.needs_pub_get {
             let _ = proc::run(&flutter, &["pub", "get"], Some(&pdir), std::time::Duration::from_secs(300));
         }

@@ -1996,5 +1996,151 @@
       "Use the same font everywhere",
       "Add a back button to every page"
     ]
+  },
+  "onboarding": {
+    "title": "Create your app",
+    "progress": "Steps",
+    "next": "Next",
+    "build": "Build my app",
+    "restored": "Your earlier draft was restored.",
+    "startOver": "Start over",
+    "toolchainBackground": "Android is being set up in the background. You can keep going.",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "remove": "Remove",
+    "steps": {
+      "idea": "Idea",
+      "features": "Features",
+      "style": "Style",
+      "plan": "Plan"
+    },
+    "idea": {
+      "title": "What kind of app do you want to make, and for whom?",
+      "help": "Describe it in your own words. A few sentences is plenty; Studio fills in the rest.",
+      "placeholder": "A scoreboard for our Friday board game night with friends…",
+      "surprise": "Surprise me with default choices",
+      "examplesLabel": "Need an idea?",
+      "quickLabel": "Quick start",
+      "blank": "Start with an empty app instead",
+      "examples": [
+        "A running schedule for my first 10K",
+        "A shared shopping list for the family",
+        "A tip jar tracker for my café staff",
+        "A loyalty card for my bakery"
+      ],
+      "quickNames": [
+        "Scoreboard",
+        "Checklist",
+        "Tracker",
+        "Calculator"
+      ],
+      "quickTexts": [
+        "A scoreboard to keep score of games with friends, with players and a season ranking.",
+        "A checklist app for daily tasks with categories and a progress overview.",
+        "A habit tracker where I log something every day and see a chart of my progress.",
+        "A handy calculator for splitting a bill between friends, with tip and rounding."
+      ]
+    },
+    "features": {
+      "title": "What should your app be able to do?",
+      "help": "This is what I think you need. Switch things off, rename, add your own, or move something to later.",
+      "loading": "Thinking about features…",
+      "on": "Include “{{title}}”",
+      "name": "Feature name",
+      "when": "When",
+      "now": "Now",
+      "later": "Later",
+      "add": "Add a feature",
+      "addPlaceholder": "For example: remind me every morning",
+      "unsupportedTitle": "“{{title}}” isn’t possible yet",
+      "unsupportedBody": "Studio can’t build this at the moment. What does work: {{alternative}}",
+      "useAlternative": "Use this instead",
+      "dismiss": "Leave it out"
+    },
+    "style": {
+      "title": "Pick a style",
+      "help": "One click is enough. You can change everything later.",
+      "ownColor": "Your own main color",
+      "optional": "Optional",
+      "cards": {
+        "calm": "Calm",
+        "lively": "Lively",
+        "sleek": "Sleek"
+      },
+      "sampleOk": "Ok",
+      "sampleCancel": "Cancel"
+    },
+    "plan": {
+      "loadingTitle": "Making your plan…",
+      "loadingBody": "This takes a moment. Studio is working out pages, data and the style.",
+      "title": "This is the plan",
+      "help": "Check it, change what you like, then build. Nothing here is final.",
+      "fallback": "I couldn’t make a detailed plan, so this is a simple start. You can add pages and features.",
+      "issues": "This plan still has problems:",
+      "name": "App name",
+      "pages": "Pages",
+      "navigation": "Navigation",
+      "nav": {
+        "tabs": "Tabs",
+        "menu": "Menu",
+        "single": "One page"
+      },
+      "pageName": "Page name",
+      "purpose": "What this page is for",
+      "purposePlaceholder": "What is this page for?",
+      "removePage": "Remove {{name}}",
+      "addPage": "Add a page",
+      "addPagePlaceholder": "Name of the new page",
+      "data": "What is saved",
+      "dataList": "Saved on the phone: {{models}}.",
+      "dataNone": "Nothing special is saved.",
+      "connections": "Connections",
+      "connectionsDefault": "Standard: everything is saved on the phone, no account, no internet needed. Only switch these on if you need them.",
+      "signIn": "Sign in with an account",
+      "signInHelp": "People log in with email. Needed if different people must see different data.",
+      "sync": "Sync between devices",
+      "syncHelp": "Data is also kept online (Supabase) so several phones show the same. You set up the database later.",
+      "assumptions": "Assumptions",
+      "assumption": "Assumption",
+      "addAssumption": "Add an assumption",
+      "addAssumptionPlaceholder": "For example: for adults only"
+    }
+  },
+  "build": {
+    "title": "Building your app",
+    "starting": "Getting started…",
+    "phase": {
+      "scaffold": "Setting up your app…",
+      "core": "Building the foundation…",
+      "pages": "Page {{n}} of {{total}} is being built",
+      "integrate": "Checking everything works…"
+    },
+    "done": "Your app is ready!",
+    "partial": "Your app is ready, except for a few pages.",
+    "cancelled": "Stopped. Everything that was finished is kept.",
+    "eta": "About {{minutes}} min to go (an estimate from the pages built so far)",
+    "etaUnknown": "Studio is estimating the time…",
+    "parallel_one": "{{count}} page at a time",
+    "parallel_other": "{{count}} pages at a time",
+    "pages": "Pages",
+    "lookAround": "Look around in your app",
+    "building": "Being built",
+    "ready": "Ready",
+    "problem": "Needs attention",
+    "waiting": "Waiting",
+    "status": {
+      "waiting": "Waiting",
+      "building": "Building…",
+      "done": "Ready",
+      "failed": "Not finished",
+      "attention": "Needs a look"
+    },
+    "cancel": "Stop building",
+    "notReady": "Not finished yet: {{pages}}.",
+    "retry": "Try these again",
+    "open": "Open my app",
+    "tip": "Tip: pick a page in the list to change just that page, or choose “Whole app” to change everything at once.",
+    "banner": "Your app is still being built: page {{n}} of {{total}}.",
+    "bannerLink": "See progress"
   }
 }

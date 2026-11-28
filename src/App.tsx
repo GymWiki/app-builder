@@ -1,6 +1,9 @@
 import { lazy, Suspense, useEffect } from "react";
 import { initChatListeners } from "@/features/chat/chat-store";
 import { UpdatePrompt } from "@/features/update/update-prompt";
+import OnboardingPage from "@/features/onboarding/onboarding-page";
+import BuildPage from "@/features/onboarding/build-page";
+import { initBuildListeners } from "@/features/onboarding/build-store";
 import { initTaskListeners } from "@/features/tasks/task-store";
 import { initJobListeners } from "@/features/sections/publish/jobs-store";
 import { initProfileListener } from "@/features/profile/profile-store";
@@ -46,6 +49,8 @@ const router = createHashRouter([
       { path: "/", element: <HomePage /> },
       { path: "/setup", element: <SetupPage /> },
       { path: "/settings", element: <SettingsPage /> },
+      { path: "/new", element: <OnboardingPage /> },
+      { path: "/build/:id", element: <BuildPage /> },
       { path: "/project/:id", element: <ProjectPage /> },
       { path: "/design", element: <DesignPage /> },
       { path: "*", element: <Navigate to="/" replace /> },
@@ -56,6 +61,7 @@ const router = createHashRouter([
 export function App() {
   useEffect(() => initChatListeners(), []);
   useEffect(() => initTaskListeners(), []);
+  useEffect(() => initBuildListeners(), []);
   useEffect(() => initPreviewListener(), []);
   useEffect(() => initJobListeners(), []);
   useEffect(() => initProfileListener(), []);

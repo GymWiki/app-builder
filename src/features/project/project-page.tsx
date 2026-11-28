@@ -36,6 +36,7 @@ import { pageForRoute } from "@/lib/routes";
 import { runTest } from "@/features/sections/publish/jobs-store";
 import { toastError } from "@/lib/toast";
 import { TaskTray } from "@/features/tasks/task-tray";
+import { BuildBanner } from "@/features/onboarding/build-banner";
 import { PagesGrid } from "./pages-grid";
 import { scopePages, type Scope } from "./scope";
 import { useTasks } from "@/features/tasks/task-store";
@@ -261,6 +262,7 @@ export default function ProjectPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <BuildBanner projectId={p.id} />
       {/* ── bovenbalk ── */}
       <header className="bg-background flex h-14 shrink-0 items-center gap-2 border-b px-3">
         <Button asChild variant="ghost" size="icon" aria-label={t("common.back")} title={t("common.back")}>
