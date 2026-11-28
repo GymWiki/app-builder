@@ -3,6 +3,9 @@
 # Optioneel: het geheim TAURI_SIGNING_PRIVATE_KEY maakt ook de update-bestanden; zonder dat geheim worden alleen de installers gebouwd.
 name: build
 on:
+  # Zolang dit bestand nog niet op de hoofdbranch staat, toont GitHub geen "Run workflow"-knop; daarom start hij ook bij een push naar deze branch.
+  push:
+    branches: [claude/studio-flutter-builder-81tutr]
   workflow_dispatch:
     inputs:
       platforms:
