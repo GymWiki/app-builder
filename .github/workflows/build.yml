@@ -1,0 +1,80 @@
+# Bouwt Studio voor Windows, macOS en Linux en zet de installers als download bij de run (tab "Actions" > de run > "Artifacts").
+# Handmatig starten: Actions > "build" > "Run workflow". Er wordt geen release gemaakt (daarvoor is release.yml).
+# Optioneel: het geheim TAURI_SIGNING_PRIVATE_KEY maakt ook de update-bestanden; zonder dat geheim worden alleen de installers gebouwd.
+name: build
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Welke systemen bouwen?"
+        type: choice
+        default: all
+        options: [all, windows, macos, linux]
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            platform: windows-latest
+            args: ""
+            bundle: "src-tauri/target/release/bundle"
+          - name: macos
+            platform: macos-latest
+            args: "--target universal-apple-darwin"
+            bundle: "src-tauri/target/universal-apple-darwin/release/bundle"
+          - name: linux
+            platform: ubuntu-22.04
+            args: ""
+            bundle: "src-tauri/target/release/bundle"
+    runs-on: ${{ matrix.platform }}
+    if: ${{ inputs.platforms == 'all' || inputs.platforms == matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.name == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Linux dependencies
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev
+      - run: npm ci
+      # Zonder ondertekeningssleutel geen update-bestanden maken (anders faalt de build).
+      - name: Updater artifacts only when a signing key exists
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            node -e "const f='src-tauri/tauri.conf.json';const c=require('./'+f);c.bundle.createUpdaterArtifacts=false;require('fs').writeFileSync(f,JSON.stringify(c,null,2))"
+            echo "No signing key: building installers only."
+          fi
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          args: ${{ matrix.args }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: studio-${{ matrix.name }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            ${{ matrix.bundle }}/msi/*.msi
+            ${{ matrix.bundle }}/nsis/*.exe
+            ${{ matrix.bundle }}/dmg/*.dmg
+            ${{ matrix.bundle }}/macos/*.tar.gz
+            ${{ matrix.bundle }}/deb/*.deb
+            ${{ matrix.bundle }}/rpm/*.rpm
+            ${{ matrix.bundle }}/appimage/*.AppImage

@@ -447,3 +447,9 @@ Doel: het getekende vak betrouwbaar omzetten naar widgets, zonder hulpbestand in
 - **Eerlijke beperkingen:** Android 12+ toont altijd het app-icoon op de gekozen kleur (systeemregel; de UI zegt dat); heeft het iOS-launchscherm een eigen opzet, dan blijft het ongewijzigd en wordt dat gemeld.
 - **Getest:** unit-tests en een echte controle op een door `flutter create` gemaakt project (alle geschreven XML-bestanden slagen voor `xmllint`). **Niet getest:** de bestanden in een echte Android/iOS-build of op een toestel.
 - Afbeeldingen optimaliseren (de andere AI-knop in Assets) blijft nog AI; `UX-test`: splash = 1 handeling.
+
+## GitHub Action om Studio te downloaden
+
+- `.github/workflows/build.yml` ("build"): handmatig te starten (Actions → build → Run workflow, met keuze alles/windows/macos/linux). Bouwt de installers met `tauri-action` en zet ze 14 dagen als **artifact** bij de run (Windows: `.msi` en `.exe`; macOS: `.dmg`; Linux: `.deb`, `.rpm`, `.AppImage`). Er wordt geen release gemaakt; `release.yml` blijft voor updates (tag `v*`).
+- Zonder het geheim `TAURI_SIGNING_PRIVATE_KEY` zet de workflow `createUpdaterArtifacts` in de CI-kopie van de config uit, anders faalt de build. De installers zijn dan niet ondertekend voor het besturingssysteem: Windows SmartScreen en macOS Gatekeeper waarschuwen bij installeren (code-signing is niet ingesteld).
+- **Niet gedraaid:** de workflow is hier niet uitgevoerd (geen GitHub Actions-toegang); alleen de YAML is gecontroleerd. Het eerste echte run kan nog aanpassing vragen (bv. pad van de bundles).
