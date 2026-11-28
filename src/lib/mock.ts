@@ -139,7 +139,7 @@ const purchasesView = (id: string): PurchasesView =>
     projects.find((p) => p.id === id)?.bundleId ?? "com.example.app",
     purchasesApplying.has(id),
   );
-let projects: Project[] = ["ready", "nodevices", "noscreens", "inspect", "purchases", "iframe", "slowstart", "nopreview", "update"].includes(scenario)
+let projects: Project[] = ["ready", "nodevices", "noscreens", "inspect", "purchases", "iframe", "slowstart", "nopreview", "update", "licstall"].includes(scenario)
   ? [
       mk("friday_scores", "Friday Scores", "scoreboard", "testing", 12, 4),
       mk("water_tracker", "Water Tracker", "tracker", "draft", 60 * 26, 1),
@@ -158,7 +158,7 @@ const tool = (id: ToolStatus["id"], state: ToolStatus["state"], extra: Partial<T
   ...extra,
 });
 let loggedIn = scenario !== "fresh";
-let fixed = scenario !== "fresh";
+let fixed = scenario !== "fresh" && scenario !== "licstall";
 
 // ── chat (nagebootst gedrag van de echte backend) ──
 const chats = new Map<string, unknown[]>();
@@ -370,6 +370,56 @@ function startMockFrames() {
     () => (preview.status === "stopped" ? framesTimer && clearInterval(framesTimer) : sendMockFrame()),
     500,
   );
+}
+let licenseConsent = false;
+let licenseCancelled = false;
+/** Gesimuleerde licentie-flow: 7 vragen, of (mock=licstall) een vastloper die met de andere methode wel lukt. */
+async function mockLicenses(alternative: boolean) {
+  licenseCancelled = false;
+  const stall = scenario === "licstall" && !alternative;
+  emit("license-progress", { accepted: 0, total: null, phase: "starting" });
+  await sleep(300);
+  if (stall) {
+    await sleep(700);
+    emit("license-progress", { accepted: 0, total: null, phase: "stalled" });
+    for (let i = 0; i < 6 && !licenseCancelled; i++) await sleep(100);
+    emit("license-done", {
+      result: { ok: false, accepted: 0, total: null, already: false, stalled: true, cancelled: licenseCancelled, exit: null, method: "sdkmanager", log: "" },
+      problems: licenseCancelled ? [] : [{ code: "java_missing" }],
+      check: null,
+      confirmed: false,
+      seconds: 20,
+      alternative,
+    });
+    return;
+  }
+  for (let i = 1; i <= 7; i++) {
+    await sleep(250);
+    if (licenseCancelled) {
+      emit("license-done", {
+        result: { ok: false, accepted: i - 1, total: 7, already: false, stalled: false, cancelled: true, exit: null, method: "sdkmanager", log: "" },
+        problems: [],
+        check: null,
+        confirmed: false,
+        seconds: 2,
+        alternative,
+      });
+      return;
+    }
+    emit("license-progress", { accepted: i, total: 7, phase: i === 7 ? "done" : "asking" });
+  }
+  fixed = true;
+  emit("license-done", {
+    result: { ok: true, accepted: 7, total: 7, already: false, stalled: false, cancelled: false, exit: 0, method: alternative ? "flutter" : "sdkmanager", log: "All SDK package licenses accepted." },
+    problems: [],
+    check: {
+      flutter: tool("flutter", "ok", { version: "3.27.1", minVersion: "3.24.0" }),
+      android: tool("android", "ok", { version: "35.0.0" }),
+    },
+    confirmed: true,
+    seconds: 3,
+    alternative,
+  });
 }
 const mockShots = new Map<string, string>();
 const uxCounts: Record<string, Record<string, number>> = {};
@@ -709,12 +759,34 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       return args.component === "claude"
         ? {
             program: "winget",
-            args: ["install", "--id", "Anthropic.ClaudeCode", "-e"],
-            display: "winget install --id Anthropic.ClaudeCode -e",
+            args: ["install", "--id", "Anthropic.ClaudeCode", "-e", "--silent", "--accept-package-agreements", "--accept-source-agreements"],
+            display:
+              "winget install --id Anthropic.ClaudeCode -e --silent --accept-package-agreements --accept-source-agreements",
           }
-        : args.component === "android_licenses"
-          ? { program: "flutter", args: ["doctor", "--android-licenses"], display: "flutter doctor --android-licenses" }
-          : null;
+        : null;
+    case "android_licenses_status":
+      return { consent: licenseConsent };
+    case "android_licenses_accept": {
+      if (!args.agree && !licenseConsent) throw new AppError("invalid", "consent required");
+      licenseConsent = true;
+      void mockLicenses(!!args.alternative);
+      return;
+    }
+    case "android_licenses_cancel":
+      licenseCancelled = true;
+      return;
+    case "install_run": {
+      const component = args.component as string;
+      void (async () => {
+        for (const line of ["Found Anthropic Claude Code", "Downloading…", "Successfully installed"]) {
+          await sleep(300);
+          emit("install-line", { component, line });
+        }
+        fixed = true;
+        emit("install-done", { component, ok: true, exit: 0, log: "" });
+      })();
+      return;
+    }
     case "pty_open_claude_login":
     case "pty_open_install": {
       const id = "mock-pty";

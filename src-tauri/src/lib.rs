@@ -1,5 +1,6 @@
 mod extent;
 mod config;
+mod licenses;
 mod data_gen;
 mod preflight;
 mod splash;
@@ -162,6 +163,10 @@ pub fn run() {
             commands::check_flutter,
             commands::claude_login_status,
             commands::install_plan,
+            commands::android_licenses_status,
+            commands::android_licenses_accept,
+            commands::android_licenses_cancel,
+            commands::install_run,
             commands::pty_open_claude_login,
             commands::pty_open_install,
             commands::pty_backlog,

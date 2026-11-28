@@ -23,6 +23,7 @@ import { qk, useAppInfo } from "@/hooks";
 import { api, onEvent } from "@/lib/ipc";
 import type { InstallPlan } from "@/lib/types";
 import { toastError } from "@/lib/toast";
+import { initLicenseListeners } from "./license-flow";
 import { ToolRow } from "./tool-row";
 import { useToolchain, type RowId } from "./use-toolchain";
 
@@ -36,7 +37,7 @@ interface TerminalSession {
   finished: boolean;
 }
 
-const PLAN_COMPONENTS = ["git", "claude", "android_licenses"] as const;
+const PLAN_COMPONENTS = ["git", "claude"] as const;
 
 export function SetupPage() {
   const { t } = useTranslation();
@@ -47,6 +48,9 @@ export function SetupPage() {
   const [terminal, setTerminal] = useState<TerminalSession | null>(null);
   const [confirm, setConfirm] = useState<{ component: string; label: string; plan: InstallPlan } | null>(null);
   const [plans, setPlans] = useState<Record<string, InstallPlan | null>>({});
+  // Installaties (git, claude) lopen zonder terminal: Studio start het vaste commando, laat de voortgang zien en controleert daarna zelf opnieuw.
+  const [install, setInstall] = useState<{ component: string; row: RowId; label: string; lines: string[]; done: boolean; ok: boolean } | null>(null);
+  const [installDetails, setInstallDetails] = useState(false);
 
   // Installatieplannen (vast lijstje in Rust) per component ophalen.
   useEffect(() => {
@@ -66,6 +70,37 @@ export function SetupPage() {
     });
     return () => void un.then((f) => f());
   }, [recheck]);
+
+  useEffect(() => initLicenseListeners(qc), [qc]);
+
+  useEffect(() => {
+    const a = onEvent<{ component: string; line: string }>("install-line", (e) =>
+      setInstall((cur) => (cur && cur.component === e.component ? { ...cur, lines: [...cur.lines, e.line].slice(-60) } : cur)),
+    );
+    const b = onEvent<{ component: string; ok: boolean }>("install-done", (e) => {
+      setInstall((cur) => {
+        if (!cur || cur.component !== e.component) return cur;
+        void recheck(cur.row);
+        return { ...cur, done: true, ok: e.ok };
+      });
+    });
+    return () => {
+      void a.then((f) => f());
+      void b.then((f) => f());
+    };
+  }, [recheck]);
+
+  const startInstall = async (component: string, label: string) => {
+    const row: RowId = component as RowId;
+    setInstall({ component, row, label, lines: [], done: false, ok: false });
+    setInstallDetails(false);
+    try {
+      await api.installRun(component);
+    } catch (e) {
+      setInstall(null);
+      toastError(e, t);
+    }
+  };
 
   const open = async (row: RowId, label: string, start: () => Promise<string>) => {
     try {
@@ -101,7 +136,7 @@ export function SetupPage() {
           ? info?.minVersions.claude
           : undefined;
   const claudeOk = rows.find((r) => r.id === "claude")?.state === "ok";
-  const busy = !!terminal && !terminal.finished;
+  const busy = (!!terminal && !terminal.finished) || (!!install && !install.done);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -145,6 +180,32 @@ export function SetupPage() {
               onSignIn={() => void open("claudeLogin", t("tools.claudeLogin.name"), api.ptyOpenClaudeLogin)}
               onRecheck={() => void recheck(row.id)}
             >
+              {install?.row === row.id && (
+                <div className="mt-4 space-y-2" role="status" aria-live="polite">
+                  <p className="t-small inline-flex items-center gap-2 font-medium">
+                    {!install.done && <Spinner className="size-3.5" />}
+                    {install.label} ·{" "}
+                    {!install.done ? t("setup.installState.running") : install.ok ? t("setup.installState.ok") : t("setup.installState.failed")}
+                  </p>
+                  {install.lines.length > 0 && (
+                    <div>
+                      <button
+                        type="button"
+                        aria-expanded={installDetails}
+                        onClick={() => setInstallDetails((d) => !d)}
+                        className="text-muted-foreground hover:text-foreground t-small rounded underline-offset-2 hover:underline"
+                      >
+                        {installDetails ? t("common.hideDetails") : t("common.showDetails")}
+                      </button>
+                      {installDetails && (
+                        <pre className="bg-muted t-small mt-2 max-h-40 overflow-auto rounded-xl p-3 font-mono whitespace-pre-wrap">
+                          {install.lines.join("\n")}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               {terminal?.row === row.id && (
                 <div className="mt-4 space-y-2">
                   <div className="flex items-center justify-between">
@@ -201,8 +262,7 @@ export function SetupPage() {
               onClick={() => {
                 if (!confirm) return;
                 const { component, label } = confirm;
-                const row: RowId = component === "android_licenses" ? "android" : (component as RowId);
-                void open(row, label, () => api.ptyOpenInstall(component));
+                void startInstall(component, label);
               }}
             >
               {t("setup.confirmInstall.run")}

@@ -261,7 +261,7 @@
     "skipHint": "You can finish setup later from Settings, but you can’t build until everything is ready.",
     "confirmInstall": {
       "title": "Install {{tool}}?",
-      "body": "Studio will run this command in a terminal you can watch:",
+      "body": "Studio will run exactly this command and show you the progress. By choosing “Run command” you also accept the terms of the package and its source:",
       "run": "Run command",
       "note": "Windows may ask for permission. Studio never installs anything without asking first."
     },
@@ -277,6 +277,11 @@
       "hint": "A browser window opens so you can sign in to Claude yourself. If it asks for a code, paste it in the terminal below. Studio never sees your password or token.",
       "needsClaude": "Install Claude Code first, then you can sign in.",
       "waiting": "Waiting for you to sign in…"
+    },
+    "installState": {
+      "running": "Installing…",
+      "ok": "Installed",
+      "failed": "Didn’t work. Open the details."
     }
   },
   "tools": {
@@ -352,8 +357,7 @@
           "Come back here and choose “Check again”."
         ],
         "licenses": [
-          "Choose “Accept licenses” and answer y to each question in the terminal.",
-          "Choose “Check again”."
+          "Choose “Accept licenses” (after ticking the box). Studio does the rest and checks it for you."
         ],
         "cmdline_tools": [
           "Open Android Studio, then Settings, then Android SDK, then the SDK Tools tab.",
@@ -368,7 +372,34 @@
           "Finish the Flutter SDK step above first."
         ]
       },
-      "acceptLicenses": "Accept licenses"
+      "acceptLicenses": "Accept licenses",
+      "license": {
+        "agree": "I agree to the Android SDK terms.",
+        "terms": "Read the terms",
+        "agreedBefore": "You agreed to the Android SDK terms earlier. Studio accepts the licenses for you.",
+        "starting": "Starting…",
+        "progress": "License {{accepted}} of {{total}} accepted",
+        "checking": "All licenses accepted. Checking that everything works…",
+        "stop": "Stop",
+        "stalled": "This is taking longer than usual…",
+        "stalledHelp": "Nothing has happened for a while. Studio is looking for the cause.",
+        "allDone_one": "Done: {{count}} license accepted and checked, in {{seconds}} seconds.",
+        "allDone_other": "Done: {{count}} licenses accepted and checked, in {{seconds}} seconds.",
+        "alreadyDone": "The licenses were already accepted. Everything checks out.",
+        "acceptedButDoctor": "The licenses are accepted, but Flutter still reports a problem with the Android setup. Open the technical details.",
+        "cancelled": "Stopped. Nothing was changed.",
+        "failed": "The licenses couldn’t be accepted yet.",
+        "fixForMe": "Fix this for me",
+        "retry": "Try again",
+        "problems": {
+          "java_missing": "Java wasn’t found. It comes with Android Studio; install Android Studio first.",
+          "java_broken": "Java was found but doesn’t start. Reinstalling Android Studio fixes this.",
+          "sdk_missing": "The Android SDK wasn’t found. Install Android Studio and open it once.",
+          "cmdline_tools_missing": "The Android command-line tools are missing. In Android Studio: Settings, Android SDK, SDK Tools, tick “Android SDK Command-line Tools”.",
+          "no_network": "Google’s download server can’t be reached. Check your internet connection or VPN.",
+          "flutter_missing": "Flutter wasn’t found."
+        }
+      }
     },
     "claude": {
       "name": "Claude Code",

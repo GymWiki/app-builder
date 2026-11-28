@@ -6,7 +6,6 @@ import {
   Download,
   ExternalLink,
   Loader2,
-  Play,
   Terminal,
   XCircle,
 } from "lucide-react";
@@ -17,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import type { InstallPlan } from "@/lib/types";
 import { openExternal } from "@/lib/open";
 import { cn } from "@/lib/utils";
+import { LicenseFlow } from "./license-flow";
 import type { Row } from "./use-toolchain";
 
 interface Props {
@@ -86,8 +86,9 @@ export function ToolRow({
   else if (isLogin) statusText = t(canSignIn ? "setup.login.hint" : "setup.login.needsClaude");
   else statusText = t(state === "missing" ? "setup.missing" : "setup.warning");
 
-  const installKey = id === "android" && issue === "licenses" ? "android_licenses" : id;
-  const plan = installPlans[installKey];
+  const licenses = id === "android" && issue === "licenses";
+  const installKey = id;
+  const plan = licenses ? null : installPlans[installKey];
   const canDownload =
     !isLogin && bad && id !== "android" ? true : id === "android" && (issue === "no_sdk" || issue === "cmdline_tools");
   const needsFlutterFirst = id === "android" && issue === "needs_flutter";
@@ -127,11 +128,11 @@ export function ToolRow({
                   size="sm"
                   disabled={busy}
                   onClick={() =>
-                    onInstall(installKey, t(id === "android" ? "tools.android.acceptLicenses" : `${ns}.name`), plan)
+                    onInstall(installKey, t(`${ns}.name`), plan)
                   }
                 >
-                  {id === "android" ? <Play /> : <Download />}
-                  {id === "android" ? t("tools.android.acceptLicenses") : t("setup.install")}
+                  <Download />
+                  {t("setup.install")}
                 </Button>
               )}
               {isLogin && canSignIn && (
@@ -144,12 +145,12 @@ export function ToolRow({
                   <ExternalLink /> {t("setup.download")}
                 </Button>
               )}
-              {!isLogin && !needsFlutterFirst && (
+              {!isLogin && !needsFlutterFirst && !licenses && (
                 <Button size="sm" variant="ghost" onClick={onRecheck}>
                   {t("common.checkAgain")}
                 </Button>
               )}
-              {steps.length > 0 && (
+              {steps.length > 0 && !licenses && (
                 <Button size="sm" variant="ghost" aria-expanded={stepsOpen} onClick={() => setStepsOpen((o) => !o)}>
                   {stepsOpen ? t("setup.hideSteps") : t("setup.showSteps")}
                   <ChevronDown
@@ -159,6 +160,8 @@ export function ToolRow({
               )}
             </div>
           )}
+
+          {id === "android" && <LicenseFlow showForm={licenses && state !== "checking"} />}
 
           {stepsOpen && steps.length > 0 && (
             <ol className="bg-muted/60 t-body mt-3 list-decimal space-y-1.5 rounded-xl py-3 pr-4 pl-8">

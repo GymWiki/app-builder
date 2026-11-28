@@ -261,7 +261,7 @@
     "skipHint": "Je kunt de installatie later afronden via Instellingen, maar bouwen kan pas als alles klaar is.",
     "confirmInstall": {
       "title": "{{tool}} installeren?",
-      "body": "Studio voert dit commando uit in een terminal waar je live in meekijkt:",
+      "body": "Studio voert precies dit commando uit en laat de voortgang zien. Door “Commando uitvoeren” te kiezen ga je ook akkoord met de voorwaarden van het pakket en de bron:",
       "run": "Commando uitvoeren",
       "note": "Windows vraagt mogelijk om toestemming. Studio installeert nooit iets zonder het eerst te vragen."
     },
@@ -277,6 +277,11 @@
       "hint": "Er opent een browservenster waarin je zelf inlogt bij Claude. Vraagt het om een code, plak die dan in de terminal hieronder. Studio ziet je wachtwoord of token nooit.",
       "needsClaude": "Installeer eerst Claude Code, daarna kun je inloggen.",
       "waiting": "Wachten tot je bent ingelogd…"
+    },
+    "installState": {
+      "running": "Installeren…",
+      "ok": "Geïnstalleerd",
+      "failed": "Het lukte niet. Open de details."
     }
   },
   "tools": {
@@ -352,8 +357,7 @@
           "Kom terug en kies “Opnieuw controleren”."
         ],
         "licenses": [
-          "Kies “Licenties accepteren” en antwoord y op elke vraag in de terminal.",
-          "Kies “Opnieuw controleren”."
+          "Kies “Licenties accepteren” (na het vinkje). Studio doet de rest en controleert het voor je."
         ],
         "cmdline_tools": [
           "Open Android Studio, daarna Settings, Android SDK en het tabblad SDK Tools.",
@@ -368,7 +372,34 @@
           "Rond eerst de Flutter SDK-stap hierboven af."
         ]
       },
-      "acceptLicenses": "Licenties accepteren"
+      "acceptLicenses": "Licenties accepteren",
+      "license": {
+        "agree": "Ik ga akkoord met de Android SDK-voorwaarden.",
+        "terms": "Lees de voorwaarden",
+        "agreedBefore": "Je ging eerder akkoord met de Android SDK-voorwaarden. Studio accepteert de licenties voor je.",
+        "starting": "Starten…",
+        "progress": "Licentie {{accepted}} van {{total}} geaccepteerd",
+        "checking": "Alle licenties geaccepteerd. Controleren of alles werkt…",
+        "stop": "Stoppen",
+        "stalled": "Dit duurt langer dan normaal…",
+        "stalledHelp": "Er gebeurt al een tijdje niets. Studio zoekt de oorzaak.",
+        "allDone_one": "Klaar: {{count}} licentie geaccepteerd en gecontroleerd, in {{seconds}} seconden.",
+        "allDone_other": "Klaar: {{count}} licenties geaccepteerd en gecontroleerd, in {{seconds}} seconden.",
+        "alreadyDone": "De licenties waren al geaccepteerd. Alles klopt.",
+        "acceptedButDoctor": "De licenties zijn geaccepteerd, maar Flutter meldt nog een probleem met de Android-installatie. Open de technische details.",
+        "cancelled": "Gestopt. Er is niets veranderd.",
+        "failed": "De licenties konden nog niet worden geaccepteerd.",
+        "fixForMe": "Los dit voor mij op",
+        "retry": "Opnieuw proberen",
+        "problems": {
+          "java_missing": "Java is niet gevonden. Die zit bij Android Studio; installeer eerst Android Studio.",
+          "java_broken": "Java is gevonden maar start niet. Android Studio opnieuw installeren lost dit op.",
+          "sdk_missing": "De Android SDK is niet gevonden. Installeer Android Studio en open het één keer.",
+          "cmdline_tools_missing": "De Android command-line tools ontbreken. In Android Studio: Settings, Android SDK, SDK Tools, vink “Android SDK Command-line Tools” aan.",
+          "no_network": "De downloadserver van Google is niet bereikbaar. Controleer je internetverbinding of vpn.",
+          "flutter_missing": "Flutter is niet gevonden."
+        }
+      }
     },
     "claude": {
       "name": "Claude Code",

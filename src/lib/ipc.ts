@@ -79,6 +79,11 @@ export const api = {
   installPlan: (component: string) => call<InstallPlan | null>("install_plan", { component }),
 
   ptyOpenClaudeLogin: () => call<string>("pty_open_claude_login"),
+  androidLicensesStatus: () => call<{ consent: boolean }>("android_licenses_status"),
+  androidLicensesAccept: (agree: boolean, alternative: boolean) =>
+    call<void>("android_licenses_accept", { agree, alternative }),
+  androidLicensesCancel: () => call<void>("android_licenses_cancel"),
+  installRun: (component: string) => call<void>("install_run", { component }),
   ptyOpenInstall: (component: string) => call<string>("pty_open_install", { component }),
   ptyBacklog: (id: string) => call<{ data: string; end: number }>("pty_backlog", { id }),
   ptyWrite: (id: string, data: string) => call<void>("pty_write", { id, data }),

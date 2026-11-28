@@ -22,21 +22,25 @@ const ok = (c, m) => {
     .catch(() => {});
   const finishBtn = p.getByRole("button", { name: "Start building" });
   ok(await finishBtn.isDisabled(), "finish disabled while tools missing");
-  await p.getByRole("button", { name: "Accept licenses" }).click();
-  await p.getByRole("alertdialog").waitFor();
-  ok(
-    await p.getByRole("alertdialog").getByText("flutter doctor --android-licenses").isVisible(),
-    "confirm dialog shows exact command",
-  );
-  await p.getByRole("button", { name: "Run command" }).click();
-  await p.locator("[role=group][aria-label=Terminal]").waitFor();
-  ok(true, "terminal opens after confirmation");
-  await p.getByText("Finished").first().waitFor({ timeout: 6000 });
-  await p.screenshot({ path: `${S}/10-setup-terminal.png` });
-  // Claude installeren (mock: winget) en daarna inloggen
+  // Android-licenties: geen terminal. Zonder toestemming kan er niet gestart worden; met het vinkje loopt het vanzelf.
+  const accept = p.getByRole("button", { name: "Accept licenses" });
+  ok(await accept.isDisabled(), "accepting licenses needs the consent checkbox first");
+  ok(await p.getByRole("link", { name: /Read the terms/ }).count() === 0 && (await p.getByRole("button", { name: /Read the terms/ }).count()) === 1, "a link to the Android SDK terms is shown");
+  await p.getByLabel("I agree to the Android SDK terms.").check();
+  await accept.click();
+  await p.getByText(/License \d of 7 accepted/).first().waitFor({ timeout: 6000 });
+  ok(true, "progress is shown in plain language");
+  ok((await p.locator("[role=group][aria-label=Terminal]").count()) === 0, "no terminal for the licenses");
+  await p.getByText(/Done: 7 licenses accepted and checked/).waitFor({ timeout: 8000 });
+  ok(true, "the check (flutter doctor) runs automatically; no 'Check again' needed");
+  await p.screenshot({ path: `${S}/10-setup-licenses.png` });
+  // Claude installeren (winget, zonder terminal) en daarna inloggen
   await p.getByRole("button", { name: "Install for me" }).click();
+  await p.getByRole("alertdialog").getByText(/--accept-package-agreements/).waitFor();
+  ok(true, "the confirm dialog shows the exact command incl. the agreement flags");
   await p.getByRole("button", { name: "Run command" }).click();
-  await p.getByText("Finished").first().waitFor({ timeout: 6000 });
+  await p.getByText("Installed").first().waitFor({ timeout: 6000 });
+  ok((await p.locator("[role=group][aria-label=Terminal]").count()) === 0, "installing needs no terminal either");
   await p.getByRole("button", { name: "Sign in" }).click();
   await p.getByText("Finished").first().waitFor({ timeout: 6000 });
   await p.getByText("Connected ✓").waitFor({ timeout: 8000 });

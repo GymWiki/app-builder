@@ -129,17 +129,29 @@ pub fn log_event(level: String, message: String) {
 
 #[tauri::command]
 pub async fn check_git() -> AppResult<ToolStatus> {
-    blocking(|| Ok(toolchain::check_git())).await
+    blocking(|| {
+        crate::licenses::refresh_process_env();
+        Ok(toolchain::check_git())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn check_claude() -> AppResult<ToolStatus> {
-    blocking(|| Ok(toolchain::check_claude())).await
+    blocking(|| {
+        crate::licenses::refresh_process_env();
+        Ok(toolchain::check_claude())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn check_flutter() -> AppResult<FlutterCheck> {
-    blocking(|| Ok(toolchain::check_flutter())).await
+    blocking(|| {
+        crate::licenses::refresh_process_env();
+        Ok(toolchain::check_flutter())
+    })
+    .await
 }
 
 /// Alleen een boolean: is de gebruiker ingelogd? Tokens worden nooit gelezen.
@@ -168,6 +180,111 @@ pub fn pty_open_install(app: AppHandle, state: State<'_, AppState>, component: S
         .ok_or_else(|| AppError::Invalid(format!("no guided install for {component}")))?;
     let program = proc::find(&plan.program).ok_or_else(|| AppError::ToolMissing(plan.program.clone()))?;
     state.pty.spawn(&app, &program, &plan.args, None)
+}
+
+// ───────────── Android-licenties en installaties zonder terminal ─────────────
+
+static LICENSE_RUN: std::sync::Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> = std::sync::Mutex::new(None);
+
+/// Heeft de gebruiker al toestemming gegeven voor de Android SDK-voorwaarden? (Eén keer is genoeg.)
+#[tauri::command]
+pub fn android_licenses_status(state: State<'_, AppState>) -> AppResult<serde_json::Value> {
+    let consent = state.db.setting_get("android_license_consent")?.as_deref() == Some("true");
+    Ok(serde_json::json!({ "consent": consent }))
+}
+
+/// Accepteert de Android-licenties: `sdkmanager --licenses` (of `flutter doctor --android-licenses` bij `alternative`) als subproces met pipes,
+/// vragen worden herkend en met `y` beantwoord. **Alleen met toestemming** (`agree`, of eerder gegeven en onthouden). Voortgang via `license-progress`,
+/// de uitkomst (met automatische `flutter doctor`-controle en diagnose) via `license-done`.
+#[tauri::command]
+pub fn android_licenses_accept(app: AppHandle, state: State<'_, AppState>, agree: bool, alternative: bool) -> AppResult<()> {
+    let stored = state.db.setting_get("android_license_consent")?.as_deref() == Some("true");
+    if !agree && !stored {
+        return Err(AppError::Invalid("the Android SDK terms must be accepted by the user first".into()));
+    }
+    if agree && !stored {
+        state.db.setting_set("android_license_consent", "true")?;
+    }
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let mut g = LICENSE_RUN.lock().unwrap_or_else(|e| e.into_inner());
+        if g.is_some() {
+            return Err(AppError::Invalid("licenses are already being accepted".into()));
+        }
+        *g = Some(cancel.clone());
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let env = crate::licenses::system_env();
+        let started = std::time::Instant::now();
+        let h2 = handle.clone();
+        let emit_progress = move |p: crate::licenses::Progress| {
+            let _ = h2.emit("license-progress", p);
+        };
+        let (result, problems) = match crate::licenses::prepare(env.clone(), alternative) {
+            Ok(prep) => {
+                let r = crate::licenses::run(&prep, &crate::licenses::RunOpts::default(), &cancel, &emit_progress);
+                let problems = if r.ok || r.cancelled { vec![] } else { crate::licenses::diagnose(&env, true) };
+                (Some(r), problems)
+            }
+            Err(p) => (None, p),
+        };
+        // Controle na afloop, automatisch: `flutter doctor` bevestigt dat de licenties echt geaccepteerd zijn.
+        let ok = result.as_ref().is_some_and(|r| r.ok);
+        let check = if ok {
+            crate::licenses::refresh_process_env();
+            Some(toolchain::check_flutter())
+        } else {
+            None
+        };
+        let confirmed = check.as_ref().is_some_and(|c| c.android.state == "ok");
+        if let Some(state) = handle.try_state::<AppState>() {
+            let _ = state.db.ux_record(None, "setup", if ok { "deterministic" } else { "click" });
+        }
+        let _ = handle.emit(
+            "license-done",
+            serde_json::json!({
+                "result": result,
+                "problems": problems,
+                "check": check,
+                "confirmed": confirmed,
+                "seconds": started.elapsed().as_secs(),
+                "alternative": alternative,
+            }),
+        );
+        *LICENSE_RUN.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    });
+    Ok(())
+}
+
+/// Breekt het accepteren af (de gebruiker koos "Stoppen").
+#[tauri::command]
+pub fn android_licenses_cancel() {
+    if let Some(c) = LICENSE_RUN.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        c.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// Voert een vast installatieplan (git, claude) uit zonder terminal en geeft de voortgang door als `install-line`/`install-done`.
+/// De UI vraagt vooraf bevestiging van precies dit commando.
+#[tauri::command]
+pub fn install_run(app: AppHandle, component: String) -> AppResult<()> {
+    let plan = install::install_plan(&component, std::env::consts::OS).ok_or_else(|| AppError::Invalid(format!("no guided install for {component}")))?;
+    let env = crate::licenses::system_env();
+    let path = env.get("PATH").cloned();
+    let program = which::which_in(&plan.program, path.as_deref(), std::env::current_dir().unwrap_or_default()).map_err(|_| AppError::ToolMissing(plan.program.clone()))?;
+    std::thread::spawn(move || {
+        let h = app.clone();
+        let c = component.clone();
+        let (code, log) = install::run_streaming(&program, &plan.args, &env, std::time::Duration::from_secs(900), &move |l| {
+            let _ = h.emit("install-line", serde_json::json!({ "component": c, "line": l }));
+        });
+        crate::licenses::refresh_process_env();
+        // winget meldt 0 bij gelukt; "al geïnstalleerd/geen update" geeft een eigen code die we ook als gelukt zien.
+        let ok = matches!(code, Some(0) | Some(-1978335189));
+        let _ = app.emit("install-done", serde_json::json!({ "component": component, "ok": ok, "exit": code, "log": log }));
+    });
+    Ok(())
 }
 
 /// Uitvoer die een sessie al heeft geproduceerd (voor een terminal die later verschijnt).
