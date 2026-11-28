@@ -11,25 +11,29 @@ on:
         default: all
         options: [all, windows, macos, linux]
 jobs:
+  # De matrix kan niet in een `if` van de job zelf gebruikt worden; daarom bepaalt deze job eerst welke systemen gebouwd worden.
+  plan:
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        shell: bash
+        env:
+          CHOICE: ${{ inputs.platforms }}
+        run: |
+          all='[{"name":"windows","platform":"windows-latest","args":"","bundle":"src-tauri/target/release/bundle","targets":""},{"name":"macos","platform":"macos-latest","args":"--target universal-apple-darwin","bundle":"src-tauri/target/universal-apple-darwin/release/bundle","targets":"aarch64-apple-darwin,x86_64-apple-darwin"},{"name":"linux","platform":"ubuntu-22.04","args":"","bundle":"src-tauri/target/release/bundle","targets":""}]'
+          if [ "$CHOICE" = "all" ] || [ -z "$CHOICE" ]; then
+            echo "matrix={\"include\":$all}" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix={\"include\":$(echo "$all" | jq -c "map(select(.name==\"$CHOICE\"))")}" >> "$GITHUB_OUTPUT"
+          fi
   build:
+    needs: plan
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: windows
-            platform: windows-latest
-            args: ""
-            bundle: "src-tauri/target/release/bundle"
-          - name: macos
-            platform: macos-latest
-            args: "--target universal-apple-darwin"
-            bundle: "src-tauri/target/universal-apple-darwin/release/bundle"
-          - name: linux
-            platform: ubuntu-22.04
-            args: ""
-            bundle: "src-tauri/target/release/bundle"
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.platform }}
-    if: ${{ inputs.platforms == 'all' || inputs.platforms == matrix.name }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,7 +42,7 @@ jobs:
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.name == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.targets }}
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
