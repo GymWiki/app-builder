@@ -1,0 +1,86 @@
+{
+  "id": "google_play",
+  "naam": "integrations.google_play.name",
+  "categorie": "stores",
+  "beschrijving": "integrations.google_play.desc",
+  "icoon": "play",
+  "scope": "global",
+  "velden": [
+    {
+      "id": "service_account",
+      "label": "integrations.google_play.fields.service_account.label",
+      "type": "file",
+      "geheim": true,
+      "verplicht": true,
+      "scope": "global",
+      "validatie": {
+        "bestandstype": ["json"],
+        "json": ["type=service_account", "client_email", "private_key"]
+      },
+      "hulptekst": "integrations.google_play.fields.service_account.help",
+      "guideId": null,
+      "envVar": "STUDIO_PLAY_KEY_PATH",
+      "afgeleid": ["client_email", "project_id"]
+    },
+    {
+      "id": "keystore",
+      "label": "integrations.google_play.fields.keystore.label",
+      "type": "file",
+      "geheim": true,
+      "verplicht": true,
+      "scope": "project",
+      "validatie": {
+        "bestandstype": ["jks", "keystore", "p12", "pfx"]
+      },
+      "hulptekst": "integrations.google_play.fields.keystore.help",
+      "guideId": null,
+      "envVar": "STUDIO_KEYSTORE_PATH"
+    },
+    {
+      "id": "alias",
+      "label": "integrations.google_play.fields.alias.label",
+      "type": "text",
+      "geheim": false,
+      "verplicht": true,
+      "scope": "project",
+      "validatie": {
+        "regex": "^[A-Za-z0-9._-]{1,64}$"
+      },
+      "hulptekst": "integrations.google_play.fields.alias.help",
+      "guideId": null,
+      "envVar": "STUDIO_KEY_ALIAS",
+      "standaard": "upload"
+    },
+    {
+      "id": "keystore_password",
+      "label": "integrations.google_play.fields.keystore_password.label",
+      "type": "password",
+      "geheim": true,
+      "verplicht": true,
+      "scope": "project",
+      "validatie": {
+        "minLengte": 6
+      },
+      "hulptekst": "integrations.google_play.fields.keystore_password.help",
+      "guideId": null,
+      "envVar": "STUDIO_KEYSTORE_PASSWORD"
+    },
+    {
+      "id": "key_password",
+      "label": "integrations.google_play.fields.key_password.label",
+      "type": "password",
+      "geheim": true,
+      "verplicht": false,
+      "scope": "project",
+      "validatie": {
+        "minLengte": 6
+      },
+      "hulptekst": "integrations.google_play.fields.key_password.help",
+      "guideId": null,
+      "envVar": "STUDIO_KEY_PASSWORD"
+    }
+  ],
+  "testVerbinding": "google_play_local",
+  "checklistItems": ["accounts_signing"],
+  "acties": ["keystore_genereren"]
+}

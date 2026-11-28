@@ -1,0 +1,69 @@
+{
+  "id": "supabase",
+  "naam": "integrations.supabase.name",
+  "categorie": "database",
+  "beschrijving": "integrations.supabase.desc",
+  "icoon": "database",
+  "scope": "project",
+  "velden": [
+    {
+      "id": "url",
+      "label": "integrations.supabase.fields.url.label",
+      "type": "text",
+      "geheim": false,
+      "verplicht": true,
+      "scope": "project",
+      "validatie": {
+        "regex": "^https://[A-Za-z0-9.-]+\\.[a-z]{2,}/?$"
+      },
+      "hulptekst": "integrations.supabase.fields.url.help",
+      "guideId": null,
+      "envVar": "STUDIO_SUPABASE_URL"
+    },
+    {
+      "id": "publishable_key",
+      "label": "integrations.supabase.fields.publishable_key.label",
+      "type": "text",
+      "geheim": false,
+      "verplicht": true,
+      "scope": "project",
+      "validatie": {
+        "regex": "^(sb_publishable_[A-Za-z0-9_-]{8,}|eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+)$",
+        "geenServiceRol": true
+      },
+      "hulptekst": "integrations.supabase.fields.publishable_key.help",
+      "guideId": null,
+      "envVar": "STUDIO_SUPABASE_PUBLISHABLE_KEY"
+    },
+    {
+      "id": "secret_key",
+      "label": "integrations.supabase.fields.secret_key.label",
+      "type": "password",
+      "geheim": true,
+      "verplicht": false,
+      "scope": "project",
+      "validatie": {
+        "regex": "^(sb_secret_[A-Za-z0-9_-]{8,}|eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+)$"
+      },
+      "hulptekst": "integrations.supabase.fields.secret_key.help",
+      "guideId": null,
+      "envVar": "STUDIO_SUPABASE_SECRET_KEY"
+    },
+    {
+      "id": "access_token",
+      "label": "integrations.supabase.fields.access_token.label",
+      "type": "password",
+      "geheim": true,
+      "verplicht": false,
+      "scope": "project",
+      "validatie": {
+        "regex": "^sbp_[A-Za-z0-9]{20,}$"
+      },
+      "hulptekst": "integrations.supabase.fields.access_token.help",
+      "guideId": null,
+      "envVar": "STUDIO_SUPABASE_ACCESS_TOKEN"
+    }
+  ],
+  "testVerbinding": "supabase",
+  "checklistItems": ["data_auth"]
+}

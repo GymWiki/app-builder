@@ -1,0 +1,191 @@
+{
+  "description": "Negen zwaardere opdrachten op een groter testproject (Trip Expenses: 4 schermen, models, opslag met versies, balansberekening, go_router met parameters). Elke taak heeft een verborgen gedragstest die pas NA de run wordt geschreven, zodat het model hem niet ziet; de ontwerp-taken (h06, h07) controleren ook formaat, tikdoel en overflow op een smalle telefoon met grote tekst.",
+  "tasks": [
+    {
+      "id": "h01-euro-everywhere",
+      "expect": "complex",
+      "prompt": "Show every amount with a euro sign, like \u20ac12.50, on the trips list, on the trip screen (the total and every expense) and on the balances screen. Use one shared helper in core for this, so that the screens do not format money themselves.",
+      "hiddenTests": [
+        {
+          "path": "test/eval_h01_test.dart",
+          "content": "import 'package:material_ui/material_ui.dart' show ButtonStyleButton, Icon, AlertDialog, Scaffold, TextField, ListTile;\nimport 'package:flutter/widgets.dart';\nimport 'package:flutter_riverpod/flutter_riverpod.dart';\nimport 'package:flutter_test/flutter_test.dart';\nimport 'package:__PKG__/app.dart';\nimport 'package:__PKG__/core/navigation/app_router.dart';\nimport 'package:flutter_riverpod/misc.dart' show Override;\n\nFuture<void> pumpApp(WidgetTester tester, String path, {List<Override> overrides = const []}) async {\n  appRouter.go(path);\n  await tester.pumpWidget(ProviderScope(overrides: overrides, child: const App()));\n  await tester.pumpAndSettle();\n}\n\nvoid main() {\n  testWidgets('trips list shows euro totals', (tester) async {\n    await pumpApp(tester, '/');\n    expect(find.text('\u20ac165.00'), findsOneWidget);\n    expect(find.text('\u20ac120.00'), findsOneWidget);\n  });\n  testWidgets('trip screen shows euro amounts', (tester) async {\n    await pumpApp(tester, '/trip/t1');\n    expect(find.text('\u20ac90.00'), findsOneWidget);\n    expect(find.text('\u20ac30.00'), findsOneWidget);\n    expect(find.text('\u20ac45.00'), findsOneWidget);\n    expect(find.text('\u20ac165.00'), findsOneWidget);\n  });\n  testWidgets('balances screen shows euro amounts', (tester) async {\n    await pumpApp(tester, '/trip/t1/balances');\n    expect(find.text('\u20ac25.00'), findsOneWidget);\n    expect(find.text('\u20ac10.00'), findsOneWidget);\n  });\n}\n"
+        }
+      ],
+      "checks": [
+        {
+          "type": "flutterTest",
+          "path": "test"
+        },
+        {
+          "type": "absent",
+          "path": "lib/features",
+          "pattern": "toStringAsFixed|formatCents\\("
+        }
+      ]
+    },
+    {
+      "id": "h02-delete-bug",
+      "expect": "normal",
+      "setup": [
+        {
+          "file": "lib/core/data/trips_controller.dart",
+          "replace": [
+            "void removeExpense(String tripId, String expenseId) {\n    state = [\n      for (final t in state)\n        if (t.id == tripId) t.copyWith(expenses: [for (final e in t.expenses) if (e.id != expenseId) e]) else t,\n    ];\n  }",
+            "void removeExpense(String tripId, int index) {\n    state = [\n      for (final t in state)\n        if (t.id == tripId) t.copyWith(expenses: [...t.expenses]..removeAt(index)) else t,\n    ];\n  }"
+          ]
+        },
+        {
+          "file": "lib/features/trip_detail/trip_detail_screen.dart",
+          "replace": ["removeExpense(tripId, e.id)", "removeExpense(tripId, expenses.indexOf(e))"]
+        }
+      ],
+      "prompt": "Bug: when I delete an expense from a trip, sometimes a different expense disappears. Please find the cause and fix it.",
+      "hiddenTests": [
+        {
+          "path": "test/eval_h02_test.dart",
+          "content": "import 'package:material_ui/material_ui.dart' show ButtonStyleButton, Icon, AlertDialog, Scaffold, TextField, ListTile;\nimport 'package:flutter/widgets.dart';\nimport 'package:flutter_riverpod/flutter_riverpod.dart';\nimport 'package:flutter_test/flutter_test.dart';\nimport 'package:__PKG__/app.dart';\nimport 'package:__PKG__/core/navigation/app_router.dart';\nimport 'package:flutter_riverpod/misc.dart' show Override;\n\nFuture<void> pumpApp(WidgetTester tester, String path, {List<Override> overrides = const []}) async {\n  appRouter.go(path);\n  await tester.pumpWidget(ProviderScope(overrides: overrides, child: const App()));\n  await tester.pumpAndSettle();\n}\n\nvoid main() {\n  testWidgets('deleting the newest expense removes exactly that one', (tester) async {\n    await pumpApp(tester, '/trip/t1');\n    await tester.tap(find.byKey(const Key('delete-e3')));\n    await tester.pumpAndSettle();\n    expect(find.text('Museum'), findsNothing);\n    expect(find.text('Dinner'), findsOneWidget);\n    expect(find.text('Taxi'), findsOneWidget);\n  });\n  testWidgets('deleting the oldest expense removes exactly that one', (tester) async {\n    await pumpApp(tester, '/trip/t1');\n    await tester.tap(find.byKey(const Key('delete-e1')));\n    await tester.pumpAndSettle();\n    expect(find.text('Dinner'), findsNothing);\n    expect(find.text('Museum'), findsOneWidget);\n    expect(find.text('Taxi'), findsOneWidget);\n  });\n}\n"
+        }
+      ],
+      "checks": [
+        {
+          "type": "flutterTest",
+          "path": "test"
+        }
+      ]
+    },
+    {
+      "id": "h03-currency-migration",
+      "expect": "complex",
+      "prompt": "Every expense gets a currency, 'EUR' by default. Add a `currency` String field to Expense (named parameter `currency`, default 'EUR'), save and load it, bump the storage version to 2, and make sure data that was saved by the old version (storage version 1, without currency) can still be loaded and gets 'EUR'. Add a test for the migration.",
+      "hiddenTests": [
+        {
+          "path": "test/eval_h03_test.dart",
+          "content": "import 'package:material_ui/material_ui.dart' show ButtonStyleButton, Icon, AlertDialog, Scaffold, TextField, ListTile;\nimport 'package:flutter/widgets.dart';\nimport 'package:flutter_riverpod/flutter_riverpod.dart';\nimport 'package:flutter_test/flutter_test.dart';\nimport 'package:__PKG__/app.dart';\nimport 'package:__PKG__/core/navigation/app_router.dart';\nimport 'dart:convert';\nimport 'package:__PKG__/core/data/trip_storage.dart';\nimport 'package:__PKG__/core/models/expense.dart';\nimport 'package:__PKG__/core/models/member.dart';\nimport 'package:__PKG__/core/models/trip.dart';\nimport 'package:flutter_riverpod/misc.dart' show Override;\n\nFuture<void> pumpApp(WidgetTester tester, String path, {List<Override> overrides = const []}) async {\n  appRouter.go(path);\n  await tester.pumpWidget(ProviderScope(overrides: overrides, child: const App()));\n  await tester.pumpAndSettle();\n}\n\n\nconst v1 = '{\"storageVersion\":1,\"trips\":[{\"id\":\"t9\",\"name\":\"Old\",\"members\":[{\"id\":\"a\",\"name\":\"Ana\"}],\"expenses\":[{\"id\":\"x\",\"title\":\"Lunch\",\"amountCents\":1000,\"paidBy\":\"a\",\"date\":\"2026-01-01T00:00:00.000\"}]}]}';\n\nvoid main() {\n  test('data saved by version 1 still loads, with EUR', () {\n    final trips = JsonTripStorage().decode(v1);\n    expect(trips.single.expenses.single.title, 'Lunch');\n    expect(trips.single.expenses.single.currency, 'EUR');\n  });\n  test('new data is saved as version 2 and keeps the currency', () {\n    final trip = Trip(\n      id: 't1',\n      name: 'US',\n      members: const [Member('a', 'Ana')],\n      expenses: [Expense(id: 'e', title: 'Taxi', amountCents: 500, paidBy: 'a', date: DateTime(2026, 1, 2), currency: 'USD')],\n    );\n    final text = JsonTripStorage().encode([trip]);\n    expect((jsonDecode(text) as Map)['storageVersion'], 2);\n    expect(JsonTripStorage().decode(text).single.expenses.single.currency, 'USD');\n  });\n  test('an unknown future version is refused', () {\n    expect(() => JsonTripStorage().decode('{\"storageVersion\":99,\"trips\":[]}'), throwsFormatException);\n  });\n  test('an expense without a given currency is EUR', () {\n    expect(Expense(id: 'e', title: 'T', amountCents: 1, paidBy: 'a', date: DateTime(2026)).currency, 'EUR');\n  });\n}\n"
+        }
+      ],
+      "checks": [
+        {
+          "type": "flutterTest",
+          "path": "test"
+        },
+        {
+          "type": "regex",
+          "path": "test",
+          "pattern": "(?i)(migrat|version|currency)"
+        }
+      ]
+    },
+    {
+      "id": "h04-expense-detail",
+      "expect": "complex",
+      "prompt": "Add an expense detail screen on the route /trip/:id/expense/:expenseId that shows the title, the amount, who paid and the date. Tapping an expense in the trip's list opens it. The existing route /trip/:id/expense/new must keep working.",
+      "hiddenTests": [
+        {
+          "path": "test/eval_h04_test.dart",
+          "content": "import 'package:material_ui/material_ui.dart' show ButtonStyleButton, Icon, AlertDialog, Scaffold, TextField, ListTile;\nimport 'package:flutter/widgets.dart';\nimport 'package:flutter_riverpod/flutter_riverpod.dart';\nimport 'package:flutter_test/flutter_test.dart';\nimport 'package:__PKG__/app.dart';\nimport 'package:__PKG__/core/navigation/app_router.dart';\nimport 'package:flutter_riverpod/misc.dart' show Override;\n\nFuture<void> pumpApp(WidgetTester tester, String path, {List<Override> overrides = const []}) async {\n  appRouter.go(path);\n  await tester.pumpWidget(ProviderScope(overrides: overrides, child: const App()));\n  await tester.pumpAndSettle();\n}\n\nvoid main() {\n  testWidgets('the detail route shows the expense', (tester) async {\n    await pumpApp(tester, '/trip/t1/expense/e1');\n    expect(find.text('Dinner'), findsWidgets);\n    expect(find.textContaining('Ana'), findsWidgets);\n    expect(find.textContaining('90.00'), findsWidgets);\n  });\n  testWidgets('tapping an expense in the list opens its detail', (tester) async {\n    await pumpApp(tester, '/trip/t1');\n    await tester.tap(find.text('Taxi'));\n    await tester.pumpAndSettle();\n    expect(appRouter.routeInformationProvider.value.uri.path, '/trip/t1/expense/e2');\n    expect(find.text('Taxi'), findsWidgets);\n  });\n  testWidgets('the add-expense route still works', (tester) async {\n    await pumpApp(tester, '/trip/t1/expense/new');\n    expect(find.text('Add expense'), findsWidgets);\n    expect(find.text('Save'), findsOneWidget);\n  });\n  testWidgets('an unknown expense does not crash', (tester) async {\n    await pumpApp(tester, '/trip/t1/expense/nope');\n    expect(tester.takeException(), isNull);\n    expect(find.byType(Scaffold), findsOneWidget);\n  });\n}\n"
+        }
+      ],
+      "checks": [
+        {
+          "type": "flutterTest",
+          "path": "test"
+        }
+      ]
+    },
+    {
+      "id": "h05-money-math",
+      "expect": "complex",
+      "prompt": "Refactor the money math in core: put it in one new file lib/core/logic/money_math.dart with a function `List<int> splitEvenly(int cents, int parts)`. Splitting 1000 cents between 3 gives [334, 333, 333] (the extra cents go to the first people). Make netBalances use it, so the balances of a trip always add up to exactly zero, even when the total does not divide evenly. Do not change how the app looks.",
+      "hiddenTests": [
+        {
+          "path": "test/eval_h05_test.dart",
+          "content": "import 'package:flutter_test/flutter_test.dart';\nimport 'package:__PKG__/core/logic/balances.dart';\nimport 'package:__PKG__/core/logic/money_math.dart';\nimport 'package:__PKG__/core/models/expense.dart';\nimport 'package:__PKG__/core/models/member.dart';\nimport 'package:__PKG__/core/models/trip.dart';\nimport 'package:flutter_riverpod/misc.dart' show Override;\n\nvoid main() {\n  test('splitEvenly hands the extra cents to the first people', () {\n    expect(splitEvenly(1000, 3), [334, 333, 333]);\n    expect(splitEvenly(900, 3), [300, 300, 300]);\n    expect(splitEvenly(1, 3), [1, 0, 0]);\n    expect(splitEvenly(0, 4), [0, 0, 0, 0]);\n  });\n  test('balances always add up to zero', () {\n    final trip = Trip(\n      id: 'x',\n      name: 'Odd',\n      members: const [Member('a', 'A'), Member('b', 'B'), Member('c', 'C')],\n      expenses: [Expense(id: 'e', title: 'T', amountCents: 1000, paidBy: 'a', date: DateTime(2026))],\n    );\n    final net = netBalances(trip);\n    expect(net.values.fold<int>(0, (a, b) => a + b), 0);\n    expect(net['a'], 666);\n    expect(net['b'], -333);\n    expect(net['c'], -333);\n  });\n}\n"
+        }
+      ],
+      "checks": [
+        {
+          "type": "flutterTest",
+          "path": "test"
+        },
+        {
+          "type": "exists",
+          "path": "lib/core/logic/money_math.dart"
+        }
+      ]
+    },
+    {
+      "id": "h06-empty-state",
+      "expect": "complex",
+      "prompt": "Redesign the empty state of the trips list: when there are no trips yet, show a large icon, a friendly sentence and a prominent button 'Create your first trip' that opens the same new-trip dialog as the + button. It must also look right on a small 320 px wide phone and with large text.",
+      "hiddenTests": [
+        {
+          "path": "test/eval_h06_test.dart",
+          "content": "import 'package:material_ui/material_ui.dart' show ButtonStyleButton, Icon, AlertDialog, Scaffold, TextField, ListTile;\nimport 'package:flutter/widgets.dart';\nimport 'package:flutter_riverpod/flutter_riverpod.dart';\nimport 'package:flutter_test/flutter_test.dart';\nimport 'package:__PKG__/app.dart';\nimport 'package:__PKG__/core/navigation/app_router.dart';\nimport 'package:__PKG__/core/data/trips_controller.dart';\nimport 'package:__PKG__/core/models/trip.dart';\nimport 'package:flutter_riverpod/misc.dart' show Override;\n\nFuture<void> pumpApp(WidgetTester tester, String path, {List<Override> overrides = const []}) async {\n  appRouter.go(path);\n  await tester.pumpWidget(ProviderScope(overrides: overrides, child: const App()));\n  await tester.pumpAndSettle();\n}\n\n\nclass _NoTrips extends TripsController {\n  @override\n  List<Trip> build() => const [];\n}\n\nvoid main() {\n  testWidgets('empty state: big icon, friendly text, a real button that opens the dialog', (tester) async {\n    tester.view.physicalSize = const Size(320, 480);\n    tester.view.devicePixelRatio = 1;\n    tester.platformDispatcher.textScaleFactorTestValue = 1.5;\n    addTearDown(() {\n      tester.view.resetPhysicalSize();\n      tester.view.resetDevicePixelRatio();\n      tester.platformDispatcher.clearTextScaleFactorTestValue();\n    });\n    await pumpApp(tester, '/', overrides: [tripsProvider.overrideWith(_NoTrips.new)]);\n    expect(tester.takeException(), isNull, reason: 'no overflow on a small phone with large text');\n    final label = find.text('Create your first trip');\n    expect(label, findsOneWidget);\n    final button = find.ancestor(of: label, matching: find.byWidgetPredicate((w) => w is ButtonStyleButton));\n    expect(button, findsOneWidget, reason: 'a real button');\n    final rect = tester.getRect(button);\n    expect(rect.height, greaterThanOrEqualTo(48), reason: 'comfortable tap target');\n    expect(rect.left, greaterThanOrEqualTo(0));\n    expect(rect.right, lessThanOrEqualTo(320));\n    final reachable = rect.bottom <= 480 || find.ancestor(of: button, matching: find.byType(Scrollable)).evaluate().isNotEmpty;\n    expect(reachable, isTrue, reason: 'the button is visible, or the content scrolls so it can be reached');\n    expect(find.byWidgetPredicate((w) => w is Icon && (w.size ?? 0) >= 48), findsWidgets, reason: 'a large icon');\n    await tester.ensureVisible(button);\n    await tester.pumpAndSettle();\n    await tester.tap(button);\n    await tester.pumpAndSettle();\n    expect(find.byType(AlertDialog), findsOneWidget);\n    expect(find.byType(TextField), findsOneWidget);\n  });\n}\n"
+        }
+      ],
+      "checks": [
+        {
+          "type": "flutterTest",
+          "path": "test"
+        }
+      ]
+    },
+    {
+      "id": "h07-settle-up",
+      "expect": "complex",
+      "prompt": "On the balances screen, show each payment as a card with the text '<Name> pays <Name>', the amount and a 'Mark as paid' button. Marking a payment as paid removes that card and updates the balances of those two people, so that once everything is paid the screen says 'All settled.' The paid state must be kept when I leave the screen and come back. Keep it readable on a 320 px wide phone.",
+      "hiddenTests": [
+        {
+          "path": "test/eval_h07_test.dart",
+          "content": "import 'package:material_ui/material_ui.dart' show ButtonStyleButton, Icon, AlertDialog, Scaffold, TextField, ListTile;\nimport 'package:flutter/widgets.dart';\nimport 'package:flutter_riverpod/flutter_riverpod.dart';\nimport 'package:flutter_test/flutter_test.dart';\nimport 'package:__PKG__/app.dart';\nimport 'package:__PKG__/core/navigation/app_router.dart';\nimport 'package:flutter_riverpod/misc.dart' show Override;\n\nFuture<void> pumpApp(WidgetTester tester, String path, {List<Override> overrides = const []}) async {\n  appRouter.go(path);\n  await tester.pumpWidget(ProviderScope(overrides: overrides, child: const App()));\n  await tester.pumpAndSettle();\n}\n\nvoid main() {\n  testWidgets('settle up flow', (tester) async {\n    tester.view.physicalSize = const Size(320, 640);\n    tester.view.devicePixelRatio = 1;\n    addTearDown(() {\n      tester.view.resetPhysicalSize();\n      tester.view.resetDevicePixelRatio();\n    });\n    await pumpApp(tester, '/trip/t1/balances');\n    expect(tester.takeException(), isNull);\n    expect(find.text('Ben pays Ana'), findsOneWidget);\n    expect(find.text('Cleo pays Ana'), findsOneWidget);\n    expect(find.text('Mark as paid'), findsNWidgets(2));\n    await tester.tap(find.text('Mark as paid').first);\n    await tester.pumpAndSettle();\n    expect(find.text('Ben pays Ana'), findsNothing);\n    expect(find.text('Cleo pays Ana'), findsOneWidget);\n    expect(find.text('Mark as paid'), findsOneWidget);\n    // Leave the screen and come back: still paid.\n    appRouter.go('/');\n    await tester.pumpAndSettle();\n    appRouter.go('/trip/t1/balances');\n    await tester.pumpAndSettle();\n    expect(find.text('Ben pays Ana'), findsNothing);\n    expect(find.text('Cleo pays Ana'), findsOneWidget);\n    await tester.tap(find.text('Mark as paid'));\n    await tester.pumpAndSettle();\n    expect(find.text('All settled.'), findsOneWidget);\n    expect(tester.takeException(), isNull);\n  });\n}\n"
+        }
+      ],
+      "checks": [
+        {
+          "type": "flutterTest",
+          "path": "test"
+        }
+      ]
+    },
+    {
+      "id": "h08-favorites",
+      "expect": "complex",
+      "prompt": "Let me mark trips as favorites. Add a star icon button on every trip in the trips list and in the top bar of the trip screen. Its tooltip is 'Favorite' when the trip is not a favorite and 'Unfavorite' when it is. Favorite trips are shown first in the list.",
+      "hiddenTests": [
+        {
+          "path": "test/eval_h08_test.dart",
+          "content": "import 'package:material_ui/material_ui.dart' show ButtonStyleButton, Icon, AlertDialog, Scaffold, TextField, ListTile;\nimport 'package:flutter/widgets.dart';\nimport 'package:flutter_riverpod/flutter_riverpod.dart';\nimport 'package:flutter_test/flutter_test.dart';\nimport 'package:__PKG__/app.dart';\nimport 'package:__PKG__/core/navigation/app_router.dart';\nimport 'package:flutter_riverpod/misc.dart' show Override;\n\nFuture<void> pumpApp(WidgetTester tester, String path, {List<Override> overrides = const []}) async {\n  appRouter.go(path);\n  await tester.pumpWidget(ProviderScope(overrides: overrides, child: const App()));\n  await tester.pumpAndSettle();\n}\n\nString firstTitle(WidgetTester tester) {\n  final tile = tester.widgetList<ListTile>(find.byType(ListTile)).first;\n  return (tile.title as Text).data!;\n}\n\nvoid main() {\n  testWidgets('favorites go first and the star works on both screens', (tester) async {\n    await pumpApp(tester, '/');\n    expect(firstTitle(tester), 'Lisbon');\n    expect(find.byTooltip('Favorite'), findsNWidgets(2));\n    await tester.tap(find.byTooltip('Favorite').at(1));\n    await tester.pumpAndSettle();\n    expect(firstTitle(tester), 'Berlin');\n    expect(find.byTooltip('Unfavorite'), findsOneWidget);\n    await pumpApp(tester, '/trip/t2');\n    expect(find.byTooltip('Unfavorite'), findsOneWidget);\n    await tester.tap(find.byTooltip('Unfavorite'));\n    await tester.pumpAndSettle();\n    expect(find.byTooltip('Favorite'), findsOneWidget);\n    appRouter.go('/');\n    await tester.pumpAndSettle();\n    expect(firstTitle(tester), 'Lisbon');\n  });\n}\n"
+        }
+      ],
+      "checks": [
+        {
+          "type": "flutterTest",
+          "path": "test"
+        }
+      ]
+    },
+    {
+      "id": "h09-stale-total",
+      "expect": "normal",
+      "setup": [
+        {
+          "file": "lib/core/data/trips_controller.dart",
+          "replace": ["ref.watch(tripProvider(id))?.totalCents ?? 0", "ref.read(tripProvider(id))?.totalCents ?? 0"]
+        }
+      ],
+      "prompt": "Bug: after I add an expense to a trip, the total shown for that trip on the trips list stays the same until I restart the app. Find out why and fix it.",
+      "hiddenTests": [
+        {
+          "path": "test/eval_h09_test.dart",
+          "content": "import 'package:material_ui/material_ui.dart' show ButtonStyleButton, Icon, AlertDialog, Scaffold, TextField, ListTile;\nimport 'package:flutter/widgets.dart';\nimport 'package:flutter_riverpod/flutter_riverpod.dart';\nimport 'package:flutter_test/flutter_test.dart';\nimport 'package:__PKG__/app.dart';\nimport 'package:__PKG__/core/navigation/app_router.dart';\nimport 'package:__PKG__/core/data/trips_controller.dart';\nimport 'package:__PKG__/core/models/expense.dart';\nimport 'package:flutter_riverpod/misc.dart' show Override;\n\nFuture<void> pumpApp(WidgetTester tester, String path, {List<Override> overrides = const []}) async {\n  appRouter.go(path);\n  await tester.pumpWidget(ProviderScope(overrides: overrides, child: const App()));\n  await tester.pumpAndSettle();\n}\n\n\nvoid main() {\n  testWidgets('the total on the trips list follows new expenses', (tester) async {\n    await pumpApp(tester, '/');\n    expect(find.text('165.00'), findsOneWidget);\n    final container = ProviderScope.containerOf(tester.element(find.byType(App)));\n    container.read(tripsProvider.notifier).addExpense('t1', Expense(id: 'z', title: 'Coffee', amountCents: 1000, paidBy: 'm1', date: DateTime(2026, 6, 5)));\n    await tester.pumpAndSettle();\n    expect(find.text('175.00'), findsOneWidget);\n    expect(find.text('165.00'), findsNothing);\n  });\n}\n"
+        }
+      ],
+      "checks": [
+        {
+          "type": "flutterTest",
+          "path": "test"
+        }
+      ]
+    }
+  ]
+}

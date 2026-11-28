@@ -1,0 +1,10 @@
+{
+  "id": "local_db",
+  "naam": "integrations.local_db.name",
+  "categorie": "database",
+  "beschrijving": "integrations.local_db.desc",
+  "icoon": "hard-drive",
+  "scope": "project",
+  "velden": [],
+  "checklistItems": ["data_auth"]
+}

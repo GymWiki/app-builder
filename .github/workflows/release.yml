@@ -1,0 +1,48 @@
+# Bouwt Studio voor Windows, macOS en Linux en publiceert een GitHub-release met `latest.json`.
+# Studio controleert bij elke start op die `latest.json` (zie src-tauri/tauri.conf.json, plugins.updater).
+# Vereist het geheim TAURI_SIGNING_PRIVATE_KEY (de privésleutel bij de publieke sleutel in tauri.conf.json).
+# Start: push een tag zoals v0.2.0 (zet eerst "version" in src-tauri/tauri.conf.json, package.json en Cargo.toml op dezelfde waarde).
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ""
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+          - platform: ubuntu-22.04
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - name: Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Studio ${{ github.ref_name }}"
+          releaseDraft: false
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}

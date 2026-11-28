@@ -1,0 +1,505 @@
+//! De inhoud van de Studio-tools die Claude via MCP kan aanroepen. Elke functie werkt op één
+//! project (map + databaserij) en geeft JSON terug; fouten worden door de MCP-laag als
+//! `isError` aan Claude teruggegeven.
+
+use crate::db::{Db, Project};
+use crate::error::{AppError, AppResult};
+use crate::gitops;
+use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
+
+pub const DEFAULT_SEED: &str = "#4F46E5";
+
+fn dir_of(p: &Project) -> PathBuf {
+    PathBuf::from(&p.path)
+}
+
+// ───────────── project_status ─────────────
+
+pub fn project_status(db: &Db, p: &Project) -> AppResult<Value> {
+    let dir = dir_of(p);
+    let p = db.project_get(&p.id)?;
+    Ok(json!({
+        "name": p.name,
+        "status": p.status,
+        "version": p.version,
+        "buildNumber": p.build_number,
+        "bundleId": p.bundle_id,
+        "template": p.template,
+        "checklist": { "done": p.checklist_done, "total": p.checklist_total },
+        "git": {
+            "branch": gitops::branch(&dir).ok(),
+            "lastCommit": gitops::last_commit_subject(&dir).ok(),
+            "changedFiles": gitops::changed_files(&dir).ok(),
+        },
+        "screens": list_screens(&dir)?.len(),
+    }))
+}
+
+// ───────────── list_screens ─────────────
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+pub struct Screen {
+    pub class: String,
+    pub file: String,
+    pub line: usize,
+}
+
+const WIDGET_BASES: [&str; 5] = ["StatelessWidget", "StatefulWidget", "ConsumerWidget", "ConsumerStatefulWidget", "HookWidget"];
+
+fn dart_files(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
+    if depth > 8 {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            dart_files(&p, out, depth + 1);
+        } else if p.extension().is_some_and(|x| x == "dart") && !p.to_string_lossy().ends_with(".g.dart") {
+            out.push(p);
+        }
+    }
+}
+
+/// Schermen = widget-klassen waarvan de naam op Screen of Page eindigt (in `lib/`).
+pub fn list_screens(project_dir: &Path) -> AppResult<Vec<Screen>> {
+    let mut files = vec![];
+    dart_files(&project_dir.join("lib"), &mut files, 0);
+    files.sort();
+    let mut screens = vec![];
+    for f in files {
+        let Ok(text) = std::fs::read_to_string(&f) else { continue };
+        let rel = f.strip_prefix(project_dir).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+        for (i, line) in text.lines().enumerate() {
+            let mut words = line.split_whitespace();
+            let first = words.next();
+            let (first, name) = if first == Some("abstract") || first == Some("final") { (words.next(), words.next()) } else { (first, words.next()) };
+            if first != Some("class") {
+                continue;
+            }
+            let Some(name) = name else { continue };
+            let name: String = name.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            let extends = words.next() == Some("extends") && words.next().is_some_and(|b| WIDGET_BASES.contains(&b.split('<').next().unwrap_or("")));
+            if extends && (name.ends_with("Screen") || name.ends_with("Page")) && !name.starts_with('_') {
+                screens.push(Screen { class: name, file: rel.clone(), line: i + 1 });
+            }
+        }
+    }
+    Ok(screens)
+}
+
+// ───────────── thema ─────────────
+
+pub fn valid_hex(s: &str) -> bool {
+    s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Waar het gegenereerde thema staat: in de feature-first structuur onder `lib/core/theme/`,
+/// in oudere (platte) projecten nog `lib/app_theme.dart`.
+pub fn theme_file(project_dir: &Path) -> &'static str {
+    if project_dir.join("lib/core").is_dir() { "lib/core/theme/app_theme.dart" } else { "lib/app_theme.dart" }
+}
+
+pub fn write_theme(project_dir: &Path, seed_hex: &str) -> AppResult<()> {
+    if !valid_hex(seed_hex) {
+        return Err(AppError::Invalid("seedColor must look like #4F46E5".into()));
+    }
+    // Eén bron van waarheid: studio/config.json; de configuratiemotor schrijft het themabestand.
+    let mut cfg = crate::config::load(project_dir);
+    cfg.theme.seed = Some(seed_hex.to_uppercase());
+    crate::config::apply(project_dir, &cfg)?;
+    Ok(())
+}
+
+/// Gebruikt de app het gegenereerde thema al? (main.dart of app.dart verwijst naar `AppTheme.light`.)
+fn theme_wired(project_dir: &Path) -> bool {
+    ["lib/main.dart", "lib/app.dart"].iter().any(|f| std::fs::read_to_string(project_dir.join(f)).is_ok_and(|t| t.contains("AppTheme.light")))
+}
+
+pub fn get_theme(project_dir: &Path) -> AppResult<Value> {
+    match std::fs::read_to_string(project_dir.join(".studio/theme.json")) {
+        Ok(t) => {
+            let v: Value = serde_json::from_str(&t).map_err(|e| AppError::Invalid(format!("theme.json: {e}")))?;
+            Ok(json!({ "managed": true, "seedColor": v["seedColor"], "file": theme_file(project_dir),
+                       "usage": "MaterialApp(theme: AppTheme.light, darkTheme: AppTheme.dark)" }))
+        }
+        Err(_) => Ok(json!({ "managed": false, "seedColor": null,
+            "note": "This project has no Studio-managed theme yet. Calling set_theme creates lib/app_theme.dart; \
+                     then make MaterialApp use AppTheme.light and AppTheme.dark." })),
+    }
+}
+
+pub fn set_theme(project_dir: &Path, seed_hex: &str) -> AppResult<Value> {
+    let had = project_dir.join(theme_file(project_dir)).exists();
+    write_theme(project_dir, seed_hex)?;
+    let wired = theme_wired(project_dir);
+    Ok(json!({
+        "ok": true, "seedColor": seed_hex.to_uppercase(), "file": theme_file(project_dir),
+        "wired": wired,
+        "next": if wired { "The app already uses AppTheme; hot reload will show the new colors." }
+                else if had { "the app does not use AppTheme yet: set theme: AppTheme.light and darkTheme: AppTheme.dark on MaterialApp." }
+                else { "Created the theme file. Now set theme: AppTheme.light and darkTheme: AppTheme.dark on MaterialApp." },
+    }))
+}
+
+// ───────────── versie ─────────────
+
+pub fn parse_pubspec_version(text: &str) -> Option<(u32, u32, u32, u32)> {
+    let line = text.lines().find(|l| l.starts_with("version:"))?;
+    let v = line.trim_start_matches("version:").trim().trim_matches(['"', '\'']);
+    let (core, build) = v.split_once('+').unwrap_or((v, "1"));
+    let mut it = core.split('.').map(|x| x.parse::<u32>().ok());
+    Some((it.next()??, it.next()??, it.next()??, build.parse().ok()?))
+}
+
+pub fn bump(v: (u32, u32, u32, u32), part: &str) -> AppResult<(u32, u32, u32, u32)> {
+    Ok(match part {
+        "major" => (v.0 + 1, 0, 0, v.3 + 1),
+        "minor" => (v.0, v.1 + 1, 0, v.3 + 1),
+        "patch" => (v.0, v.1, v.2 + 1, v.3 + 1),
+        "build" => (v.0, v.1, v.2, v.3 + 1),
+        _ => return Err(AppError::Invalid("part must be major, minor, patch or build".into())),
+    })
+}
+
+pub fn bump_version(db: &Db, p: &Project, part: &str) -> AppResult<Value> {
+    let path = dir_of(p).join("pubspec.yaml");
+    let text = std::fs::read_to_string(&path)?;
+    let cur = parse_pubspec_version(&text).ok_or_else(|| AppError::Invalid("pubspec.yaml has no valid version: x.y.z+n line".into()))?;
+    let new = bump(cur, part)?;
+    let new_str = format!("{}.{}.{}+{}", new.0, new.1, new.2, new.3);
+    let replaced: Vec<String> = text
+        .lines()
+        .map(|l| if l.starts_with("version:") { format!("version: {new_str}") } else { l.to_string() })
+        .collect();
+    let mut out = replaced.join("\n");
+    if text.ends_with('\n') {
+        out.push('\n');
+    }
+    std::fs::write(&path, out)?;
+    let version = format!("{}.{}.{}", new.0, new.1, new.2);
+    db.project_set_version(&p.id, &version, new.3 as i64)?;
+    Ok(json!({ "previous": format!("{}.{}.{}+{}", cur.0, cur.1, cur.2, cur.3), "version": version, "buildNumber": new.3, "pubspec": new_str }))
+}
+
+/// Schrijft `version: x.y.z+n` in pubspec.yaml en zet dezelfde waarde in Studio.
+pub fn apply_version(db: &Db, p: &Project, v: (u32, u32, u32, u32)) -> AppResult<()> {
+    let path = dir_of(p).join("pubspec.yaml");
+    let text = std::fs::read_to_string(&path)?;
+    let new_line = format!("version: {}.{}.{}+{}", v.0, v.1, v.2, v.3);
+    let mut found = false;
+    let lines: Vec<String> = text
+        .lines()
+        .map(|l| {
+            if l.starts_with("version:") {
+                found = true;
+                new_line.clone()
+            } else {
+                l.to_string()
+            }
+        })
+        .collect();
+    if !found {
+        return Err(AppError::Invalid("pubspec.yaml has no version line".into()));
+    }
+    let mut out = lines.join("\n");
+    if text.ends_with('\n') {
+        out.push('\n');
+    }
+    std::fs::write(&path, out)?;
+    db.project_set_version(&p.id, &format!("{}.{}.{}", v.0, v.1, v.2), v.3 as i64)
+}
+
+/// De versie die de volgende upload moet krijgen: hoger dan wat al gepubliceerd is (de winkel eist dat),
+/// en nooit lager dan wat er nu in pubspec.yaml staat.
+pub fn next_release(cur: (u32, u32, u32, u32), last_version: Option<&str>, last_build: Option<u32>) -> (u32, u32, u32, u32) {
+    let mut n = cur;
+    if let Some(lv) = last_version.and_then(|v| parse_pubspec_version(&format!("version: {v}"))) {
+        if (n.0, n.1, n.2) <= (lv.0, lv.1, lv.2) {
+            n = (lv.0, lv.1, lv.2 + 1, n.3);
+        }
+    }
+    if let Some(lb) = last_build {
+        if n.3 <= lb {
+            n.3 = lb + 1;
+        }
+    }
+    n
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PubVersion {
+    pub version: String,
+    pub build: Option<u32>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionInfo {
+    pub version: String,
+    pub build: u32,
+    pub last_published: Option<PubVersion>,
+    /// Wat de volgende upload automatisch krijgt.
+    pub next_version: String,
+    pub next_build: u32,
+    /// De volgende upload krijgt een ander nummer dan nu in de app staat.
+    pub will_change: bool,
+}
+
+/// Leest de versie uit pubspec.yaml (Claude kan die hebben aangepast) en houdt Studio erbij gelijk.
+pub fn version_info(db: &Db, p: &Project) -> AppResult<VersionInfo> {
+    let text = std::fs::read_to_string(dir_of(p).join("pubspec.yaml"))?;
+    let cur = parse_pubspec_version(&text).ok_or_else(|| AppError::Invalid("pubspec.yaml has no valid version: x.y.z+n line".into()))?;
+    let version = format!("{}.{}.{}", cur.0, cur.1, cur.2);
+    if p.version != version || p.build_number != cur.3 as i64 {
+        db.project_set_version(&p.id, &version, cur.3 as i64)?;
+    }
+    let meta = crate::meta::load(&dir_of(p))?;
+    let n = next_release(cur, meta.last_published_version.as_deref(), meta.last_published_build);
+    Ok(VersionInfo {
+        version,
+        build: cur.3,
+        last_published: meta.last_published_version.clone().map(|v| PubVersion { version: v, build: meta.last_published_build }),
+        next_version: format!("{}.{}.{}", n.0, n.1, n.2),
+        next_build: n.3,
+        will_change: n != cur,
+    })
+}
+
+/// Vlak voor een upload: zet automatisch de juiste versie en het juiste buildnummer.
+pub fn prepare_release(db: &Db, p: &Project) -> AppResult<VersionInfo> {
+    let info = version_info(db, p)?;
+    if info.will_change {
+        let n = parse_pubspec_version(&format!("version: {}+{}", info.next_version, info.next_build)).unwrap_or((0, 0, 0, 0));
+        apply_version(db, p, n)?;
+    }
+    version_info(db, p)
+}
+
+// ───────────── snapshot ─────────────
+
+pub fn create_snapshot(db: &Db, p: &Project, label: &str, kind: &str) -> AppResult<Value> {
+    let dir = dir_of(p);
+    let label = label.trim();
+    let label = if label.is_empty() { "Snapshot" } else { label };
+    let version = db.project_get(&p.id)?.version;
+    // Lekcontrole: een momentopname legt alles vast in git, dus daar mag geen geheim in zitten.
+    let leaks = crate::leak::scan(&dir, &crate::scrub::known_values());
+    if !leaks.is_empty() {
+        return Ok(json!({ "created": false, "blocked": "leak", "leaks": leaks, "commit": gitops::head(&dir).unwrap_or_default() }));
+    }
+    match gitops::snapshot(&dir, label)? {
+        Some(commit) => {
+            db.snapshot_insert(&p.id, &commit, label, kind, &version)?;
+            db.project_touch_updated(&p.id)?;
+            Ok(json!({ "created": true, "commit": commit, "label": label }))
+        }
+        None => Ok(json!({ "created": false, "commit": gitops::head(&dir)?, "note": "Nothing changed since the last snapshot." })),
+    }
+}
+
+// ───────────── winkelvermelding ─────────────
+
+pub fn get_store_listing(dir: &Path) -> AppResult<Value> {
+    let m = crate::meta::load(dir)?;
+    Ok(json!({ "listing": m.listing, "limits": { "title": 30, "shortDescription": 80, "fullDescription": 4000 },
+               "categories": ["tools","productivity","lifestyle","health","education","entertainment","games","finance","social","business"] }))
+}
+
+/// Alleen meegegeven velden worden aangepast; de limieten worden bij het opslaan gecontroleerd.
+pub fn set_store_listing(dir: &Path, args: &Value) -> AppResult<Value> {
+    let mut m = crate::meta::load(dir)?;
+    let get = |k: &str| args.get(k).and_then(Value::as_str).map(|s| s.trim().to_string());
+    if let Some(v) = get("title") {
+        m.listing.title = v;
+    }
+    if let Some(v) = get("shortDescription") {
+        m.listing.short_description = v;
+    }
+    if let Some(v) = get("fullDescription") {
+        m.listing.full_description = v;
+    }
+    if let Some(v) = get("category") {
+        if !v.is_empty() && !["tools","productivity","lifestyle","health","education","entertainment","games","finance","social","business"].contains(&v.as_str()) {
+            return Err(AppError::Invalid("unknown category".into()));
+        }
+        m.listing.category = v;
+    }
+    crate::meta::save(dir, &m)?;
+    Ok(json!({ "ok": true, "listing": m.listing }))
+}
+
+// ───────────── checklist ─────────────
+
+pub fn get_checklist(db: &Db, p: &Project) -> AppResult<Value> {
+    let items = db.checklist_list(&p.id)?;
+    let done = items.iter().filter(|i| i.blocking && i.status == "done").count();
+    Ok(json!({ "done": done, "total": items.iter().filter(|i| i.blocking).count(), "items": items.iter().map(|i| json!({
+        "key": i.key, "blocking": i.blocking, "status": i.status, "detail": i.detail })).collect::<Vec<_>>() }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::NewProject;
+
+    fn tmp() -> PathBuf {
+        let d = std::env::temp_dir().join(format!("studio-tools-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(d.join("lib")).unwrap();
+        d
+    }
+
+    fn setup(dir: &Path) -> (Db, Project) {
+        let db = Db::open_in_memory().unwrap();
+        let p = db
+            .project_insert(&NewProject {
+                name: "Demo".into(),
+                slug: "demo".into(),
+                path: dir.to_string_lossy().into(),
+                template: "blank".into(),
+                description: String::new(),
+                bundle_id: "com.example.demo".into(),
+                initial_commit: None,
+                profile_version: 0,
+            })
+            .unwrap();
+        (db, p)
+    }
+
+    fn git_init(dir: &Path) {
+        let g = crate::proc::find("git").unwrap();
+        for a in [vec!["init", "-q"], vec!["config", "user.email", "t@t"], vec!["config", "user.name", "t"], vec!["add", "-A"], vec!["commit", "-qm", "start"]] {
+            crate::proc::run(&g, &a, Some(dir), std::time::Duration::from_secs(10)).unwrap();
+        }
+    }
+
+    #[test]
+    fn finds_screens() {
+        let d = tmp();
+        std::fs::write(
+            d.join("lib/main.dart"),
+            "class MyApp extends StatelessWidget {}\nclass HomeScreen extends StatefulWidget {}\nclass _Hidden extends StatelessWidget {}\n\
+             class SettingsPage extends StatelessWidget {}\nclass Helper {}\nabstract class BaseScreen extends StatelessWidget {}\n",
+        )
+        .unwrap();
+        let s = list_screens(&d).unwrap();
+        let names: Vec<_> = s.iter().map(|x| x.class.as_str()).collect();
+        assert_eq!(names, ["HomeScreen", "SettingsPage", "BaseScreen"]);
+        assert_eq!((s[0].file.as_str(), s[0].line), ("lib/main.dart", 2));
+    }
+
+    #[test]
+    fn theme_roundtrip_and_validation() {
+        let d = tmp();
+        assert_eq!(get_theme(&d).unwrap()["managed"], false);
+        assert!(set_theme(&d, "red").is_err());
+        let r = set_theme(&d, "#0d9488").unwrap();
+        assert_eq!(r["seedColor"], "#0D9488");
+        assert_eq!(r["wired"], false);
+        assert_eq!(r["file"], "lib/app_theme.dart", "flat legacy project");
+        assert!(std::fs::read_to_string(d.join("lib/app_theme.dart")).unwrap().contains("Color(0xFF0D9488)"));
+        assert_eq!(get_theme(&d).unwrap()["seedColor"], "#0D9488");
+        std::fs::write(d.join("lib/main.dart"), "theme: AppTheme.light").unwrap();
+        assert_eq!(set_theme(&d, "#112233").unwrap()["wired"], true);
+    }
+
+    #[test]
+    fn store_listing_roundtrip_and_limits() {
+        let d = tmp();
+        let r = set_store_listing(&d, &json!({"title":"Friday Scores","category":"tools"})).unwrap();
+        assert_eq!(r["listing"]["title"], "Friday Scores");
+        set_store_listing(&d, &json!({"shortDescription":"Keep score"})).unwrap();
+        let g = get_store_listing(&d).unwrap();
+        assert_eq!((g["listing"]["title"].as_str(), g["listing"]["shortDescription"].as_str()), (Some("Friday Scores"), Some("Keep score")), "partial updates keep other fields");
+        assert!(set_store_listing(&d, &json!({"title":"x".repeat(31)})).is_err());
+        assert!(set_store_listing(&d, &json!({"category":"weapons"})).is_err());
+        assert_eq!(get_store_listing(&d).unwrap()["listing"]["title"], "Friday Scores", "a rejected update changes nothing");
+    }
+
+    #[test]
+    fn feature_first_projects_keep_the_theme_in_core() {
+        let d = tmp();
+        std::fs::create_dir_all(d.join("lib/core/theme")).unwrap();
+        std::fs::write(d.join("lib/app.dart"), "theme: AppTheme.light").unwrap();
+        let r = set_theme(&d, "#112233").unwrap();
+        assert_eq!((r["file"].as_str(), r["wired"].as_bool()), (Some("lib/core/theme/app_theme.dart"), Some(true)));
+        assert!(d.join("lib/core/theme/app_theme.dart").is_file() && !d.join("lib/app_theme.dart").exists());
+        assert_eq!(get_theme(&d).unwrap()["file"], "lib/core/theme/app_theme.dart");
+    }
+
+    #[test]
+    fn next_release_goes_above_what_is_published() {
+        // nog nooit gepubliceerd: niets veranderen
+        assert_eq!(next_release((1, 0, 0, 1), None, None), (1, 0, 0, 1));
+        // zelfde versie + zelfde build als de laatste upload: patch en build omhoog
+        assert_eq!(next_release((1, 0, 0, 1), Some("1.0.0"), Some(1)), (1, 0, 1, 2));
+        // versie al hoger, maar buildnummer niet (bv. na teruggaan): alleen build omhoog
+        assert_eq!(next_release((1, 1, 0, 3), Some("1.0.0"), Some(5)), (1, 1, 0, 6));
+        // na terugzetten naar een oudere versie: boven de gepubliceerde versie blijven
+        assert_eq!(next_release((0, 9, 0, 2), Some("1.2.3"), Some(7)), (1, 2, 4, 8));
+        // al goed: laten staan
+        assert_eq!(next_release((1, 0, 1, 9), Some("1.0.0"), Some(5)), (1, 0, 1, 9));
+    }
+
+    #[test]
+    fn version_bumping() {
+        assert_eq!(parse_pubspec_version("name: x\nversion: 1.2.3+4\n"), Some((1, 2, 3, 4)));
+        assert_eq!(parse_pubspec_version("version: 0.1.0"), Some((0, 1, 0, 1)));
+        assert_eq!(bump((1, 2, 3, 4), "minor").unwrap(), (1, 3, 0, 5));
+        assert_eq!(bump((1, 2, 3, 4), "build").unwrap(), (1, 2, 3, 5));
+        assert!(bump((1, 0, 0, 1), "huge").is_err());
+
+        let d = tmp();
+        std::fs::write(d.join("pubspec.yaml"), "name: demo\nversion: 1.0.0+1\nenvironment:\n  sdk: ^3.0.0\n").unwrap();
+        let (db, p) = setup(&d);
+        let r = bump_version(&db, &p, "patch").unwrap();
+        assert_eq!(r["pubspec"], "1.0.1+2");
+        let text = std::fs::read_to_string(d.join("pubspec.yaml")).unwrap();
+        assert!(text.contains("version: 1.0.1+2\n") && text.contains("sdk: ^3.0.0"));
+        let p = db.project_get(&p.id).unwrap();
+        assert_eq!((p.version.as_str(), p.build_number), ("1.0.1", 2));
+    }
+
+    #[test]
+    fn snapshots_only_when_something_changed() {
+        if crate::proc::find("git").is_none() {
+            return;
+        }
+        let d = tmp();
+        std::fs::write(d.join("lib/main.dart"), "a").unwrap();
+        git_init(&d);
+        let (db, p) = setup(&d);
+        assert_eq!(create_snapshot(&db, &p, "x", "manual").unwrap()["created"], false);
+        std::fs::write(d.join("lib/main.dart"), "b").unwrap();
+        let r = create_snapshot(&db, &p, "Nieuwe knop", "manual").unwrap();
+        assert_eq!(r["created"], true);
+        assert_eq!(gitops::last_commit_subject(&d).unwrap(), "Nieuwe knop");
+        let st = project_status(&db, &p).unwrap();
+        assert_eq!(st["git"]["changedFiles"], 0);
+        assert_eq!(st["checklist"]["total"], 9);
+        assert_eq!(get_checklist(&db, &p).unwrap()["items"].as_array().unwrap().len(), 11);
+    }
+
+    #[test]
+    fn a_snapshot_is_blocked_while_a_secret_is_in_the_files_and_works_again_after_the_fix() {
+        if crate::proc::find("git").is_none() {
+            return;
+        }
+        let d = tmp();
+        std::fs::write(d.join("lib/main.dart"), "a").unwrap();
+        git_init(&d);
+        let (db, p) = setup(&d);
+        let before = gitops::head(&d).unwrap();
+        std::fs::write(d.join("lib/config.dart"), "const t = 'ghp_abcdefghijklmnopqrstuvwxyz0123456789';\n").unwrap();
+        let r = create_snapshot(&db, &p, "x", "auto").unwrap();
+        assert_eq!((r["created"].as_bool(), r["blocked"].as_str()), (Some(false), Some("leak")));
+        assert_eq!(r["leaks"][0]["file"], "lib/config.dart");
+        assert!(!r.to_string().contains("ghp_abc"), "the report never contains the value");
+        assert_eq!(gitops::head(&d).unwrap(), before, "nothing was committed");
+        assert!(db.snapshots_list(&p.id).unwrap().iter().all(|s| s.commit != "x"));
+        std::fs::write(d.join("lib/config.dart"), "const t = String.fromEnvironment('T');\n").unwrap();
+        assert_eq!(create_snapshot(&db, &p, "fixed", "auto").unwrap()["created"], true);
+    }
+}

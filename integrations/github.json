@@ -1,0 +1,26 @@
+{
+  "id": "github",
+  "naam": "integrations.github.name",
+  "categorie": "services",
+  "beschrijving": "integrations.github.desc",
+  "icoon": "github",
+  "scope": "global",
+  "velden": [
+    {
+      "id": "token",
+      "label": "integrations.github.fields.token.label",
+      "type": "password",
+      "geheim": true,
+      "verplicht": true,
+      "scope": "global",
+      "validatie": {
+        "regex": "^(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,})$"
+      },
+      "hulptekst": "integrations.github.fields.token.help",
+      "guideId": null,
+      "envVar": "STUDIO_GITHUB_TOKEN"
+    }
+  ],
+  "testVerbinding": "github",
+  "checklistItems": []
+}

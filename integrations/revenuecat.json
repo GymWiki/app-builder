@@ -1,0 +1,39 @@
+{
+  "id": "revenuecat",
+  "naam": "integrations.revenuecat.name",
+  "categorie": "stores",
+  "beschrijving": "integrations.revenuecat.desc",
+  "icoon": "key",
+  "scope": "project",
+  "velden": [
+    {
+      "id": "public_sdk_key",
+      "label": "integrations.revenuecat.fields.public_sdk_key.label",
+      "type": "password",
+      "geheim": true,
+      "verplicht": true,
+      "scope": "project",
+      "validatie": {
+        "regex": "^(appl|goog|test)_[A-Za-z0-9]{16,}$"
+      },
+      "hulptekst": "integrations.revenuecat.fields.public_sdk_key.help",
+      "guideId": null,
+      "envVar": "STUDIO_REVENUECAT_SDK_KEY"
+    },
+    {
+      "id": "secret_api_key",
+      "label": "integrations.revenuecat.fields.secret_api_key.label",
+      "type": "password",
+      "geheim": true,
+      "verplicht": false,
+      "scope": "project",
+      "validatie": {
+        "regex": "^sk_[A-Za-z0-9]{16,}$"
+      },
+      "hulptekst": "integrations.revenuecat.fields.secret_api_key.help",
+      "guideId": null,
+      "envVar": "STUDIO_REVENUECAT_API_KEY"
+    }
+  ],
+  "checklistItems": []
+}

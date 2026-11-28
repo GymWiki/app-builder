@@ -1,0 +1,226 @@
+{
+  "id": "claude",
+  "name": "Claude Code",
+  "binary": "claude",
+  "modelFlag": "--model",
+  "tiers": [
+    {
+      "id": "light",
+      "models": ["haiku"]
+    },
+    {
+      "id": "mid",
+      "models": ["sonnet"]
+    },
+    {
+      "id": "strong",
+      "models": ["opus"]
+    }
+  ],
+  "classMap": {
+    "trivial": "light",
+    "normal": "mid",
+    "complex": "strong"
+  },
+  "helperTier": "light",
+  "floors": {
+    "release": "mid"
+  },
+  "signals": {
+    "scope": {
+      "small": 0,
+      "screen": 1,
+      "shared": 3,
+      "project": 4
+    },
+    "kinds": [
+      {
+        "id": "text_change",
+        "weight": 0,
+        "words": [
+          "text",
+          "tekst",
+          "label",
+          "title",
+          "titel",
+          "tooltip",
+          "wording",
+          "rename",
+          "hernoem",
+          "typo",
+          "message",
+          "bericht"
+        ]
+      },
+      {
+        "id": "style",
+        "weight": 0,
+        "words": [
+          "color",
+          "colour",
+          "kleur",
+          "bold",
+          "vet",
+          "font",
+          "spacing",
+          "padding",
+          "margin",
+          "rounded",
+          "afgerond",
+          "bigger",
+          "smaller",
+          "groter",
+          "kleiner",
+          "icon",
+          "icoon"
+        ]
+      },
+      {
+        "id": "store_text",
+        "weight": 0,
+        "words": ["store listing", "changelog", "release notes", "description", "beschrijving"],
+        "skill": "studio-store-listing"
+      },
+      {
+        "id": "new_screen",
+        "weight": 1,
+        "words": ["new screen", "nieuw scherm", "second screen", "extra scherm", "another screen", "add a screen"],
+        "skill": "studio-screen"
+      },
+      {
+        "id": "feature",
+        "weight": 1,
+        "words": ["add a button", "add a switch", "show the", "toon", "voeg een knop", "add a"]
+      },
+      {
+        "id": "design_behavior",
+        "weight": 3,
+        "words": [
+          "redesign",
+          "320",
+          "large text",
+          "readable",
+          "looks right",
+          "look right",
+          "accessible",
+          "responsive",
+          "small phone",
+          "prominent"
+        ]
+      },
+      {
+        "id": "state_kept",
+        "weight": 3,
+        "words": ["come back", "kept when", "must be kept", "survive", "after a restart", "when i leave"]
+      },
+      {
+        "id": "multi_screen",
+        "weight": 2,
+        "words": [
+          "on every",
+          "on both",
+          "and in the",
+          "all screens",
+          "every screen",
+          "in the list and",
+          "shared helper",
+          "in core",
+          "one shared",
+          "every amount",
+          "on the balances screen"
+        ]
+      },
+      {
+        "id": "data_model",
+        "weight": 2,
+        "words": [
+          "data model",
+          "datamodel",
+          "model",
+          "table",
+          "tabel",
+          "persist",
+          "store finished",
+          "history",
+          "geschiedenis",
+          "opslaan",
+          "migration",
+          "storage version",
+          "saved format",
+          "old data"
+        ],
+        "skill": "studio-data-auth"
+      },
+      {
+        "id": "navigation",
+        "weight": 2,
+        "words": ["navigation", "navigatie", "route", "reachable from", "tab bar", "bottom navigation"]
+      },
+      {
+        "id": "debug",
+        "weight": 2,
+        "words": [
+          "bug",
+          "crash",
+          "error",
+          "fix",
+          "werkt niet",
+          "broken",
+          "doesn't work",
+          "does not work",
+          "instead of",
+          "in plaats van"
+        ]
+      },
+      {
+        "id": "auth_db",
+        "weight": 3,
+        "words": ["login", "log in", "sign in", "auth", "account", "supabase", "firebase", "database", "backend"],
+        "skill": "studio-data-auth"
+      },
+      {
+        "id": "refactor",
+        "weight": 3,
+        "words": [
+          "refactor",
+          "everywhere",
+          "overal",
+          "restructure",
+          "herstructureer",
+          "rename the",
+          "migrate",
+          "migreer"
+        ]
+      }
+    ],
+    "filesPerPoint": 8,
+    "filesMaxPoints": 1,
+    "previousFailure": 2,
+    "knownPatternDiscount": 1,
+    "thresholds": {
+      "normal": 1,
+      "complex": 3
+    },
+    "lengthPerPoint": 200,
+    "lengthMaxPoints": 2
+  },
+  "escalation": {
+    "maxPerTask": 1
+  },
+  "downgrade": {
+    "window": 5,
+    "minClean": 5,
+    "perClass": {
+      "complex": {
+        "window": 8,
+        "minClean": 8
+      }
+    }
+  },
+  "planning": {
+    "enabled": false,
+    "planTier": "strong",
+    "execTier": "mid",
+    "minFiles": 8
+  }
+}

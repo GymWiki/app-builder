@@ -1,0 +1,47 @@
+[package]
+name = "studio"
+version = "0.1.0"
+description = "Studio — a lightweight AI app builder for niche mobile apps (Flutter)"
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+name = "studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-log = "2"
+
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+log = "0.4"
+rusqlite = { version = "0.37", features = ["bundled"] }
+portable-pty = "0.9"
+which = "8"
+uuid = { version = "1", features = ["v4"] }
+notify = "8"
+keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native", "linux-native"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+base64 = "0.22"
+regex-lite = "0.1"
+tungstenite = { version = "0.27", default-features = false, features = ["handshake"] }
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

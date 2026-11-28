@@ -1,0 +1,227 @@
+{
+  "description": "Dertien vaste opdrachten (klein tot complex) op het scoreboard-sjabloon. Een run slaagt als Studio de wijziging na de controle (flutter analyze + rooktest) bewaart \u00e9n alle controles hieronder kloppen. Controles zijn bewust eenvoudig (aanwezigheid van kenmerken, plus een echte test bij de bug); ze meten of het model de taak heeft uitgevoerd, niet of de oplossing mooi is.",
+  "tasks": [
+    {
+      "id": "t01-title",
+      "expect": "trivial",
+      "prompt": "Change the title in the top bar of the scoreboard screen to 'Game Night'.",
+      "checks": [
+        {
+          "type": "regex",
+          "path": "lib/features/scoreboard/scoreboard_screen.dart",
+          "pattern": "Game Night"
+        }
+      ]
+    },
+    {
+      "id": "t02-bold",
+      "expect": "trivial",
+      "prompt": "Make the player name in the player card bold.",
+      "checks": [
+        {
+          "type": "regex",
+          "path": "lib/features/scoreboard/widgets/player_card.dart",
+          "pattern": "FontWeight\\.(bold|w[6-9]00)"
+        }
+      ]
+    },
+    {
+      "id": "t03-tooltip",
+      "expect": "trivial",
+      "prompt": "Change the tooltip of the reset button to 'Start over'.",
+      "checks": [
+        {
+          "type": "regex",
+          "path": "lib/features/scoreboard/scoreboard_screen.dart",
+          "pattern": "Start over"
+        }
+      ]
+    },
+    {
+      "id": "t04-player-reset",
+      "expect": "normal",
+      "prompt": "Add a small button to each player card that sets only that player's score back to zero.",
+      "checks": [
+        {
+          "type": "regex",
+          "path": "lib/features/scoreboard",
+          "pattern": "(?i)reset(Player|One|Single|Score)|resetAt|zeroPlayer|setScore|clearScore"
+        }
+      ]
+    },
+    {
+      "id": "t05-total",
+      "expect": "normal",
+      "prompt": "Show the total of all scores under the title on the scoreboard screen.",
+      "checks": [
+        {
+          "type": "regex",
+          "path": "lib/features/scoreboard",
+          "pattern": "(?i)total"
+        }
+      ]
+    },
+    {
+      "id": "t06-settings-screen",
+      "expect": "complex",
+      "prompt": "Add a second screen called Settings with a switch labelled 'Sound effects', reachable from an icon button in the top bar of the scoreboard screen.",
+      "checks": [
+        {
+          "type": "regex",
+          "path": "lib/features/settings",
+          "pattern": "Sound effects"
+        },
+        {
+          "type": "regex",
+          "path": "lib/core/navigation/app_router.dart",
+          "pattern": "/settings"
+        }
+      ]
+    },
+    {
+      "id": "t07-history",
+      "expect": "complex",
+      "prompt": "Add a game history: a Game model (name, date, scores per player), a controller that keeps finished games in memory, a 'Finish game' button on the scoreboard that saves the current scores as a game and resets the scores, and a History screen that lists the games, reachable from the top bar.",
+      "checks": [
+        {
+          "type": "exists",
+          "path": "lib/core/models/game.dart"
+        },
+        {
+          "type": "exists",
+          "path": "lib/features/history"
+        },
+        {
+          "type": "regex",
+          "path": "lib/core/navigation/app_router.dart",
+          "pattern": "/history"
+        }
+      ]
+    },
+    {
+      "id": "t08-rename-score",
+      "expect": "complex",
+      "prompt": "Rename the score of a player to 'points' everywhere in the app (model, controller and screens), and keep the app working.",
+      "checks": [
+        {
+          "type": "regex",
+          "path": "lib/core/models/player.dart",
+          "pattern": "points"
+        },
+        {
+          "type": "absent",
+          "path": "lib",
+          "pattern": "\\.score\\b|score:"
+        }
+      ]
+    },
+    {
+      "id": "t09-minus-bug",
+      "expect": "normal",
+      "setup": [
+        {
+          "file": "lib/features/scoreboard/scoreboard_controller.dart",
+          "replace": ["state[i].score + delta)", "state[i].score + delta.abs())"]
+        }
+      ],
+      "hiddenTests": [
+        {
+          "path": "test/eval_minus_test.dart",
+          "content": "import 'package:flutter_riverpod/flutter_riverpod.dart';\nimport 'package:flutter_test/flutter_test.dart';\nimport 'package:__PKG__/features/scoreboard/scoreboard_controller.dart';\n\nvoid main() {\n  test('minus lowers the score', () {\n    final c = ProviderContainer();\n    addTearDown(c.dispose);\n    c.read(scoreboardProvider.notifier).change(0, 1);\n    c.read(scoreboardProvider.notifier).change(0, -1);\n    expect(c.read(scoreboardProvider)[0].score, 0);\n  });\n}\n"
+        }
+      ],
+      "prompt": "Bug: when I press the minus button on a player card, the score goes up instead of down. Please fix it.",
+      "checks": [
+        {
+          "type": "flutterTest",
+          "path": "test/eval_minus_test.dart"
+        }
+      ]
+    },
+    {
+      "id": "t10-dark-mode",
+      "expect": "complex",
+      "prompt": "Add a dark mode switch: keep the choice in a Riverpod provider, apply it through themeMode in the app, and put the toggle in the top bar of the scoreboard screen.",
+      "checks": [
+        {
+          "type": "regex",
+          "path": "lib/app.dart",
+          "pattern": "themeMode"
+        },
+        {
+          "type": "regex",
+          "path": "lib/features/scoreboard/scoreboard_screen.dart",
+          "pattern": "(?i)(dark|theme)"
+        }
+      ]
+    },
+    {
+      "id": "t11-tournament",
+      "expect": "complex",
+      "prompt": "Add a tournament mode: the players are paired in rounds (everyone plays everyone once), a screen shows the matches of the current round, and after a score is entered for every match the standings (wins and points) update. Put the pairing and standings logic in plain Dart code and cover it with unit tests.",
+      "checks": [
+        {
+          "type": "pathMatches",
+          "path": "lib/features",
+          "pattern": "(?i)(tourn|round|match|standing|league)"
+        },
+        {
+          "type": "regex",
+          "path": "test",
+          "pattern": "(?i)(round|pair|standing)"
+        },
+        {
+          "type": "flutterTest",
+          "path": "test"
+        }
+      ]
+    },
+    {
+      "id": "t12-persist",
+      "expect": "complex",
+      "prompt": "Make the scores survive an app restart: store the players and their scores on the device with the shared_preferences package, load them when the app starts, and cover the saving and loading logic with a unit test.",
+      "checks": [
+        {
+          "type": "regex",
+          "path": "pubspec.yaml",
+          "pattern": "shared_preferences"
+        },
+        {
+          "type": "regex",
+          "path": "lib",
+          "pattern": "SharedPreferences"
+        },
+        {
+          "type": "flutterTest",
+          "path": "test"
+        }
+      ]
+    },
+    {
+      "id": "t13-reset-bug",
+      "expect": "normal",
+      "setup": [
+        {
+          "file": "lib/features/scoreboard/scoreboard_controller.dart",
+          "replace": [
+            "state = [for (final p in state) p.copyWith(score: 0)];",
+            "state = [state.first.copyWith(score: 0), ...state.skip(1)];"
+          ]
+        }
+      ],
+      "hiddenTests": [
+        {
+          "path": "test/eval_reset_test.dart",
+          "content": "import 'package:flutter_riverpod/flutter_riverpod.dart';\nimport 'package:flutter_test/flutter_test.dart';\nimport 'package:__PKG__/features/scoreboard/scoreboard_controller.dart';\n\nvoid main() {\n  test('reset sets every score to zero', () {\n    final c = ProviderContainer();\n    addTearDown(c.dispose);\n    final n = c.read(scoreboardProvider.notifier);\n    n.change(0, 5);\n    n.change(1, 3);\n    n.reset();\n    expect(c.read(scoreboardProvider).map((p) => p.score), everyElement(0));\n  });\n}\n"
+        }
+      ],
+      "prompt": "Sometimes the reset button does not reset everything: one of the players keeps their score. Find out why and fix it.",
+      "checks": [
+        {
+          "type": "flutterTest",
+          "path": "test/eval_reset_test.dart"
+        }
+      ]
+    }
+  ]
+}
