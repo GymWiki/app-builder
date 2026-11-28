@@ -236,6 +236,15 @@ impl RunScope {
         s
     }
 
+    /// Werkgebied voor een bouwtaak (fase 14): alleen deze mappen en bestanden (plus `test/` en de vaste projectbestanden).
+    pub fn for_paths(prefixes: &[String], files: &[String]) -> Self {
+        let mut s = RunScope { level: Level::Screen, screen: None, files: BTreeSet::new(), prefixes: vec![], expansions: vec![], denied: vec![], purchases_ok: false };
+        s.prefixes.extend(prefixes.iter().cloned());
+        s.prefixes.push("test/".into());
+        s.files.extend(files.iter().cloned());
+        s
+    }
+
     fn rebuild(&mut self, idx: &CodeIndex) {
         let extra_files: BTreeSet<String> = self.files.iter().filter(|f| f.starts_with('+')).cloned().collect();
         self.files.clear();

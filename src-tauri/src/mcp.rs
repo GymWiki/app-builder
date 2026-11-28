@@ -84,7 +84,9 @@ fn text_result(v: &Value, is_error: bool) -> Value {
     json!({"content":[{"type":"text","text":text}],"isError":is_error})
 }
 
-fn call_tool(deps: &Deps, project_id: &str, name: &str, args: &Value) -> Value {
+fn call_tool(deps: &Deps, raw_id: &str, name: &str, args: &Value) -> Value {
+    // Parallelle bouwtaken (fase 14) gebruiken `<project>~<n>` als eigen run-id zodat elke taak zijn eigen werkgebied heeft; al het andere hoort bij het project.
+    let project_id = raw_id.split('~').next().unwrap_or(raw_id);
     let project = match deps.db.project_get(project_id) {
         Ok(p) => p,
         Err(e) => return text_result(&json!(e.to_string()), true),
@@ -184,7 +186,7 @@ fn call_tool(deps: &Deps, project_id: &str, name: &str, args: &Value) -> Value {
             let level = Level::parse(&arg("level")).filter(|_| !arg("level").is_empty());
             CodeIndex::build(&dir).and_then(|idx| {
                 deps.scopes
-                    .with(project_id, |s| {
+                    .with(raw_id, |s| {
                         s.expand(&idx, level, &files, &arg("reason"));
                         json!({ "ok": true, "level": s.level.as_str(), "scope": s.describe() })
                     })
@@ -197,7 +199,7 @@ fn call_tool(deps: &Deps, project_id: &str, name: &str, args: &Value) -> Value {
             // Bewerkingen worden tegen het werkgebied van de run getoetst, zonder de gebruiker te storen.
             if EDIT_TOOLS.contains(&tool.as_str()) {
                 let path = input["file_path"].as_str().or_else(|| input["notebook_path"].as_str()).unwrap_or("").to_string();
-                let verdict = deps.scopes.with(project_id, |s| {
+                let verdict = deps.scopes.with(raw_id, |s| {
                     if s.permits_path(&dir, &path) {
                         json!({"behavior":"allow","updatedInput":input})
                     } else {

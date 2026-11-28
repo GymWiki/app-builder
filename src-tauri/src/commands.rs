@@ -182,6 +182,161 @@ pub fn pty_open_install(app: AppHandle, state: State<'_, AppState>, component: S
     state.pty.spawn(&app, &program, &plan.args, None)
 }
 
+// ───────────── onboarding van een nieuwe app (fase 14) ─────────────
+
+static BUILDS: std::sync::Mutex<Option<std::collections::HashMap<String, (Arc<crate::appbuild::BuildHandle>, serde_json::Value)>>> = std::sync::Mutex::new(None);
+
+fn builds<R>(f: impl FnOnce(&mut std::collections::HashMap<String, (Arc<crate::appbuild::BuildHandle>, serde_json::Value)>) -> R) -> R {
+    let mut g = BUILDS.lock().unwrap_or_else(|e| e.into_inner());
+    f(g.get_or_insert_with(Default::default))
+}
+
+/// Functies voorstellen uit de beschrijving (de AI), plus wat Studio daarvan niet kan met een haalbaar alternatief.
+#[tauri::command]
+pub async fn onboarding_features(state: State<'_, AppState>, description: String, language: String) -> AppResult<serde_json::Value> {
+    let (chat, ctx) = (state.chat.clone(), state.chat_ctx.clone());
+    blocking(move || {
+        let caps = crate::blueprint::capabilities();
+        let text = chat.ask_text(&ctx, &crate::onboarding::features_prompt(&description, &caps, &language), crate::chat::StepTier::Light, std::time::Duration::from_secs(90));
+        let ai = text.as_deref().map(|t| crate::onboarding::parse_features(t, &caps)).filter(|f| !f.is_empty());
+        let used_ai = ai.is_some();
+        let unsupported: Vec<serde_json::Value> = crate::blueprint::unsupported_in(&description, &caps).into_iter().map(|(id, title, alt)| serde_json::json!({ "id": id, "title": title, "alternative": alt })).collect();
+        Ok(serde_json::json!({ "features": ai.unwrap_or_else(|| crate::onboarding::default_features(&language)), "unsupported": unsupported, "ai": used_ai }))
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn onboarding_styles(description: String) -> Vec<crate::onboarding::StyleCard> {
+    crate::onboarding::style_cards(&description)
+}
+
+/// Het plan (blueprint) uit beschrijving, functies en stijl. Eén aanroep met een sterk model, één herstelronde; zonder antwoord een eenvoudige terugval.
+#[tauri::command]
+pub async fn onboarding_plan(state: State<'_, AppState>, description: String, features: Vec<String>, card_id: String, seed: Option<String>, language: String) -> AppResult<serde_json::Value> {
+    let (chat, ctx) = (state.chat.clone(), state.chat_ctx.clone());
+    blocking(move || {
+        let cards = crate::onboarding::style_cards(&description);
+        let card = cards.iter().find(|c| c.id == card_id).cloned().unwrap_or_else(|| cards[0].clone());
+        let mut ask = |q: &str| chat.ask_text(&ctx, q, crate::chat::StepTier::Strong, std::time::Duration::from_secs(240));
+        let (mut bp, fallback, issues) = crate::onboarding::make_plan(&mut ask, &description, &features, &card, &language);
+        crate::onboarding::apply_style(&mut bp, &card, seed.as_deref());
+        bp.app.description = description.chars().take(4000).collect();
+        Ok(serde_json::json!({ "blueprint": bp, "fallback": fallback, "issues": issues }))
+    })
+    .await
+}
+
+/// Een onderbroken onboarding hervatten zonder dataverlies: het concept staat lokaal (geen geheimen).
+#[tauri::command]
+pub fn onboarding_draft_get(state: State<'_, AppState>) -> AppResult<Option<String>> {
+    state.db.setting_get("onboarding_draft")
+}
+
+#[tauri::command]
+pub fn onboarding_draft_set(state: State<'_, AppState>, draft: Option<String>) -> AppResult<()> {
+    match draft.filter(|d| !d.is_empty()) {
+        Some(d) if d.len() <= 200_000 => state.db.setting_set("onboarding_draft", &d),
+        Some(_) => Err(AppError::Invalid("draft is too large".into())),
+        None => state.db.setting_set("onboarding_draft", ""),
+    }
+}
+
+/// "Bouw mijn app": project maken, deterministisch scaffolden en daarna de AI-bouw op de achtergrond starten (meerdere pagina's tegelijk).
+#[tauri::command]
+pub async fn onboarding_build(app: AppHandle, state: State<'_, AppState>, blueprint: crate::blueprint::Blueprint) -> AppResult<Project> {
+    let issues = crate::blueprint::validate(&blueprint, &crate::blueprint::capabilities());
+    if !issues.is_empty() {
+        return Err(AppError::Invalid(format!("the plan is not valid: {}", issues.join("; "))));
+    }
+    let flutter = proc::find("flutter").ok_or_else(|| AppError::ToolMissing("flutter".into()))?;
+    let git = proc::find("git").ok_or_else(|| AppError::ToolMissing("git".into()))?;
+    let dir = projects_dir(&app, &state)?;
+    let org = state.db.setting_get("org")?.unwrap_or_else(|| DEFAULT_ORG.into());
+    let req = CreateRequest { name: blueprint.app.name.clone(), template: "blank".into(), description: blueprint.app.purpose.clone(), org };
+    let (app2, handle) = (app.clone(), app.clone());
+    let bp = blueprint.clone();
+    let project = blocking(move || {
+        let state = handle.state::<AppState>();
+        let tools = Tools { flutter: flutter.clone(), git };
+        let p = projects::create_project(&state.db, &tools, &dir, &req, &|step| {
+            let _ = app2.emit("project-create-progress", Progress { step: step.into() });
+        })?;
+        let pdir = PathBuf::from(&p.path);
+        let rep = crate::scaffold::scaffold(&pdir, &bp)?;
+        if rep.needs_pub_get {
+            let _ = proc::run(&flutter, &["pub", "get"], Some(&pdir), std::time::Duration::from_secs(300));
+        }
+        // Eén keer invullen: wat de gebruiker hier beschreef gaat naar de winkelvermelding en de vragenlijst.
+        let mut meta = crate::meta::load(&pdir).unwrap_or_default();
+        crate::preflight::fix_listing(&mut meta, &bp.app.name, &bp.app.purpose, "");
+        if meta.listing.full_description.is_empty() {
+            meta.listing.full_description = crate::preflight::shorten(&bp.app.description, 4000);
+        }
+        meta.questionnaire.has_accounts = Some(!bp.integrations.auth.is_empty());
+        meta.questionnaire.in_app_purchases = Some(bp.integrations.purchases);
+        meta.data.provider = bp.integrations.storage.clone();
+        meta.data.auth_methods = bp.integrations.auth.clone();
+        let _ = crate::meta::save(&pdir, &meta);
+        let _ = state.db.ux_record(Some(&p.id), "onboarding", "deterministic");
+        Ok(p)
+    })
+    .await?;
+    spawn_profile(&app, &project.id, PathBuf::from(&project.path), false);
+    start_build(&app, &project.id, blueprint, None);
+    Ok(project)
+}
+
+fn start_build(app: &AppHandle, project_id: &str, bp: crate::blueprint::Blueprint, only: Option<Vec<String>>) {
+    let handle = Arc::new(crate::appbuild::BuildHandle::default());
+    builds(|b| b.insert(project_id.to_string(), (handle.clone(), serde_json::Value::Null)));
+    let (app, id) = (app.clone(), project_id.to_string());
+    std::thread::spawn(move || {
+        let st = app.state::<AppState>();
+        let parallel = crate::appbuild::parallel_from(st.db.setting_get("build_parallel").ok().flatten().as_deref());
+        let language = st.db.setting_get("language").ok().flatten().unwrap_or_else(|| bp.app.language.clone());
+        let (a2, id2) = (app.clone(), id.clone());
+        let emit = move |p: crate::appbuild::Progress| {
+            let v = serde_json::to_value(&p).unwrap_or_default();
+            builds(|b| {
+                if let Some(e) = b.get_mut(&id2) {
+                    e.1 = v.clone();
+                }
+            });
+            let _ = a2.emit("build-progress", serde_json::json!({ "projectId": id2, "progress": v }));
+        };
+        let report = crate::appbuild::run(&st.chat, &st.chat_ctx, &id, &bp, parallel, &language, &handle, only.as_deref(), &emit);
+        let _ = st.db.ux_record(Some(&id), "onboarding", "setting_done");
+        let _ = app.emit("build-done", serde_json::json!({ "projectId": id, "report": report }));
+        builds(|b| b.remove(&id));
+    });
+}
+
+#[tauri::command]
+pub fn onboarding_cancel(project_id: String) {
+    if let Some(h) = builds(|b| b.get(&project_id).map(|e| e.0.clone())) {
+        h.cancel();
+    }
+}
+
+/// De voortgang van een lopende bouw (voor een UI die later verschijnt).
+#[tauri::command]
+pub fn onboarding_status(project_id: String) -> Option<serde_json::Value> {
+    builds(|b| b.get(&project_id).map(|e| e.1.clone())).filter(|v| !v.is_null())
+}
+
+/// Mislukte of niet-klare pagina's apart opnieuw laten maken.
+#[tauri::command]
+pub fn onboarding_retry(app: AppHandle, state: State<'_, AppState>, project_id: String, pages: Vec<String>) -> AppResult<()> {
+    let (_, dir) = project_and_dir(&state, &project_id)?;
+    if builds(|b| b.contains_key(&project_id)) {
+        return Err(AppError::Invalid("the app is still being built".into()));
+    }
+    let bp: crate::blueprint::Blueprint = serde_json::from_str(&std::fs::read_to_string(dir.join("studio/blueprint.json"))?)?;
+    start_build(&app, &project_id, bp, Some(pages));
+    Ok(())
+}
+
 // ───────────── Android-licenties en installaties zonder terminal ─────────────
 
 static LICENSE_RUN: std::sync::Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> = std::sync::Mutex::new(None);
@@ -820,6 +975,14 @@ pub fn ux_event(state: State<'_, AppState>, project_id: Option<String>, flow: St
 #[tauri::command]
 pub fn screens_graph(state: State<'_, AppState>, project_id: String) -> AppResult<crate::screens::ScreenGraph> {
     let (_, dir) = project_and_dir(&state, &project_id)?;
+    let g = screens_graph_inner(&dir)?;
+    // De blueprint blijft gelijk met de echte pagina's (een pagina die later is toegevoegd of verdwenen is).
+    crate::scaffold::sync_blueprint(&dir, &g.nodes.iter().map(|n| (n.class.clone(), n.route.clone())).collect::<Vec<_>>());
+    Ok(g)
+}
+
+fn screens_graph_inner(dir: &std::path::Path) -> AppResult<crate::screens::ScreenGraph> {
+    let dir = dir.to_path_buf();
     crate::screens::screen_graph(&dir)
 }
 

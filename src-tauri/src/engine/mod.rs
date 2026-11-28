@@ -128,6 +128,10 @@ pub trait AiEngine: Send + Sync {
     fn classify(&self, _question: &str, _model: Option<&str>) -> Option<String> {
         None
     }
+    /// Eén vraag zonder gereedschap met een ruimere tijdslimiet (voor een plan of een lijst van de AI). Standaard dezelfde als `classify`.
+    fn ask(&self, question: &str, model: Option<&str>, _timeout: std::time::Duration) -> Option<String> {
+        self.classify(question, model)
+    }
     /// Kent de CLI dit model (alias)? Zo komen modelnamen uit de CLI en de configuratie, niet uit de code.
     fn model_available(&self, _alias: &str) -> bool {
         true

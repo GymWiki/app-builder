@@ -7,7 +7,7 @@ use crate::modelsel::{self, EngineConfig, Purpose};
 use crate::proc;
 use crate::quality;
 use crate::scope::{self, RunScope, ScopeRegistry};
-use crate::engine::{AiEngine, ChatEvent, RunHandle, TurnRequest};
+use crate::engine::{AiEngine, ChatEvent, RunHandle, TokenUsage, TurnRequest};
 use crate::error::{AppError, AppResult};
 use crate::mcp::{config_json_with, McpInfo};
 use crate::studio_tools;
@@ -36,6 +36,34 @@ struct TurnOpts {
     model: Option<String>,
     plan_only: bool,
     fresh: bool,
+}
+
+/// Hoe zwaar het model voor een bouwtaak moet zijn (volgens de bestaande klasse-mapping van de modelkeuze).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum StepTier {
+    Strong,
+    Normal,
+    Light,
+}
+
+pub struct StepSpec {
+    pub label: String,
+    pub prompt: String,
+    pub tier: StepTier,
+    pub allowed_prefixes: Vec<String>,
+    pub allowed_files: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StepResult {
+    pub ok: bool,
+    pub text: String,
+    pub tokens: u64,
+    pub usage: TokenUsage,
+    pub seconds: u64,
+    /// Het abonnement van de gebruiker zit aan zijn limiet.
+    pub limit: bool,
+    pub model: Option<String>,
 }
 
 /// Voor de evaluatieset: onderdelen van fase 6 t/m 8 uitzetten om hun effect los van de modelkeuze te kunnen meten.
@@ -173,6 +201,96 @@ impl ChatManager {
             (ctx.emit)("chat-finished", json!({ "projectId": project_id }));
         });
         Ok(())
+    }
+
+    /// Eén vraag aan de AI zonder gereedschap (plan, functielijst), met een model van de gevraagde zwaarte. `None` als de AI niet antwoordt.
+    pub fn ask_text(&self, ctx: &ChatCtx, prompt: &str, tier: StepTier, timeout: std::time::Duration) -> Option<String> {
+        let engine = self.engine_for(ctx);
+        let cfg = self.config();
+        let class = match tier {
+            StepTier::Strong => modelsel::Class::Complex,
+            StepTier::Normal => modelsel::Class::Normal,
+            StepTier::Light => modelsel::Class::Trivial,
+        };
+        let model = cfg.resolve(cfg.tier_of_class(class), &|m| engine.model_available(m));
+        engine.ask(&crate::scrub::scrub(prompt), model.as_deref(), timeout)
+    }
+
+    /// Eén bouwtaak voor de onboarding (fase 14): een losse run met een eigen werkgebied en een eigen run-id (`<project>~<n>`), zonder gesprek,
+    /// momentopname of controle per run (die doet de bouwpijplijn één keer voor het geheel). Meerdere van deze taken kunnen tegelijk draaien.
+    pub fn run_build_step(&self, ctx: &ChatCtx, project_id: &str, step_no: u32, spec: &StepSpec, language: &str, handle: &RunHandle) -> StepResult {
+        let started = Instant::now();
+        let fail = |text: &str| StepResult { ok: false, text: text.into(), tokens: 0, usage: TokenUsage::default(), seconds: started.elapsed().as_secs(), limit: false, model: None };
+        let project = match ctx.db.project_get(project_id) {
+            Ok(p) => p,
+            Err(e) => return fail(&e.to_string()),
+        };
+        let dir = PathBuf::from(&project.path);
+        let engine = self.engine_for(ctx);
+        let cfg_models = self.config();
+        let avail = |m: &str| engine.model_available(m);
+        let class = match spec.tier {
+            StepTier::Strong => modelsel::Class::Complex,
+            StepTier::Normal => modelsel::Class::Normal,
+            StepTier::Light => modelsel::Class::Trivial,
+        };
+        let model = cfg_models.resolve(cfg_models.tier_of_class(class), &avail);
+        let vid = format!("{project_id}~{step_no}");
+        ctx.scopes.set(&vid, RunScope::for_paths(&spec.allowed_prefixes, &spec.allowed_files));
+        let files = || -> AppResult<(PathBuf, PathBuf)> {
+            std::fs::create_dir_all(&ctx.config_dir)?;
+            let cfg = ctx.config_dir.join(format!("{vid}.json"));
+            std::fs::write(&cfg, serde_json::to_string_pretty(&config_json_with(&ctx.mcp, &vid, &mcp_extras(project_id, &dir)))?)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&cfg, std::fs::Permissions::from_mode(0o600))?;
+            }
+            let settings = ctx.config_dir.join(format!("{vid}.settings.json"));
+            std::fs::write(&settings, serde_json::to_string(&json!({ "permissions": { "ask": ["Edit", "Write", "MultiEdit", "NotebookEdit"] } }))?)?;
+            Ok((cfg, settings))
+        };
+        let (cfg, settings) = match files() {
+            Ok(x) => x,
+            Err(e) => {
+                ctx.scopes.take(&vid);
+                return fail(&e.to_string());
+            }
+        };
+        let scope_text = ctx.scopes.with(&vid, |s| s.describe()).unwrap_or_default();
+        let req = TurnRequest {
+            project_dir: dir.clone(),
+            prompt: crate::scrub::scrub(&format!("[Studio scope: {scope_text}]\n\n{}", spec.prompt)),
+            resume: None,
+            mcp_config: cfg.clone(),
+            language: language.to_string(),
+            settings: Some(settings.clone()),
+            model: model.clone(),
+            plan_only: false,
+        };
+        let (mut ok, mut text, mut tokens, mut usage, mut limit) = (false, String::new(), 0u64, TokenUsage::default(), false);
+        let outcome = engine.run_turn(&req, handle, &mut |e| match &e {
+            ChatEvent::Text { text: t, .. } => text = t.clone(),
+            ChatEvent::Done { ok: o, tokens: tk, usage: u, code, .. } => {
+                ok = *o;
+                tokens += tk.unwrap_or(0);
+                if let Some(u) = u {
+                    usage.add(u);
+                }
+                if code.as_deref() == Some("limit") {
+                    limit = true;
+                }
+            }
+            ChatEvent::Error { code, .. } if code == "limit" => limit = true,
+            _ => {}
+        });
+        ctx.scopes.take(&vid);
+        let _ = std::fs::remove_file(&cfg);
+        let _ = std::fs::remove_file(&settings);
+        if outcome.is_err() {
+            ok = false;
+        }
+        StepResult { ok: ok && !handle.is_cancelled(), text, tokens, usage, seconds: started.elapsed().as_secs(), limit, model }
     }
 
     /// De eigenlijke beurt (synchroon; apart zodat tests hem direct kunnen aanroepen). Volgorde: werkgebied kiezen,

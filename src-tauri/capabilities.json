@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "supported": [
+    { "id": "local_storage", "title": "Save data on the phone" },
+    { "id": "lists", "title": "Lists" },
+    { "id": "forms", "title": "Forms and input" },
+    { "id": "detail_pages", "title": "Detail pages" },
+    { "id": "search_filter", "title": "Search and filter" },
+    { "id": "charts", "title": "Charts" },
+    { "id": "timers", "title": "Timers and counters" },
+    { "id": "settings", "title": "Settings" },
+    { "id": "share_text_image", "title": "Share text or an image" },
+    { "id": "theme_choice", "title": "Light and dark theme" },
+    { "id": "calculations", "title": "Calculations" },
+    { "id": "onboarding_screens", "title": "Welcome screens" }
+  ],
+  "optional": [
+    { "id": "auth_email", "title": "Sign in with email", "needs": { "auth": "email" } },
+    { "id": "auth_anonymous", "title": "Use without an account (guest)", "needs": { "auth": "anonymous" } },
+    { "id": "cloud_sync_supabase", "title": "Sync between devices (Supabase)", "needs": { "storage": "supabase" } },
+    { "id": "cloud_sync_firebase", "title": "Sync between devices (Firebase)", "needs": { "storage": "firebase" } },
+    { "id": "notifications_local", "title": "Reminders on the phone", "needs": { "notifications": true } },
+    { "id": "purchases", "title": "In-app purchases (via the Purchases page)", "needs": { "purchases": true } }
+  ],
+  "unsupported": [
+    { "id": "realtime_multiplayer", "title": "Live play on several phones", "keywords": ["realtime", "real-time", "multiplayer", "live meespelen", "tegelijk spelen", "online spel"], "alternative": "One phone for everyone, or share the result as a picture.", "alternative_id": "share_text_image" },
+    { "id": "video_streaming", "title": "Video streaming or video calls", "keywords": ["video", "livestream", "videobellen", "video call"], "alternative": "Show pictures and lists instead.", "alternative_id": "lists" },
+    { "id": "three_d", "title": "3D or augmented reality", "keywords": ["3d", "ar ", "augmented", "virtual reality", "vr "], "alternative": "Use flat pictures and simple animations.", "alternative_id": "charts" },
+    { "id": "custom_native_sdk", "title": "Special hardware or a custom native SDK", "keywords": ["bluetooth", "nfc", "smartwatch", "sdk van", "hardware"], "alternative": "Enter the values by hand for now.", "alternative_id": "forms" }
+  ]
+}

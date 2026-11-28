@@ -242,6 +242,12 @@ impl AiEngine for ClaudeEngine {
         oneshot(&program, &help, question, model, Duration::from_secs(60))
     }
 
+    fn ask(&self, question: &str, model: Option<&str>, timeout: Duration) -> Option<String> {
+        let program = self.program().ok()?;
+        let help = help_text(&program);
+        oneshot(&program, &help, question, model, timeout)
+    }
+
     fn model_available(&self, alias: &str) -> bool {
         let Ok(program) = self.program() else { return false };
         let help = help_text(&program);

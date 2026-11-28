@@ -1,5 +1,9 @@
 mod extent;
+mod appbuild;
+mod onboarding;
+mod blueprint;
 mod config;
+mod scaffold;
 mod licenses;
 mod data_gen;
 mod preflight;
@@ -167,6 +171,15 @@ pub fn run() {
             commands::android_licenses_accept,
             commands::android_licenses_cancel,
             commands::install_run,
+            commands::onboarding_features,
+            commands::onboarding_styles,
+            commands::onboarding_plan,
+            commands::onboarding_draft_get,
+            commands::onboarding_draft_set,
+            commands::onboarding_build,
+            commands::onboarding_cancel,
+            commands::onboarding_status,
+            commands::onboarding_retry,
             commands::pty_open_claude_login,
             commands::pty_open_install,
             commands::pty_backlog,
