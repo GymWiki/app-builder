@@ -1971,5 +1971,30 @@
     "installing": "Downloaden en installeren…",
     "failed": "De update is niet gelukt. Controleer je internetverbinding en probeer het opnieuw.",
     "retry": "Opnieuw proberen"
+  },
+  "scope": {
+    "app": "Hele app",
+    "folderUse": "Alle pagina’s in “{{name}}” gebruiken",
+    "chipApp": "Hele app",
+    "chipFolder": "Map: {{name}} ({{count}} pagina’s)",
+    "chipPages": "{{count}} pagina’s",
+    "gridLabel": "Alle pagina’s in dit bereik",
+    "changed": "Aangepast",
+    "working": "Bezig met deze pagina",
+    "taskTitle": "Wijziging: {{scope}}",
+    "sharedStep": "Eerst de gedeelde onderdelen…",
+    "planStep": "Plannen en bouwen…",
+    "pageOf": "Pagina {{n}} van {{total}}",
+    "summary_one": "{{count}} pagina aangepast, {{shared}} gedeeld onderdeel.",
+    "summary_other": "{{count}} pagina’s aangepast, {{shared}} gedeeld onderdeel.",
+    "undone": "Alles is teruggezet zoals het was.",
+    "undo": "Terugdraaien",
+    "failedPages": "Niet gelukt: {{pages}}.",
+    "retryFailed": "Deze opnieuw proberen",
+    "suggestions": [
+      "Maak alle knoppen afgerond",
+      "Gebruik overal hetzelfde lettertype",
+      "Voeg een terug-knop toe op elke pagina"
+    ]
   }
 }

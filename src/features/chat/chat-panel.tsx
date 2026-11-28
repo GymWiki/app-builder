@@ -27,7 +27,7 @@ export interface ChatContext {
   /** Wat er aan de prompt wordt toegevoegd (Engels, voor Claude). */
   prompt: string;
   /** `element` = alleen één onderdeel van een pagina; wordt opvallend getoond zodat niemand per ongeluk te smal vraagt. */
-  kind?: "page" | "element";
+  kind?: "page" | "element" | "scope";
 }
 
 const EMPTY: never[] = [];
@@ -36,10 +36,16 @@ export function ChatPanel({
   projectId,
   context,
   onDismissContext,
+  onScopeSend,
+  suggestions,
 }: {
   projectId: string;
   context: ChatContext | null;
   onDismissContext: () => void;
+  /** Bij een bereik van meerdere pagina's neemt de pagina de opdracht over (Studio kiest de uitvoering); `true` = afgehandeld. */
+  onScopeSend?: (text: string) => boolean;
+  /** Snelle suggesties passend bij het bereik (standaard de algemene). */
+  suggestions?: string[];
 }) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
@@ -84,6 +90,7 @@ export function ChatPanel({
     if (!text || running) return;
     setDraft("");
     stick.current = true;
+    if (onScopeSend?.(text)) return;
     try {
       await send(projectId, text, context?.prompt ?? null, i18n.language.slice(0, 2));
     } catch (e) {
@@ -133,7 +140,7 @@ export function ChatPanel({
             <div className="flex h-full flex-col">
               <EmptyState icon={Sparkles} title={t("chat.empty.title")} body={t("chat.empty.body")} className="py-6" />
               <div className="mt-auto flex flex-col gap-2">
-                {(t("chat.suggestions", { returnObjects: true }) as string[]).map((s) => (
+                {(suggestions ?? (t("chat.suggestions", { returnObjects: true }) as string[])).map((s) => (
                   <button
                     key={s}
                     type="button"

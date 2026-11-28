@@ -181,7 +181,7 @@ export const api = {
 
   snapshotsList: (projectId: string) => call<Snapshot[]>("snapshots_list", { projectId }),
   snapshotCreate: (projectId: string, label: string) =>
-    call<{ created: boolean }>("snapshot_create", { projectId, label }),
+    call<{ created: boolean; commit: string }>("snapshot_create", { projectId, label }),
   snapshotRestore: (projectId: string, commit: string) =>
     call<{ restored: boolean }>("snapshot_restore", { projectId, commit }),
   changelogDraft: (projectId: string) => call<string[]>("changelog_draft", { projectId }),

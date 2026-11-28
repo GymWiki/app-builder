@@ -36,6 +36,9 @@ import { pageForRoute } from "@/lib/routes";
 import { runTest } from "@/features/sections/publish/jobs-store";
 import { toastError } from "@/lib/toast";
 import { TaskTray } from "@/features/tasks/task-tray";
+import { PagesGrid } from "./pages-grid";
+import { scopePages, type Scope } from "./scope";
+import { useTasks } from "@/features/tasks/task-store";
 import { usePreview } from "@/features/preview/preview-store";
 import { cn } from "@/lib/utils";
 import { DEVICES, type DeviceId } from "./phone-frame";
@@ -55,7 +58,7 @@ function safeStorage(): Pick<Storage, "getItem" | "setItem"> {
 }
 
 export default function ProjectPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { id = "" } = useParams();
   const qc = useQueryClient();
   const project = useQuery({ queryKey: qk.project(id), queryFn: () => api.projectGet(id) });
@@ -63,6 +66,8 @@ export default function ProjectPage() {
   const [device, setDevice] = useState<DeviceId>("medium");
   const [previewDark, setPreviewDark] = useState(false);
   const [screen, setScreen] = useState<PickedScreen | null>(null);
+  /** Bereik van de chatopdracht: `null` = de huidige pagina (standaard); anders Hele app, een map of meerdere pagina's. */
+  const [scope, setScope] = useState<Scope | null>(null);
   const [contextOff, setContextOff] = useState(false);
   const [pick, setPick] = useState<PickBox | null>(null);
   const [info, setInfo] = useState<{ selection: Selection; prompt: string } | null>(null);
@@ -71,6 +76,7 @@ export default function ProjectPage() {
   const inspect = usePreview((s) => s.state.mode === "inspect");
   const graph = useQuery({ queryKey: ["screens", id], queryFn: () => api.screensGraph(id) });
   const nodes = graph.data?.nodes;
+  const lastScope = useTasks((st) => st.tasks.find((x) => x.projectId === id && x.scope));
   const followRef = useRef<{ nodes: typeof nodes; cls: string | null }>({ nodes, cls: null });
   useEffect(() => {
     followRef.current = { nodes, cls: screen?.class ?? null };
@@ -213,8 +219,26 @@ export default function ProjectPage() {
       screen: m.screen ?? "",
     });
   };
+  const allPages = (nodes ?? []).map((n) => n.class);
+  const scoped = scope && !pick ? scopePages(scope, allPages) : [];
+  const scopeLabel = !scope
+    ? ""
+    : scope.kind === "app"
+      ? t("scope.chipApp")
+      : scope.kind === "folder"
+        ? t("scope.chipFolder", { name: scope.name, count: scoped.length })
+        : t("scope.chipPages", { count: scoped.length });
   const context: ChatContext | null =
-    contextOff || !screen
+    scope && !pick && !contextOff
+      ? {
+          kind: "scope",
+          label: scopeLabel,
+          prompt:
+            scope.kind === "app"
+              ? `The user selected the WHOLE APP (${scoped.length} screens). Use the screen index, the code index, the project memory and the shared layer (lib/core/) as your map; do not read every file, open only what you need.`
+              : `The user selected ${scoped.length} screens: ${scoped.join(", ")}. Only change those screens (and the shared layer if that is the better place).`,
+        }
+      : contextOff || !screen
       ? null
       : pick
         ? {
@@ -415,13 +439,39 @@ export default function ProjectPage() {
                     changePick(null, p.id);
                     setContextOff(false);
                   }}
+                  scope={scope}
+                  onScope={(sc) => {
+                    setScope(sc);
+                    if (sc) {
+                      changePick(null, p.id);
+                      setContextOff(false);
+                    }
+                  }}
                 />
               </Pane>
             </Panel>
             <ResizeHandle />
 
             <Panel id="preview" minSize="25%">
-              <section aria-label={t("workspace.previewLabel")} className="h-full">
+              <section aria-label={t("workspace.previewLabel")} className="relative h-full">
+                {scope && !pick && (
+                  <div className="bg-background absolute inset-0 z-20">
+                    <PagesGrid
+                      projectId={p.id}
+                      pages={scoped}
+                      changed={lastScope?.scope?.changed ?? []}
+                      working={lastScope?.status === "running" ? (lastScope.scope?.current ?? null) : null}
+                      refreshKey={lastScope?.scope?.finished ? 1 : 0}
+                      onOpen={(c) => {
+                        const n = (nodes ?? []).find((x) => x.class === c);
+                        if (!n) return;
+                        setScope(null);
+                        setScreen({ class: n.class, file: n.file, line: n.line, route: n.previewRoute ?? n.route });
+                        changePick(null, p.id);
+                      }}
+                    />
+                  </div>
+                )}
                 <PreviewPanel
                   projectId={p.id}
                   device={device}
@@ -459,7 +509,21 @@ export default function ProjectPage() {
                 <ChatPanel
                   projectId={p.id}
                   context={context}
-                  onDismissContext={() => (pick ? changePick(null, p.id) : setContextOff(true))}
+                  suggestions={scope ? (t("scope.suggestions", { returnObjects: true }) as string[]) : undefined}
+                  onDismissContext={() => (scope ? setScope(null) : pick ? changePick(null, p.id) : setContextOff(true))}
+                  onScopeSend={(text) => {
+                    if (!scope || pick || contextOff) return false;
+                    const refs = scoped.flatMap((c) => {
+                      const n = (nodes ?? []).find((x) => x.class === c);
+                      return n ? [{ class: n.class, file: n.file }] : [];
+                    });
+                    if (refs.length < 3) return false; // een of twee pagina's: gewoon één run met dat bereik als context
+                    void useTasks
+                      .getState()
+                      .startScope({ projectId: p.id, title: t("scope.taskTitle", { scope: scopeLabel }), text, language: i18n.language.slice(0, 2), pages: refs, scopeLabel })
+                      .catch((e) => toastError(e, t));
+                    return true;
+                  }}
                 />
               </Pane>
             </Panel>

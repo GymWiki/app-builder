@@ -1971,5 +1971,30 @@
     "installing": "Downloading and installing…",
     "failed": "The update didn’t work. Check your internet connection and try again.",
     "retry": "Try again"
+  },
+  "scope": {
+    "app": "Whole app",
+    "folderUse": "Use all pages in “{{name}}”",
+    "chipApp": "Whole app",
+    "chipFolder": "Folder: {{name}} ({{count}} pages)",
+    "chipPages": "{{count}} pages",
+    "gridLabel": "All pages in this scope",
+    "changed": "Changed",
+    "working": "Working on this page",
+    "taskTitle": "Change: {{scope}}",
+    "sharedStep": "Shared parts first…",
+    "planStep": "Planning and building…",
+    "pageOf": "Page {{n}} of {{total}}",
+    "summary_one": "{{count}} page changed, {{shared}} shared part.",
+    "summary_other": "{{count}} pages changed, {{shared}} shared part.",
+    "undone": "Everything was put back as it was.",
+    "undo": "Undo",
+    "failedPages": "Not finished: {{pages}}.",
+    "retryFailed": "Try these again",
+    "suggestions": [
+      "Make all buttons rounded",
+      "Use the same font everywhere",
+      "Add a back button to every page"
+    ]
   }
 }

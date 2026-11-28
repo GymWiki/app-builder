@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { useChat } from "@/features/chat/chat-store";
 import { useTasks, type Task } from "./task-store";
 
@@ -21,6 +22,71 @@ function useStep(task: Task): string | null {
   const tools = (items ?? []).slice(task.from).filter((i) => i.kind === "tool");
   const last = tools[tools.length - 1];
   return last && last.kind === "tool" ? last.summary : null;
+}
+
+function ScopeRow({ task }: { task: Task }) {
+  const { t, i18n } = useTranslation();
+  const { cancel, dismiss, undo, retryFailed } = useTasks();
+  const r = task.scope!;
+  const running = task.status === "running";
+  const pct = r.total ? Math.round((r.done / r.total) * 100) : 0;
+  const text = running
+    ? task.cancelled
+      ? t("tasks.stopping")
+      : r.current === "shared"
+        ? t("scope.sharedStep")
+        : r.current === "plan"
+          ? t("scope.planStep")
+          : r.strategy === "fanout"
+            ? t("scope.pageOf", { n: Math.min(r.done + 1, r.total), total: r.total })
+            : t("tasks.working")
+    : task.status === "cancelled"
+      ? t("tasks.cancelled")
+      : r.undone
+        ? t("scope.undone")
+        : t("scope.summary", { pages: r.changed.length, shared: r.sharedDone ? 1 : 0, count: r.changed.length });
+  return (
+    <li className="bg-card shadow-soft space-y-2 rounded-xl border p-3" data-testid="scope-task">
+      <div className="flex items-start gap-3">
+        {running ? (
+          <Loader2 aria-hidden className="text-primary mt-0.5 size-4 shrink-0 animate-spin" />
+        ) : r.failed.length ? (
+          <AlertTriangle aria-hidden className="text-warning mt-0.5 size-4 shrink-0" />
+        ) : (
+          <CheckCircle2 aria-hidden className="text-success mt-0.5 size-4 shrink-0" />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="t-body font-medium">{task.title}</p>
+          <p className="t-small text-muted-foreground" aria-live="polite">
+            {text}
+          </p>
+        </div>
+        {running ? (
+          <Button size="xs" variant="ghost" disabled={task.cancelled} onClick={() => void cancel(task.id)}>
+            {t("tasks.cancel")}
+          </Button>
+        ) : (
+          <Button size="icon-sm" variant="ghost" aria-label={t("tasks.dismiss")} onClick={() => dismiss(task.id)}>
+            <X />
+          </Button>
+        )}
+      </div>
+      {running && r.strategy === "fanout" && <Progress value={pct} className="h-1.5" />}
+      {!running && r.failed.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="t-small">{t("scope.failedPages", { pages: r.failed.join(", ") })}</p>
+          <Button size="xs" variant="outline" onClick={() => void retryFailed(task.id, i18n.language.slice(0, 2))}>
+            {t("scope.retryFailed")}
+          </Button>
+        </div>
+      )}
+      {!running && r.snapshot && !r.undone && (
+        <Button size="xs" variant="outline" onClick={() => void undo(task.id)}>
+          {t("scope.undo")}
+        </Button>
+      )}
+    </li>
+  );
 }
 
 function Row({ task }: { task: Task }) {
@@ -92,7 +158,7 @@ export function TaskTray({ projectId }: { projectId: string }) {
       className="pointer-events-none fixed right-4 bottom-4 z-40 w-80 max-w-[calc(100vw-2rem)] space-y-2 [&>li]:pointer-events-auto"
     >
       {tasks.map((x) => (
-        <Row key={x.id} task={x} />
+        x.scope ? <ScopeRow key={x.id} task={x} /> : <Row key={x.id} task={x} />
       ))}
     </ul>
   );

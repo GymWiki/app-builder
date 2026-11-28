@@ -5,11 +5,13 @@ import {
   FolderOpen,
   FolderPlus,
   Home,
+  Layers,
   LayoutGrid,
+  Smartphone,
   MoreHorizontal,
   RefreshCw,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
@@ -53,6 +55,7 @@ import {
   type FolderState,
 } from "./screens-folders";
 import { treeRows } from "./screens-order";
+import { folderPages, scopePages, toggleMulti, type Scope } from "./scope";
 
 /** Een gekozen pagina; `route` is het pad waar de preview naartoe springt (als het scherm er een heeft). */
 export type PickedScreen = Screen & { route?: string | null };
@@ -65,10 +68,15 @@ export function ScreensTree({
   projectId,
   selected,
   onSelect,
+  scope,
+  onScope,
 }: {
   projectId: string;
   selected: string | null;
   onSelect: (s: PickedScreen | null) => void;
+  /** Het gekozen bereik voor de chat (`null` = alleen de huidige pagina). */
+  scope: Scope | null;
+  onScope: (s: Scope | null) => void;
 }) {
   const { t } = useTranslation();
   const q = useQuery({ queryKey: ["screens", projectId], queryFn: () => api.screensGraph(projectId) });
@@ -119,10 +127,28 @@ export function ScreensTree({
   const view = useMemo(() => (q.data ? prune(state, order) : state), [state, order, q.data]);
   const items = flatten(view, order);
   const empty = !q.isPending && order.length === 0 && view.folders.length === 0;
-  const pick = (c: string) => {
+  const anchor = useRef<string | null>(null);
+  const inScope = new Set(scope ? scopePages(scope, order) : []);
+  const pick = (c: string, e?: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) => {
     const sc = byClass.get(c);
-    if (sc) onSelect(sc);
+    if (!sc) return;
+    // Ctrl/Cmd of Shift: meerdere pagina's als bereik; een gewone klik kiest één pagina en zet het bereik terug naar die pagina.
+    if (e && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+      const base = scope?.kind === "pages" ? scope.pages : selected ? [selected] : [];
+      const next = toggleMulti(base, c, { shift: e.shiftKey, anchor: anchor.current ?? selected, order });
+      anchor.current = c;
+      if (next.length <= 1) {
+        onScope(null);
+        if (next[0]) onSelect(byClass.get(next[0]) ?? sc);
+      } else onScope({ kind: "pages", pages: next });
+      return;
+    }
+    anchor.current = c;
+    onScope(null);
+    onSelect(sc);
   };
+  const scopeFolder = (f: Folder) =>
+    onScope({ kind: "folder", folderId: f.id, name: f.name, pages: folderPages(view, f.id, order) });
 
   const drop = (target: string | null) => {
     if (drag?.type === "screen") update((s) => moveScreen(s, drag.id, target));
@@ -241,6 +267,17 @@ export function ScreensTree({
             <span className="truncate">{f.name}</span>
             <span className="t-small text-muted-foreground ml-auto pl-1 tabular-nums">{count}</span>
           </button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={t("scope.folderUse", { name: f.name })}
+            title={t("scope.folderUse", { name: f.name })}
+            aria-pressed={scope?.kind === "folder" && scope.folderId === f.id}
+            onClick={() => scopeFolder(f)}
+            className="opacity-60 group-hover:opacity-100 focus-visible:opacity-100"
+          >
+            <Layers />
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -273,7 +310,7 @@ export function ScreensTree({
   };
 
   const screenRow = (c: string, depth: number) => {
-    const on = selected === c;
+    const on = scope ? inScope.has(c) : selected === c;
     const isHome = c === home;
     const folder = view.placed[c] ?? null;
     return (
@@ -300,7 +337,7 @@ export function ScreensTree({
             type="button"
             aria-pressed={on}
             title={byClass.get(c)?.file}
-            onClick={() => pick(c)}
+            onClick={(e) => pick(c, e)}
             className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left"
           >
             {isHome ? (
@@ -373,6 +410,22 @@ export function ScreensTree({
           </div>
         ) : (
           <ul className="space-y-0.5" aria-label={t("sec.screens.tree.title")}>
+            <li>
+              <button
+                type="button"
+                data-testid="scope-app"
+                aria-pressed={scope?.kind === "app"}
+                onClick={() => onScope({ kind: "app" })}
+                className={cn(
+                  "mb-1 flex w-full items-center gap-2 rounded-lg border border-dashed px-2 py-2 text-left transition-colors duration-[var(--dur)]",
+                  scope?.kind === "app" ? "border-primary bg-accent/60" : "hover:bg-muted/60",
+                )}
+              >
+                <Smartphone aria-hidden className="text-primary-text size-4 shrink-0" />
+                <span className="t-body font-semibold">{t("scope.app")}</span>
+                <span className="t-small text-muted-foreground ml-auto tabular-nums">{order.length}</span>
+              </button>
+            </li>
             {draft?.kind === "new" && draft.parent === null && nameInput("", finish, 0)}
             {items.map((i) =>
               i.kind === "folder" ? folderRow(i.folder, i.depth, i.open, i.count) : screenRow(i.class, i.depth),

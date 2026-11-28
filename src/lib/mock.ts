@@ -1134,7 +1134,7 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
         },
         ...snaps,
       ];
-      return { created: true };
+      return { created: true, commit: snaps[0]!.commit };
     case "snapshot_restore": {
       const t = snaps.find((x) => x.commit === args.commit);
       snaps = [
